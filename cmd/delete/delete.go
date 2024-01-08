@@ -82,6 +82,9 @@ func (m command) build() *cli.Command {
 			}
 
 			// read hostUrl from cache
+			if opts.cachePath == "" {
+				opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
+			}
 			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
 			opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
 			if err != nil {

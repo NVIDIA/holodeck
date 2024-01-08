@@ -68,7 +68,7 @@ spec:
       - 192.168.1.0/26
     image:
       architecture: amd64
-      imageId: ami-0fe8bec493a81c7da
+      imageId: ami-0fe8bec493a81c7da # Ubuntu 22.04 image
   containerRuntime:
     install: true
     name: containerd
