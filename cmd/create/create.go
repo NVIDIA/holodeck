@@ -99,6 +99,9 @@ func (m command) build() *cli.Command {
 			}
 
 			// set cache path
+			if opts.cachePath == "" {
+				opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
+			}
 			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
 
 			return nil
