@@ -137,7 +137,7 @@ func (a *Client) updateStatus(env v1alpha1.Environment, cache *AWS, condition []
 		return nil
 	}
 
-	return update(envCopy, a.cachePath)
+	return update(envCopy, a.cacheFile)
 }
 
 // update the status of the aws object into a cache file

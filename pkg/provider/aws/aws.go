@@ -74,12 +74,12 @@ type Client struct {
 	Tags      []types.Tag
 	ec2       *ec2.Client
 	r53       *route53.Client
-	cachePath string
+	cacheFile string
 
 	*v1alpha1.Environment
 }
 
-func New(env v1alpha1.Environment, cachePath string) (*Client, error) {
+func New(env v1alpha1.Environment, cacheFile string) (*Client, error) {
 	// Create an AWS session and configure the EC2 client
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(env.Spec.Region))
 	if err != nil {
@@ -97,7 +97,7 @@ func New(env v1alpha1.Environment, cachePath string) (*Client, error) {
 		},
 		client,
 		r53,
-		cachePath,
+		cacheFile,
 		&env,
 	}
 
@@ -109,7 +109,7 @@ func (a *Client) Name() string { return Name }
 
 // unmarsalCache unmarshals the cache file into the AWS struct
 func (a *Client) unmarsalCache() (*AWS, error) {
-	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](a.cachePath)
+	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](a.cacheFile)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +162,7 @@ func (a *Client) dumpCache(aws *AWS) error {
 		return err
 	}
 
-	err = os.WriteFile(a.cachePath, data, 0644)
+	err = os.WriteFile(a.cacheFile, data, 0644)
 	if err != nil {
 		return err
 	}

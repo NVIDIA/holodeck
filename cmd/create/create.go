@@ -218,8 +218,7 @@ func runProvision(opts *options) error {
 }
 
 func createAWS(opts *options) error {
-	cachefile := filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
-	client, err := aws.New(opts.cfg, cachefile)
+	client, err := aws.New(opts.cfg, opts.cachefile)
 	if err != nil {
 		return err
 	}
