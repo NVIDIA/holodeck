@@ -4,25 +4,25 @@
 # More info: https://book.kubebuilder.io/reference/project-config.html
 domain: nvidia.com
 layout:
-- go.kubebuilder.io/v4
+  - go.kubebuilder.io/v4
 multigroup: true
 projectName: holodeck
 repo: github.com/NVIDIA/holodeck
 resources:
-- api:
-    crdVersion: v1
-    namespaced: true
-  domain: nvidia.com
-  group: holodeck
-  kind: AWS
-  path: github.com/NVIDIA/holodeck/api/holodeck/v1alpha1
-  version: v1alpha1
-- api:
-    crdVersion: v1
-    namespaced: true
-  domain: nvidia.com
-  group: holodeck
-  kind: Provisioner
-  path: github.com/NVIDIA/holodeck/api/holodeck/v1alpha1
-  version: v1alpha1
+  - api:
+      crdVersion: v1
+      namespaced: true
+    domain: nvidia.com
+    group: holodeck
+    kind: AWS
+    path: github.com/NVIDIA/holodeck/api/holodeck/v1alpha1
+    version: v1alpha1
+  - api:
+      crdVersion: v1
+      namespaced: true
+    domain: nvidia.com
+    group: holodeck
+    kind: Provisioner
+    path: github.com/NVIDIA/holodeck/api/holodeck/v1alpha1
+    version: v1alpha1
 version: "3"

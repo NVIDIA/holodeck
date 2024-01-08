@@ -8,7 +8,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-.PHONY: build fmt verify image push
+.PHONY: build fmt verify
 
 GO_CMD ?= go
 GO_FMT ?= gofmt
@@ -38,13 +38,6 @@ verify:
 	    echo "$$out"; \
 	    exit 1; \
 	fi
-
-image:
-	docker build -t $(IMAGE_TAG) .
-
-push: image
-	docker push $(IMAGE_TAG)
-
 
 .PHONY: generate
 generate: controller-gen
