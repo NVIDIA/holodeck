@@ -65,7 +65,7 @@ spec:
     type: g4dn.xlarge
     region: eu-north-1
     ingressIpRanges:
-      - 213.179.129.0/26
+      - 192.168.1.0/26
     image:
       architecture: amd64
       imageId: ami-0fe8bec493a81c7da
