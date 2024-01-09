@@ -119,9 +119,9 @@ func connectOrDie(keyPath, hostUrl string) (*ssh.Client, error) {
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-	fmt.Printf("Connecting to %s\n", hostUrl)
+
 	connectionFailed := false
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		client, err = ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
 			return client, nil // Connection succeeded, return the client.

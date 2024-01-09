@@ -19,7 +19,6 @@ package create
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -142,7 +141,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 func runProvision(opts *options) error {
 	var hostUrl string
 	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
-		for _, p := range opts.cfg.Status.Properties {
+		for _, p := range opts.cache.Status.Properties {
 			if p.Name == aws.PublicDnsName {
 				hostUrl = p.Value
 				break
@@ -163,56 +162,73 @@ func runProvision(opts *options) error {
 
 	// Download kubeconfig
 	if opts.cfg.Spec.Kubernetes.Install {
-		if opts.cfg.Spec.Kubernetes.KubeConfig == "" {
-			// and
-			if opts.kubeconfig == "" {
-				fmt.Printf("kubeconfig is not set, use default kubeconfig path: %s\n", filepath.Join(opts.cachePath, "kubeconfig"))
-				// if kubeconfig is not set, use set to current directory as default
-				// first get current directory
-				pwd := os.Getenv("PWD")
-				opts.kubeconfig = filepath.Join(pwd, "kubeconfig")
-			}
+		if err = getKubeConfig(opts, p); err != nil {
+			return fmt.Errorf("failed to get kubeconfig: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func getKubeConfig(opts *options, p *provisioner.Provisioner) error {
+	remoteFilePath := "/home/ubuntu/.kube/config"
+	if opts.cfg.Spec.Kubernetes.KubeConfig == "" {
+		// and
+		if opts.kubeconfig == "" {
+			fmt.Printf("kubeconfig is not set, use default kubeconfig path: %s\n", filepath.Join(opts.cachePath, "kubeconfig"))
+			// if kubeconfig is not set, use set to current directory as default
+			// first get current directory
+			pwd := os.Getenv("PWD")
+			opts.kubeconfig = filepath.Join(pwd, "kubeconfig")
+		} else {
 			opts.cfg.Spec.Kubernetes.KubeConfig = opts.kubeconfig
 		}
-
-		// Create a session
-		session, err := p.Client.NewSession()
-		if err != nil {
-			fmt.Printf("Failed to create session: %v\n", err)
-			return err
-		}
-		reader, writer := io.Pipe()
-		session.Stdout = writer
-		session.Stderr = writer
-
-		go func() {
-			defer writer.Close()
-			_, err := io.Copy(os.Stdout, reader)
-			if err != nil {
-				log.Fatalf("Failed to copy from reader: %v", err)
-			}
-		}()
-		defer session.Close()
-		// Create a new file on the local system to save the downloaded content
-		localFile, err := os.Create(opts.kubeconfig)
-		if err != nil {
-			return fmt.Errorf("error creating local file: %v", err)
-		}
-		defer localFile.Close()
-
-		// Set up pipes for stdin, stdout, and stderr
-		session.Stdout = localFile
-		session.Stderr = os.Stderr
-
-		// Run the SCP command to download the remote file
-		remoteFilePath := "/home/ubuntu/.kube/config"
-		err = session.Run("scp -f " + remoteFilePath)
-		if err != nil {
-			return fmt.Errorf("error running SCP command: %v", err)
-		}
-
-		fmt.Println("KubeConfig downloaded successfully.")
 	}
+
+	// Create a session
+	session, err := p.Client.NewSession()
+	if err != nil {
+		fmt.Printf("Failed to create session: %v\n", err)
+		return err
+	}
+	defer session.Close()
+
+	// Set up a pipe to receive the remote file content
+	remoteFile, err := session.StdoutPipe()
+	if err != nil {
+		fmt.Printf("Error obtaining remote file pipe: %v\n", err)
+		return err
+	}
+
+	// Start the remote command to read the file content
+	err = session.Start(fmt.Sprintf("/usr/bin/cat  %s", remoteFilePath))
+	if err != nil {
+		fmt.Printf("Error starting remote command: %v\n", err)
+		return err
+	}
+
+	// Create a new file on the local system to save the downloaded content
+	localFile, err := os.Create(opts.kubeconfig)
+	if err != nil {
+		return fmt.Errorf("error creating local file: %v", err)
+	}
+	defer localFile.Close()
+
+	// Copy the remote file content to the local file
+	_, err = io.Copy(localFile, remoteFile)
+	if err != nil {
+		fmt.Printf("Error copying file content: %v\n", err)
+		return err
+	}
+
+	// Wait for the remote command to finish
+	err = session.Wait()
+	if err != nil {
+		fmt.Printf("Error waiting for remote command: %v\n", err)
+		return err
+	}
+
+	fmt.Printf("Kubeconfig saved to %s\n", opts.kubeconfig)
 
 	return nil
 }

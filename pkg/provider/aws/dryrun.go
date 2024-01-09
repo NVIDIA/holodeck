@@ -21,26 +21,27 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
-func (a *Client) getInstanceTypes() ([]string, error) {
+func (a *Client) getInstanceTypes() ([]types.InstanceType, error) {
 	// Use the DescribeInstanceTypes API to get a list of supported instance types in the current region
 	resp, err := a.ec2.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{})
 	if err != nil {
 		return nil, err
 	}
 
-	instanceTypes := make([]string, 0)
+	instanceTypes := []types.InstanceType{}
 	for _, it := range resp.InstanceTypes {
-		instanceTypes = append(instanceTypes, string(it.InstanceType))
+		instanceTypes = append(instanceTypes, it.InstanceType)
 	}
 
 	return instanceTypes, nil
 }
 
-func (a *Client) isInstanceTypeSupported(desiredType string, supportedTypes []string) bool {
+func (a *Client) isInstanceTypeSupported(desiredType string, supportedTypes []types.InstanceType) bool {
 	for _, t := range supportedTypes {
-		if t == desiredType {
+		if t == types.InstanceType(a.Spec.Instance.Type) {
 			return true
 		}
 	}
@@ -55,7 +56,7 @@ func (a *Client) DryRun() error {
 	}
 
 	if !a.isInstanceTypeSupported(string(a.Spec.Instance.Type), instanceTypes) {
-		return fmt.Errorf("instance type %s is not supported in the current region", string(a.Spec.Instance.Type))
+		return fmt.Errorf("instance type %s is not supported in the current region %s", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
 	}
 
 	return nil
