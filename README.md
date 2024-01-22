@@ -82,11 +82,21 @@ spec:
 ### Create an environment
 
 ```bash
-holodeck create -f ./examples/v1alpha1_environment.yaml
+$ holodeck create -f ./examples/v1alpha1_environment.yaml
 ```
 
 ### Delete an environment
 
 ```bash
-holodeck delete -f ./examples/v1alpha1_environment.yaml
+$ holodeck delete -f ./examples/v1alpha1_environment.yaml
+```
+
+### Dry Run
+
+```bash
+$ holodeck dryrun -f ./examples/v1alpha1_environment.yaml
+Checking if instance type g4dn.xlarge is supported in region xx-xxxx-1
+Checking if image ami-xxxxxxxxx is supported in region xx-xxxx-1
+Resolving dependencies...
+Dryrun succeeded
 ```
