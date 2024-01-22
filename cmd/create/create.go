@@ -47,7 +47,7 @@ type command struct {
 	logger *logrus.Logger
 }
 
-// NewCommand constructs a validate command with the specified logger
+// NewCommand constructs the create command with the specified logger
 func NewCommand(logger *logrus.Logger) *cli.Command {
 	c := command{
 		logger: logger,
@@ -58,7 +58,7 @@ func NewCommand(logger *logrus.Logger) *cli.Command {
 func (m command) build() *cli.Command {
 	opts := options{}
 
-	// Create the 'validate' command
+	// Create the 'create' command
 	create := cli.Command{
 		Name:  "create",
 		Usage: "create a test environment based on config file",
@@ -170,6 +170,7 @@ func runProvision(opts *options) error {
 	return nil
 }
 
+// getKubeConfig downloads the kubeconfig file from the remote host
 func getKubeConfig(opts *options, p *provisioner.Provisioner) error {
 	remoteFilePath := "/home/ubuntu/.kube/config"
 	if opts.cfg.Spec.Kubernetes.KubeConfig == "" {
