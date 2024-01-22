@@ -21,6 +21,7 @@ import (
 
 	"github.com/NVIDIA/holodeck/cmd/create"
 	"github.com/NVIDIA/holodeck/cmd/delete"
+	"github.com/NVIDIA/holodeck/cmd/dryrun"
 
 	log "github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
@@ -71,6 +72,7 @@ func main() {
 	c.Commands = []*cli.Command{
 		create.NewCommand(logger),
 		delete.NewCommand(logger),
+		dryrun.NewCommand(logger),
 	}
 
 	err := c.Run(os.Args)

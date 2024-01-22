@@ -43,7 +43,7 @@ type command struct {
 	logger *logrus.Logger
 }
 
-// NewCommand constructs a validate command with the specified logger
+// NewCommand constructs the delete command with the specified logger
 func NewCommand(logger *logrus.Logger) *cli.Command {
 	c := command{
 		logger: logger,
@@ -54,7 +54,7 @@ func NewCommand(logger *logrus.Logger) *cli.Command {
 func (m command) build() *cli.Command {
 	opts := options{}
 
-	// Create the 'validate' command
+	// Create the 'delete' command
 	create := cli.Command{
 		Name:  "delete",
 		Usage: "delete a test environment",
