@@ -34,7 +34,7 @@ echo \
 sudo apt-get update
 
 # Install containerd
-sudo apt install -y containerd.io=${CONTAINERD_VERSION}-1
+install_packages_with_retry containerd.io=${CONTAINERD_VERSION}-1
 
 # Configure containerd and start service
 mkdir -p /etc/containerd

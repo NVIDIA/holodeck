@@ -91,7 +91,7 @@ func New(env v1alpha1.Environment, cacheFile string) (*Client, error) {
 	c := &Client{
 		[]types.Tag{
 			{Key: aws.String("Product"), Value: aws.String("Cloud Native")},
-			{Key: aws.String("Name"), Value: aws.String("devel")},
+			{Key: aws.String("Name"), Value: aws.String(env.Name)},
 			{Key: aws.String("Project"), Value: aws.String("holodeck")},
 			{Key: aws.String("Environment"), Value: aws.String("cicd")},
 		},

@@ -1,8 +1,8 @@
 apiVersion: holodeck.nvidia.com/v1alpha1
 kind: Environment
 metadata:
-  name: holodeck
-  description: "Devel infra environment"
+  name: draKind
+  description: "DRA on Kind infra environment"
 spec:
   provider: aws
   auth:
@@ -16,10 +16,7 @@ spec:
     image:
       architecture: amd64
       imageId: ami-0fe8bec493a81c7da
-  containerRuntime:
-    install: true
-    name: containerd
   kubernetes:
     install: true
-    installer: kubeadm
-    version: v1.28.5
+    installer: kind
+    kindConfig: "./examples/kind.yaml"
