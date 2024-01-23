@@ -27,6 +27,7 @@ IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 
 build:
+	@rm -rf bin
 	$(GO_CMD) build -o bin/$(BINARY_NAME) cmd/main.go
 
 fmt:

@@ -22,6 +22,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 	"time"
@@ -67,17 +68,6 @@ type NvDriver struct {
 	// Placeholder to enable type assertion
 }
 
-type Kubernetes struct {
-	Version               string
-	KubeletReleaseVersion string
-	Arch                  string
-	CniPluginsVersion     string
-	CalicoVersion         string
-	CrictlVersion         string
-	K8sEndpointHost       string
-	K8sFeatureGates       string
-}
-
 func New(keyPath, hostUrl string) (*Provisioner, error) {
 	fmt.Printf("Connecting to %s\n", hostUrl)
 	client, err := connectOrDie(keyPath, hostUrl)
@@ -91,13 +81,44 @@ func New(keyPath, hostUrl string) (*Provisioner, error) {
 		tpl:     bytes.Buffer{},
 	}
 
-	// Add shebang to the script
-	shebang := template.Must(template.New("shebang").Parse(Shebang))
-	if err = shebang.Execute(&p.tpl, nil); err != nil {
+	// Add script header and common functions to the script
+	if err := addScriptHeader(&p.tpl); err != nil {
 		return nil, fmt.Errorf("failed to add shebang to the script: %v", err)
 	}
 
 	return p, nil
+}
+
+func addScriptHeader(tpl *bytes.Buffer) error {
+	// Add shebang to the script
+	shebang := template.Must(template.New("shebang").Parse(Shebang))
+	if err := shebang.Execute(tpl, nil); err != nil {
+		return fmt.Errorf("failed to add shebang to the script: %v", err)
+	}
+	// Add common functions to the script
+	commonFunctions := template.Must(template.New("common-functions").Parse(templates.CommonFunctions))
+	if err := commonFunctions.Execute(tpl, nil); err != nil {
+		return fmt.Errorf("failed to add common functions to the script: %v", err)
+	}
+	return nil
+}
+
+// resetConnection resets the ssh connection, and retries if it fails to connect
+func (p *Provisioner) resetConnection(keyPath, hostUrl string) error {
+	var err error
+
+	// Close the current ssh connection
+	if err := p.Client.Close(); err != nil {
+		return fmt.Errorf("failed to close ssh client: %v", err)
+	}
+
+	// Create a new ssh connection
+	p.Client, err = connectOrDie(keyPath, hostUrl)
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s: %v", p.HostUrl, err)
+	}
+
+	return nil
 }
 
 // createSshClient creates a ssh client, and retries if it fails to connect
@@ -144,27 +165,22 @@ func connectOrDie(keyPath, hostUrl string) (*ssh.Client, error) {
 func (p *Provisioner) Run(env v1alpha1.Environment) error {
 	// Read v1alpha1.Provisioner and execute the template based on the config
 	// the logic order is:
-	// 1. nv-driver
-	// 2. container-runtime
-	// 3. container-toolkit
+	// 1. container-runtime
+	// 2. container-toolkit
+	// 3. nv-driver
 	// 4. kubernetes
+	// 5. kind-config (if kubernetes is installed via kind)
 	var containerRuntime string
 
-	// 1. nv-driver
-	if env.Spec.NVDriver.Install {
-		nvDriverTemplate := template.Must(template.New("nv-driver").Parse(templates.NvDriver))
-		err := nvDriverTemplate.Execute(&p.tpl, &NvDriver{})
-		if err != nil {
-			return fmt.Errorf("failed to execute nv-driver template: %v", err)
-		}
-	}
-
-	// 2. container-runtime
+	// 1. container-runtime
 	if env.Spec.ContainerRuntime.Install {
 		switch env.Spec.ContainerRuntime.Name {
 		case "docker":
 			containerRuntime = "docker"
 			dockerTemplate := template.Must(template.New("docker").Parse(templates.Docker))
+			if env.Spec.ContainerRuntime.Version == "" {
+				env.Spec.ContainerRuntime.Version = "latest"
+			}
 			err := dockerTemplate.Execute(&p.tpl, &Docker{Version: env.Spec.ContainerRuntime.Version})
 			if err != nil {
 				return fmt.Errorf("failed to execute docker template: %v", err)
@@ -187,11 +203,37 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 			fmt.Printf("Unknown container runtime %s\n", env.Spec.ContainerRuntime.Name)
 			return nil
 		}
+	} else if env.Spec.Kubernetes.KubernetesInstaller == "kind" {
+		// If kubernetes is installed via kind, we need to install docker
+		// as the container runtime
+		containerRuntime = "docker"
+		dockerTemplate := template.Must(template.New("docker").Parse(templates.Docker))
+		err := dockerTemplate.Execute(&p.tpl, &Docker{Version: "latest"})
+		if err != nil {
+			return fmt.Errorf("failed to execute docker template: %v", err)
+		}
+
+		// And since we want to use KIND non-root mode, we need to add the user
+		// to the docker group so that the user can run docker commands without
+		// sudo
+		if err := p.provision(); err != nil {
+			return fmt.Errorf("failed to provision: %v", err)
+		}
+		p.tpl.Reset()
+		if err := addScriptHeader(&p.tpl); err != nil {
+			return fmt.Errorf("failed to add shebang to the script: %v", err)
+		}
+		// close session to force docker group to take effect
+		if err := p.resetConnection(env.Spec.Auth.PrivateKey, p.HostUrl); err != nil {
+			return fmt.Errorf("failed to reset ssh connection: %v", err)
+		}
 	}
 
-	// 3. container-toolkit
+	// 2. container-toolkit
 	// We need to install container-toolkit after container-runtime or skip it
-	if env.Spec.NVContainerToolKit.Install && env.Spec.ContainerRuntime.Install {
+	// We also need to install container-toolkit if kubernetes is installed
+	// via kind
+	if env.Spec.NVContainerToolKit.Install && env.Spec.ContainerRuntime.Install || env.Spec.Kubernetes.KubernetesInstaller == "kind" {
 		containerToolkitTemplate := template.Must(template.New("container-toolkit").Parse(templates.ContainerToolkit))
 		err := containerToolkitTemplate.Execute(&p.tpl, &ContainerToolkit{ContainerRuntime: containerRuntime})
 		if err != nil {
@@ -199,57 +241,33 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		}
 	}
 
+	// 3. nv-driver
+	// We need to install nv-driver if container-runtime if Kind is used
+	if env.Spec.NVDriver.Install || env.Spec.Kubernetes.KubernetesInstaller == "kind" {
+		nvDriverTemplate := template.Must(template.New("nv-driver").Parse(templates.NvDriver))
+		err := nvDriverTemplate.Execute(&p.tpl, &NvDriver{})
+		if err != nil {
+			return fmt.Errorf("failed to execute nv-driver template: %v", err)
+		}
+	}
+
 	// 4. kubernetes
 	// Set opinionated defaults if not set
 	if env.Spec.Kubernetes.Install {
-		kubernetesTemplate := template.Must(template.New("kubernetes").Parse(templates.Kubernetes))
-		kubernetes := &Kubernetes{
-			Version: env.Spec.Kubernetes.KubernetesVersion,
+		if env.Spec.Kubernetes.K8sEndpointHost == "" {
+			env.Spec.Kubernetes.K8sEndpointHost = p.HostUrl
 		}
-		// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
-		// if not, set the default version
-		if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
-			fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.27.9\n", env.Spec.Kubernetes.KubernetesVersion)
-			kubernetes.Version = "v1.27.9"
-		}
-		if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
-			kubernetes.KubeletReleaseVersion = env.Spec.Kubernetes.KubeletReleaseVersion
-		} else {
-			kubernetes.KubeletReleaseVersion = "v0.16.2"
-		}
-		if env.Spec.Kubernetes.Arch != "" {
-			kubernetes.Arch = env.Spec.Kubernetes.Arch
-		} else {
-			kubernetes.Arch = "amd64"
-		}
-		if env.Spec.Kubernetes.CniPluginsVersion != "" {
-			kubernetes.CniPluginsVersion = env.Spec.Kubernetes.CniPluginsVersion
-		} else {
-			kubernetes.CniPluginsVersion = "v0.8.7"
-		}
-		if env.Spec.Kubernetes.CalicoVersion != "" {
-			kubernetes.CalicoVersion = env.Spec.Kubernetes.CalicoVersion
-		} else {
-			kubernetes.CalicoVersion = "v3.27.0"
-		}
-		if env.Spec.Kubernetes.CrictlVersion != "" {
-			kubernetes.CrictlVersion = env.Spec.Kubernetes.CrictlVersion
-		} else {
-			kubernetes.CrictlVersion = "v1.22.0"
-		}
-		if env.Spec.Kubernetes.K8sEndpointHost != "" {
-			kubernetes.K8sEndpointHost = env.Spec.Kubernetes.K8sEndpointHost
-		} else {
-			kubernetes.K8sEndpointHost = p.HostUrl
-		}
-		if len(env.Spec.Kubernetes.K8sFeatureGates) > 0 {
-			// convert []string to string
-			kubernetes.K8sFeatureGates = strings.Join(env.Spec.Kubernetes.K8sFeatureGates, ",")
-		}
-
-		err := kubernetesTemplate.Execute(&p.tpl, kubernetes)
+		err := templates.ExecuteKubernetes(&p.tpl, env)
 		if err != nil {
 			return fmt.Errorf("failed to execute kubernetes template: %v", err)
+		}
+	}
+
+	// 5. kind-config
+	// Create kind config file if it is set
+	if env.Spec.Kubernetes.KubernetesInstaller == "kind" && env.Spec.Kubernetes.KindConfig != "" {
+		if err := p.createKindConfig(env); err != nil {
+			return fmt.Errorf("failed to create kind config file: %v", err)
 		}
 	}
 
@@ -290,5 +308,53 @@ func (p *Provisioner) provision() error {
 		return fmt.Errorf("failed to wait for session: %v", err)
 	}
 
+	return nil
+}
+
+func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
+	// Specify the remote file path
+	remoteFilePath := "$HOME/kind.yaml"
+
+	// Create a session
+	session, err := p.Client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	// Open a remote file for writing
+	remoteFile, err := session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to open remote file %s: %v", remoteFilePath, err)
+	}
+	if err := session.Start("cat > " + remoteFilePath); err != nil {
+		return fmt.Errorf("failed to start session: %v", err)
+	}
+
+	// open local file for reading
+	// first check if file path is relative or absolute
+	// if relative, then prepend the current working directory
+	if !filepath.IsAbs(env.Spec.Kubernetes.KindConfig) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current working directory: %v", err)
+		}
+
+		env.Spec.Kubernetes.KindConfig = filepath.Join(cwd, strings.TrimPrefix(env.Spec.Kubernetes.KindConfig, "./"))
+	}
+
+	localFile, err := os.Open(env.Spec.Kubernetes.KindConfig)
+	if err != nil {
+		return fmt.Errorf("failed to open local file %s: %v", env.Spec.Kubernetes.KindConfig, err)
+	}
+
+	// copy local file to remote file
+	if _, err := io.Copy(remoteFile, localFile); err != nil {
+		return fmt.Errorf("failed to copy local file %s to remote file %s: %v", env.Spec.Kubernetes.KindConfig, remoteFilePath, err)
+	}
+
+	// Close the writing pipe and wait for the session to finish
+	remoteFile.Close()
+	session.Wait()
 	return nil
 }

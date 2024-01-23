@@ -19,32 +19,34 @@ package templates
 const Docker = `
 
 # Based on https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
-: ${DOCKER_VERSION:={{.Version}}
+: ${DOCKER_VERSION:={{.Version}}}
 
-# Add repo and Install packages
-apt update
-apt install -y curl gnupg software-properties-common apt-transport-https ca-certificates
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
+# Add Docker's official GPG key:
+sudo apt-get update
+install_packages_with_retry ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Add the repository to Apt sources:
 echo \
-  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  tee /etc/apt/sources.list.d/docker.list > /dev/null
-apt update
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
 
 # if DOCKER_VERSION is latest, then install latest version, else install specific version
 if [ "$DOCKER_VERSION" = "latest" ]; then
-  apt install -y docker-ce docker-ce-cli containerd.io
+  install_packages_with_retry docker-ce docker-ce-cli containerd.io
 else
-  apt install -y docker-ce={{.DockerVersion}} docker-ce-cli={{.DockerVersion}} containerd.io
+  install_packages_with_retry docker-ce=$DOCKER_VERSION docker-ce-cli=$DOCKER_VERSION containerd.io
 fi
 
 # Create required directories
-mkdir -p /etc/systemd/system/docker.service.d
+sudo mkdir -p /etc/systemd/system/docker.service.d
 
 # Create daemon json config file
-tee /etc/docker/daemon.json <<EOF
+sudo tee /etc/docker/daemon.json <<EOF
 {
   "exec-opts": ["native.cgroupdriver=systemd"],
   "log-driver": "json-file",
@@ -56,7 +58,11 @@ tee /etc/docker/daemon.json <<EOF
 EOF
 
 # Start and enable Services
-systemctl daemon-reload 
-systemctl enable docker
-systemctl restart docker
+sudo systemctl daemon-reload 
+sudo systemctl enable docker
+sudo systemctl restart docker
+
+# Post-installation steps for Linux
+sudo usermod -aG docker $USER
+newgrp docker
 `

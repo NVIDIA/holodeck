@@ -165,6 +165,7 @@ type Kubernetes struct {
 	KubeConfig            string   `json:"kubeConfig"`
 	KubernetesFeatures    []string `json:"Features"`
 	KubernetesVersion     string   `json:"Version"`
+	KubernetesInstaller   string   `json:"Installer"`
 	KubeletReleaseVersion string   `json:"KubeletReleaseVersion"`
 	Arch                  string   `json:"Arch"`
 	CniPluginsVersion     string   `json:"CniPluginsVersion"`
@@ -174,6 +175,14 @@ type Kubernetes struct {
 	// A set of key=value pairs that describe feature gates for
 	// alpha/experimental features
 	K8sFeatureGates []string `json:"K8sFeatureGates"`
+
+	// Kind exclusive
+	KindConfig string `json:"kindConfig"`
+}
+
+type ExtraPortMapping struct {
+	ContainerPort int `json:"containerPort"`
+	HostPort      int `json:"hostPort"`
 }
 
 type NVContainerToolKit struct {

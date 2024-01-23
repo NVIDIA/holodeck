@@ -18,6 +18,7 @@ package aws
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 
 	"sigs.k8s.io/yaml"
@@ -147,10 +148,18 @@ func update(env *v1alpha1.Environment, cachePath string) error {
 		return err
 	}
 
-	// if the cache directory doesn't exist, create it
-	_, err = os.Stat(cachePath)
-	if os.IsNotExist(err) {
-		err = os.MkdirAll(cachePath, 0755)
+	// if the cache file does not exist, check if the directory exists
+	// if the directory does not exist, create it
+	// if the directory exists, create the cache file
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		dir := filepath.Dir(cachePath)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			err := os.MkdirAll(dir, 0755)
+			if err != nil {
+				return err
+			}
+		}
+		_, err := os.Create(cachePath)
 		if err != nil {
 			return err
 		}

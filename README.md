@@ -36,10 +36,10 @@ metadata:
 spec:
   provider: aws
   auth:
-    keyName: eduardoa
-    privateKey: "/Users/eduardoa/.ssh/eduardoa.pem"
+    keyName: user
+    privateKey: "/Users/user/.ssh/user.pem"
   instance:
-    hostUrl: "some-reachable-host-ip"
+    hostUrl: "<some-reachable-host-ip>"
 ```
 
 ##  Usage
@@ -59,8 +59,8 @@ metadata:
 spec:
   provider: aws # or ssh for now
   auth:
-    keyName: eduardoa
-    privateKey: "/Users/eduardoa/.ssh/eduardoa.pem"
+    keyName: user
+    privateKey: "/Users/user/.ssh/user.pem"
   instance: # if provider is ssh you need to define here the hostUrl
     type: g4dn.xlarge
     region: eu-north-1
@@ -75,7 +75,7 @@ spec:
     version: 1.6.24
   kubernetes:
     install: true
-    enable: true
+    installer: kubeadm # supported installers: kubeadm, kind
     version: v1.28.5
 ```
 

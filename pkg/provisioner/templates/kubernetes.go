@@ -16,36 +16,30 @@
 
 package templates
 
-const Kubernetes = `
+import (
+	"bytes"
+	"fmt"
+	"strings"
+	"text/template"
 
-with_retry() {
-	local max_attempts="$1"
-	local delay="$2"
-	local count=0
-	local rc
-	shift 2
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
 
-	while true; do
-		set +e
-		"$@"
-		rc="$?"
-		set -e
-
-		count="$((count+1))"
-
-		if [[ "${rc}" -eq 0 ]]; then
-			return 0
-		fi
-
-		if [[ "${max_attempts}" -le 0 ]] || [[ "${count}" -lt "${max_attempts}" ]]; then
-			sleep "${delay}"
-		else
-			break
-		fi
-	done
-
-	return 1
+type Kubernetes struct {
+	Version               string
+	Installer             string
+	KubeletReleaseVersion string
+	Arch                  string
+	CniPluginsVersion     string
+	CalicoVersion         string
+	CrictlVersion         string
+	K8sEndpointHost       string
+	KubeAdmnFeatureGates  string
+	// Kind exclusive
+	KindConfig string
 }
+
+const KubernetesTemplate = `
 
 # Install kubeadm, kubectl, and k8s-cni
 : ${K8S_VERSION:={{.Version}}}
@@ -120,4 +114,96 @@ with_retry 3 10s kubectl create -f https://raw.githubusercontent.com/projectcali
 # Make single-node cluster schedulable
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 kubectl label node --all node-role.kubernetes.io/worker=
+kubectl label node --all nvidia.com/holodeck.managed=true
 `
+
+const KindTemplate = `
+
+# Download kind
+[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-arm64
+chmod +x ./kind
+sudo install ./kind /usr/local/bin/kind
+
+# Install crictl (required for kubeadm / Kubelet Container Runtime Interface (CRI))
+DOWNLOAD_DIR="/usr/local/bin"
+sudo mkdir -p "$DOWNLOAD_DIR"
+
+# Install kubectl 
+# see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl
+cd $DOWNLOAD_DIR
+sudo curl -L --remote-name-all https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/kubectl
+sudo chmod +x kubectl
+cd $HOME
+
+# Enable NVIDIA GPU support
+sudo nvidia-ctk runtime configure --set-as-default
+sudo systemctl restart docker
+sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts --in-place
+
+# Create a cluster with the config file
+export KUBECONFIG="${HOME}/.kube/config:/var/run/kubernetes/admin.kubeconfig"
+mkdir -p $HOME/.kube
+sudo chown -R $(id -u):$(id -g) $HOME/.kube/
+with_retry 3 10s kind create cluster --name holodeck --config kind.yaml --kubeconfig="${HOME}/.kube/config"
+`
+
+func ExecuteKubernetes(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	kubernetesTemplate := new(template.Template)
+
+	switch env.Spec.Kubernetes.KubernetesInstaller {
+	case "kubeadm":
+		kubernetesTemplate = template.Must(template.New("kubeadm").Parse(KubernetesTemplate))
+	case "kind":
+		kubernetesTemplate = template.Must(template.New("kind").Parse(KindTemplate))
+	default:
+		return fmt.Errorf("unknown kubernetes installer %s", env.Spec.Kubernetes.KubernetesInstaller)
+	}
+
+	kubernetes := &Kubernetes{
+		Version: env.Spec.Kubernetes.KubernetesVersion,
+	}
+	// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
+	// if not, set the default version
+	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
+		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.27.9\n", env.Spec.Kubernetes.KubernetesVersion)
+		kubernetes.Version = "v1.27.9"
+	}
+	if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
+		kubernetes.KubeletReleaseVersion = env.Spec.Kubernetes.KubeletReleaseVersion
+	} else {
+		kubernetes.KubeletReleaseVersion = "v0.16.2"
+	}
+	if env.Spec.Kubernetes.Arch != "" {
+		kubernetes.Arch = env.Spec.Kubernetes.Arch
+	} else {
+		kubernetes.Arch = "amd64"
+	}
+	if env.Spec.Kubernetes.CniPluginsVersion != "" {
+		kubernetes.CniPluginsVersion = env.Spec.Kubernetes.CniPluginsVersion
+	} else {
+		kubernetes.CniPluginsVersion = "v0.8.7"
+	}
+	if env.Spec.Kubernetes.CalicoVersion != "" {
+		kubernetes.CalicoVersion = env.Spec.Kubernetes.CalicoVersion
+	} else {
+		kubernetes.CalicoVersion = "v3.27.0"
+	}
+	if env.Spec.Kubernetes.CrictlVersion != "" {
+		kubernetes.CrictlVersion = env.Spec.Kubernetes.CrictlVersion
+	} else {
+		kubernetes.CrictlVersion = "v1.22.0"
+	}
+	if env.Spec.Kubernetes.K8sEndpointHost != "" {
+		kubernetes.K8sEndpointHost = env.Spec.Kubernetes.K8sEndpointHost
+	}
+	if env.Spec.Kubernetes.KindConfig != "" {
+		kubernetes.KindConfig = env.Spec.Kubernetes.KindConfig
+	}
+
+	err := kubernetesTemplate.Execute(tpl, kubernetes)
+	if err != nil {
+		return fmt.Errorf("failed to execute kubernetes template: %v", err)
+	}
+	return nil
+}
