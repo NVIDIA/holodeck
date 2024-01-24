@@ -29,22 +29,53 @@ import (
 // Create creates an EC2 instance with proper Network configuration
 // VPC, Subnet, Internet Gateway, Route Table, Security Group
 func (a *Client) Create() error {
-	a.updateProgressingCondition(*a.Environment.DeepCopy(), &AWS{}, "v1alpha1.Creating", "Creating AWS resources")
+	cache := new(AWS)
+	defer a.dumpCache(cache)
 
-	if cache, err := a.create(); err != nil {
-		a.updateDegradedCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating AWS resources")
-		return fmt.Errorf("error creating AWS resources: %v", err)
+	a.updateProgressingCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources")
+
+	if err := a.createVPC(cache); err != nil {
+		a.updateDegradedCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC")
+		return fmt.Errorf("error creating VPC: %v", err)
 	}
 
+	if err := a.createSubnet(cache); err != nil {
+		a.updateDegradedCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet")
+		return fmt.Errorf("error creating subnet: %v", err)
+	}
+
+	if err := a.createInternetGateway(cache); err != nil {
+		a.updateDegradedCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway")
+		return fmt.Errorf("error creating Internet Gateway: %v", err)
+	}
+
+	if err := a.createRouteTable(cache); err != nil {
+		a.updateDegradedCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table")
+		return fmt.Errorf("error creating route table: %v", err)
+	}
+
+	if err := a.createSecurityGroup(cache); err != nil {
+		a.updateDegradedCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group")
+		return fmt.Errorf("error creating security group: %v", err)
+	}
+
+	if err := a.createEC2Instance(cache); err != nil {
+		a.updateDegradedCondition(*a.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance")
+		return fmt.Errorf("error creating EC2 instance: %v", err)
+	}
+
+	// Save objects ID's into a cache file
+	if err := a.updateAvailableCondition(*a.Environment, cache); err != nil {
+		return fmt.Errorf("error creating cache file: %v", err)
+	}
 	return nil
 }
 
-func (a *Client) create() (*AWS, error) {
-	var cache AWS
-	defer a.dumpCache(&cache)
+// createVPC creates a VPC with CIDR
+func (a *Client) createVPC(cache *AWS) error {
+	a.log.Wg.Add(1)
+	go a.log.Loading("Creating VPC")
 
-	// Define the VPC parameters
-	fmt.Println("Creating VPC with CIDR")
 	vpcInput := &ec2.CreateVpcInput{
 		CidrBlock:                   aws.String("10.0.0.0/16"),
 		AmazonProvidedIpv6CidrBlock: &no,
@@ -59,7 +90,8 @@ func (a *Client) create() (*AWS, error) {
 
 	vpcOutput, err := a.ec2.CreateVpc(context.TODO(), vpcInput)
 	if err != nil {
-		return &cache, fmt.Errorf("error creating VPC: %v", err)
+		a.fail()
+		return fmt.Errorf("error creating VPC: %v", err)
 	}
 	cache.Vpcid = *vpcOutput.Vpc.VpcId
 
@@ -67,16 +99,24 @@ func (a *Client) create() (*AWS, error) {
 		VpcId:              vpcOutput.Vpc.VpcId,
 		EnableDnsHostnames: &types.AttributeBooleanValue{Value: &yes},
 	}
-	fmt.Printf("Enabling DNS hostnames for VPC %s\n", cache.Vpcid)
+
 	_, err = a.ec2.ModifyVpcAttribute(context.Background(), modVcp)
 	if err != nil {
-		return &cache, fmt.Errorf("error modifying VPC attributes: %v", err)
+		a.fail()
+		return fmt.Errorf("error modifying VPC attributes: %v", err)
 	}
+	a.done()
 
-	// Create a subnet
-	fmt.Println("Creating subnet")
+	return nil
+}
+
+// createSubnet creates a subnet for the VPC
+func (a *Client) createSubnet(cache *AWS) error {
+	a.log.Wg.Add(1)
+	go a.log.Loading("Creating subnet")
+
 	subnetInput := &ec2.CreateSubnetInput{
-		VpcId:     vpcOutput.Vpc.VpcId,
+		VpcId:     aws.String(cache.Vpcid),
 		CidrBlock: aws.String("10.0.0.0/24"),
 		TagSpecifications: []types.TagSpecification{
 			{
@@ -87,37 +127,53 @@ func (a *Client) create() (*AWS, error) {
 	}
 	subnetOutput, err := a.ec2.CreateSubnet(context.TODO(), subnetInput)
 	if err != nil {
-		return &cache, fmt.Errorf("error creating subnet: %v", err)
+		a.fail()
+		return fmt.Errorf("error creating subnet: %v", err)
 	}
 	cache.Subnetid = *subnetOutput.Subnet.SubnetId
 
-	// Create an Internet Gateway
-	fmt.Println("Creating Internet Gateway")
+	a.done()
+	return nil
+}
+
+// createInternetGateway creates an Internet Gateway and attaches it to the VPC
+func (a *Client) createInternetGateway(cache *AWS) error {
+	a.log.Wg.Add(1)
+	go a.log.Loading("Creating Internet Gateway")
+
 	gwInput := &ec2.CreateInternetGatewayInput{}
 	gwOutput, err := a.ec2.CreateInternetGateway(context.TODO(), gwInput)
 	if err != nil {
-		return &cache, fmt.Errorf("error creating Internet Gateway: %v", err)
+		a.fail()
+		return fmt.Errorf("error creating Internet Gateway: %v", err)
 	}
 	cache.InternetGwid = *gwOutput.InternetGateway.InternetGatewayId
 
 	// Attach Internet Gateway to the VPC
-	fmt.Println("Attaching Internet Gateway to the VPC")
 	attachInput := &ec2.AttachInternetGatewayInput{
-		VpcId:             vpcOutput.Vpc.VpcId,
+		VpcId:             aws.String(cache.Vpcid),
 		InternetGatewayId: gwOutput.InternetGateway.InternetGatewayId,
 	}
 	_, err = a.ec2.AttachInternetGateway(context.TODO(), attachInput)
 	if err != nil {
-		return &cache, fmt.Errorf("error attaching Internet Gateway: %v", err)
+		a.fail()
+		return fmt.Errorf("error attaching Internet Gateway: %v", err)
 	}
 	if len(gwOutput.InternetGateway.Attachments) > 0 {
 		cache.InternetGatewayAttachment = *gwOutput.InternetGateway.Attachments[0].VpcId
 	}
 
-	// Create a route table
-	fmt.Println("Creating route table")
+	a.done()
+	return nil
+}
+
+// createRouteTable creates a route table and associates it with the subnet
+func (a *Client) createRouteTable(cache *AWS) error {
+	a.log.Wg.Add(1)
+	go a.log.Loading("Creating route table")
+
 	rtInput := &ec2.CreateRouteTableInput{
-		VpcId: vpcOutput.Vpc.VpcId,
+		VpcId: aws.String(cache.Vpcid),
 		TagSpecifications: []types.TagSpecification{
 			{
 				ResourceType: types.ResourceTypeRouteTable,
@@ -127,38 +183,44 @@ func (a *Client) create() (*AWS, error) {
 	}
 	rtOutput, err := a.ec2.CreateRouteTable(context.TODO(), rtInput)
 	if err != nil {
-		return &cache, fmt.Errorf("error creating route table: %v", err)
+		a.fail()
+		return fmt.Errorf("error creating route table: %v", err)
 	}
 	cache.RouteTable = *rtOutput.RouteTable.RouteTableId
 
 	// Associate the route table with the subnet
-	fmt.Println("Associating route table with the subnet")
 	assocInput := &ec2.AssociateRouteTableInput{
 		RouteTableId: rtOutput.RouteTable.RouteTableId,
-		SubnetId:     subnetOutput.Subnet.SubnetId,
+		SubnetId:     aws.String(cache.Subnetid),
 	}
-	_, err = a.ec2.AssociateRouteTable(context.Background(), assocInput)
-	if err != nil {
-		return &cache, fmt.Errorf("error associating route table: %v", err)
+	if _, err = a.ec2.AssociateRouteTable(context.Background(), assocInput); err != nil {
+		a.fail()
+		return fmt.Errorf("error associating route table: %v", err)
 	}
 
 	routeInput := &ec2.CreateRouteInput{
 		RouteTableId:         rtOutput.RouteTable.RouteTableId,
 		DestinationCidrBlock: aws.String("0.0.0.0/0"),
-		GatewayId:            gwOutput.InternetGateway.InternetGatewayId,
+		GatewayId:            aws.String(cache.InternetGwid),
 	}
-	_, err = a.ec2.CreateRoute(context.TODO(), routeInput)
-	if err != nil {
-		return &cache, fmt.Errorf("error creating route: %v", err)
+	if _, err = a.ec2.CreateRoute(context.TODO(), routeInput); err != nil {
+		return fmt.Errorf("error creating route: %v", err)
 	}
 
-	// Create a security group to allow external communication with K8S control
-	// plane
-	fmt.Println("Creating security group")
+	a.done()
+	return nil
+}
+
+// createSecurityGroup creates a security group to allow external communication
+// with K8S control plane and SSH
+func (a *Client) createSecurityGroup(cache *AWS) error {
+	a.log.Wg.Add(1)
+	go a.log.Loading("Creating security group")
+
 	sgInput := &ec2.CreateSecurityGroupInput{
 		GroupName:   &a.ObjectMeta.Name,
 		Description: &description,
-		VpcId:       vpcOutput.Vpc.VpcId,
+		VpcId:       aws.String(cache.Vpcid),
 		TagSpecifications: []types.TagSpecification{
 			{
 				ResourceType: types.ResourceTypeSecurityGroup,
@@ -168,7 +230,8 @@ func (a *Client) create() (*AWS, error) {
 	}
 	sgOutput, err := a.ec2.CreateSecurityGroup(context.TODO(), sgInput)
 	if err != nil {
-		return &cache, fmt.Errorf("error creating security group: %v", err)
+		a.fail()
+		return fmt.Errorf("error creating security group: %v", err)
 	}
 	cache.SecurityGroupid = *sgOutput.GroupId
 
@@ -204,13 +267,20 @@ func (a *Client) create() (*AWS, error) {
 		},
 	}
 
-	_, err = a.ec2.AuthorizeSecurityGroupIngress(context.TODO(), irInput)
-	if err != nil {
-		return &cache, fmt.Errorf("error authorizing security group ingress: %v", err)
+	if _, err = a.ec2.AuthorizeSecurityGroupIngress(context.TODO(), irInput); err != nil {
+		a.fail()
+		return fmt.Errorf("error authorizing security group ingress: %v", err)
 	}
 
-	// Create an EC2 instance
-	fmt.Printf("Creating EC2 instance with image %s\n", *a.Spec.Image.ImageId)
+	a.done()
+	return nil
+}
+
+// createEC2Instance creates an EC2 instance with proper Network configuration
+func (a *Client) createEC2Instance(cache *AWS) error {
+	a.log.Wg.Add(1)
+	go a.log.Loading("Creating EC2 instance")
+
 	instanceIn := &ec2.RunInstancesInput{
 		ImageId:      a.Spec.Image.ImageId,
 		InstanceType: types.InstanceType(a.Spec.Instance.Type),
@@ -231,9 +301,9 @@ func (a *Client) create() (*AWS, error) {
 				DeleteOnTermination:      &yes,
 				DeviceIndex:              aws.Int32(0),
 				Groups: []string{
-					*sgOutput.GroupId,
+					cache.SecurityGroupid,
 				},
-				SubnetId: subnetOutput.Subnet.SubnetId,
+				SubnetId: aws.String(cache.Subnetid),
 			},
 		},
 		KeyName: aws.String(a.Spec.Auth.KeyName),
@@ -246,7 +316,8 @@ func (a *Client) create() (*AWS, error) {
 	}
 	instanceOut, err := a.ec2.RunInstances(context.Background(), instanceIn)
 	if err != nil {
-		return &cache, fmt.Errorf("error creating instance: %v", err)
+		a.fail()
+		return fmt.Errorf("error creating instance: %v", err)
 	}
 	cache.Instanceid = *instanceOut.Instances[0].InstanceId
 
@@ -257,12 +328,12 @@ func (a *Client) create() (*AWS, error) {
 		},
 	}
 	waiter := ec2.NewInstanceRunningWaiter(a.ec2, waiterOptions...)
-	fmt.Printf("Waiting for instance %s to be in running state\n", cache.Instanceid)
-	err = waiter.Wait(context.Background(), &ec2.DescribeInstancesInput{
+
+	if err = waiter.Wait(context.Background(), &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*instanceOut.Instances[0].InstanceId},
-	}, 5*time.Minute, waiterOptions...)
-	if err != nil {
-		return &cache, fmt.Errorf("error waiting for instance to be in running state: %v", err)
+	}, 5*time.Minute, waiterOptions...); err != nil {
+		a.fail()
+		return fmt.Errorf("error waiting for instance to be in running state: %v", err)
 	}
 
 	// Describe instance now that is running
@@ -270,16 +341,11 @@ func (a *Client) create() (*AWS, error) {
 		InstanceIds: []string{*instanceOut.Instances[0].InstanceId},
 	})
 	if err != nil {
-		return &cache, fmt.Errorf("error describing instances: %v", err)
+		a.fail()
+		return fmt.Errorf("error describing instances: %v", err)
 	}
-
 	cache.PublicDnsName = *instanceRunning.Reservations[0].Instances[0].PublicDnsName
 
-	// Save objects ID's into a cache file
-	err = a.updateAvailableCondition(*a.Environment, &cache)
-	if err != nil {
-		return &cache, fmt.Errorf("error creating cache file: %v", err)
-	}
-
-	return &cache, nil
+	a.done()
+	return nil
 }

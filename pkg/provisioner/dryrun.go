@@ -21,34 +21,36 @@ import (
 	"strings"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
-func Dryrun(env v1alpha1.Environment) error {
+func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 	// Resolve dependencies from top to bottom
-	fmt.Printf("Resolving dependencies...\n")
-	// kubernetes -> container runtime -> node
+	log.Wg.Add(1)
+
+	go log.Loading("Resolving dependencies \U0001F4E6 ...")
+	// Kubernetes -> Container Toolkit -> Container Runtime -> NVDriver
 	if env.Spec.Kubernetes.Install {
 		if !env.Spec.ContainerRuntime.Install {
+			log.Fail <- struct{}{}
 			return fmt.Errorf("cannot install Kubernetes without a container runtime")
 		}
 		// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
-		if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
-			return fmt.Errorf("Kubernetes version %s is not in the format of vX.Y.Z", env.Spec.Kubernetes.KubernetesVersion)
+		if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" && !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
+			log.Fail <- struct{}{}
+			return fmt.Errorf("kubernetes version %s is not in the format of vX.Y.Z", env.Spec.Kubernetes.KubernetesVersion)
 		}
 	}
 
 	if env.Spec.ContainerRuntime.Install && (env.Spec.ContainerRuntime.Name != v1alpha1.ContainerRuntimeContainerd &&
 		env.Spec.ContainerRuntime.Name != v1alpha1.ContainerRuntimeCrio &&
 		env.Spec.ContainerRuntime.Name != v1alpha1.ContainerRuntimeDocker) {
+		log.Fail <- struct{}{}
 		return fmt.Errorf("container runtime %s not supported", env.Spec.ContainerRuntime.Name)
 	}
 
-	if env.Spec.NVContainerToolKit.Install && !env.Spec.ContainerRuntime.Install {
-		return fmt.Errorf("cannot install NVContainer Toolkit without a container runtime")
-	}
-	if env.Spec.NVContainerToolKit.Install && !env.Spec.NVDriver.Install {
-		return fmt.Errorf("cannot install NVContainer Toolkit without the NVIDIA driver")
-	}
+	log.Done <- struct{}{}
+	log.Wg.Wait()
 
 	return nil
 }

@@ -16,6 +16,12 @@
 
 package templates
 
+import (
+	"bytes"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
+
 const CommonFunctions = `
 
 export DEBIAN_FRONTEND=noninteractive
@@ -74,3 +80,8 @@ with_retry() {
 	return 1
 }
 `
+
+// Template is the interface that wraps the Execute method.
+type Template interface {
+	Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error
+}

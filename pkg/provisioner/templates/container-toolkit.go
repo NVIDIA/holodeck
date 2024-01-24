@@ -16,7 +16,17 @@
 
 package templates
 
-const ContainerToolkit = `
+import (
+	"bytes"
+	"fmt"
+	"text/template"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
+
+const containerToolkitTemplate = `
+
+# Install container toolkit
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
   && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
@@ -30,3 +40,26 @@ sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime={{.ContainerRuntime}} --set-as-default
 sudo systemctl restart {{.ContainerRuntime}}
 `
+
+type ContainerToolkit struct {
+	ContainerRuntime string
+}
+
+func NewContainerToolkit(env v1alpha1.Environment) *ContainerToolkit {
+	return &ContainerToolkit{
+		ContainerRuntime: string(env.Spec.ContainerRuntime.Name),
+	}
+}
+
+func (t *ContainerToolkit) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	containerTlktTemplate := template.Must(template.New("container-toolkit").Parse(containerToolkitTemplate))
+	if err := containerTlktTemplate.Execute(tpl, t); err != nil {
+		return fmt.Errorf("failed to execute container-toolkit template: %v", err)
+	}
+
+	if err := containerTlktTemplate.Execute(tpl, t); err != nil {
+		return fmt.Errorf("failed to execute container-toolkit template: %v", err)
+	}
+
+	return nil
+}

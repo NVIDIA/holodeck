@@ -22,8 +22,8 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/create"
 	"github.com/NVIDIA/holodeck/cmd/delete"
 	"github.com/NVIDIA/holodeck/cmd/dryrun"
+	"github.com/NVIDIA/holodeck/internal/logger"
 
-	log "github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -32,7 +32,7 @@ const (
 	ProgramName = "holodeck"
 )
 
-var logger = log.New()
+var log = logger.NewLogger()
 
 type config struct {
 	Debug bool
@@ -58,26 +58,16 @@ func main() {
 		},
 	}
 
-	// Set log-level for all subcommands
-	c.Before = func(c *cli.Context) error {
-		logLevel := log.InfoLevel
-		if config.Debug {
-			logLevel = log.DebugLevel
-		}
-		logger.SetLevel(logLevel)
-		return nil
-	}
-
 	// Define the subcommands
 	c.Commands = []*cli.Command{
-		create.NewCommand(logger),
-		delete.NewCommand(logger),
-		dryrun.NewCommand(logger),
+		create.NewCommand(log),
+		delete.NewCommand(log),
+		dryrun.NewCommand(log),
 	}
 
 	err := c.Run(os.Args)
 	if err != nil {
-		log.Errorf("%v", err)
+		log.Error(err)
 		log.Exit(1)
 	}
 }

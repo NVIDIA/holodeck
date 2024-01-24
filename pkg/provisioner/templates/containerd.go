@@ -16,7 +16,16 @@
 
 package templates
 
-const Containerd = `
+import (
+	"bytes"
+	"fmt"
+	"strings"
+	"text/template"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
+
+const containerdTemplate = `
 : ${CONTAINERD_VERSION:={{.Version}}}
 
 # Install required packages
@@ -47,3 +56,33 @@ sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/c
 sudo systemctl restart containerd
 sudo systemctl enable containerd
 `
+
+type Containerd struct {
+	Version string
+}
+
+func NewContainerd(env v1alpha1.Environment) *Containerd {
+	var version string
+
+	if env.Spec.ContainerRuntime.Version != "" {
+		if strings.HasPrefix(env.Spec.ContainerRuntime.Version, "v") {
+			version = strings.TrimPrefix(env.Spec.ContainerRuntime.Version, "v")
+		} else {
+			version = env.Spec.ContainerRuntime.Version
+		}
+	} else {
+		version = "1.6.27"
+	}
+	return &Containerd{
+		Version: version,
+	}
+}
+
+func (t *Containerd) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	containerdTemplate := template.Must(template.New("containerd").Parse(containerdTemplate))
+	err := containerdTemplate.Execute(tpl, &Containerd{Version: env.Spec.ContainerRuntime.Version})
+	if err != nil {
+		return fmt.Errorf("failed to execute containerd template: %v", err)
+	}
+	return nil
+}

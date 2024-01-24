@@ -16,8 +16,16 @@
 
 package templates
 
+import (
+	"bytes"
+	"fmt"
+	"text/template"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
+
 // From https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
-const NvDriver = `
+const NvDriverTemplate = `
 
 sudo apt-get update
 install_packages_with_retry linux-headers-$(uname -r)
@@ -28,3 +36,19 @@ sudo dpkg -i cuda-keyring_1.0-1_all.deb
 with_retry 3 10s sudo apt-get update
 install_packages_with_retry cuda-drivers
 `
+
+type NvDriver struct {
+}
+
+func NewNvDriver() *NvDriver {
+	return &NvDriver{}
+}
+
+func (t *NvDriver) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	nvDriverTemplate := template.Must(template.New("nv-driver").Parse(NvDriverTemplate))
+	err := nvDriverTemplate.Execute(tpl, &NvDriver{})
+	if err != nil {
+		return fmt.Errorf("failed to execute nv-driver template: %v", err)
+	}
+	return nil
+}

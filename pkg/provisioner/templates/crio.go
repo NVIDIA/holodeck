@@ -16,7 +16,15 @@
 
 package templates
 
-const Crio = `
+import (
+	"bytes"
+	"fmt"
+	"text/template"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
+
+const criOTemplate = `
 : ${CRIO_VERSION:={{.Version}}
 
 # Add Cri-o repo
@@ -34,3 +42,22 @@ systemctl daemon-reload
 systemctl restart crio
 systemctl enable crio
 `
+
+type CriO struct {
+	Version string
+}
+
+func NewCriO(env v1alpha1.Environment) *CriO {
+	return &CriO{
+		Version: env.Spec.ContainerRuntime.Version,
+	}
+}
+
+func (t *CriO) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	criOTemplate := template.Must(template.New("crio").Parse(criOTemplate))
+	if err := criOTemplate.Execute(tpl, t); err != nil {
+		return fmt.Errorf("failed to execute crio template: %v", err)
+	}
+
+	return nil
+}

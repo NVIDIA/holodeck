@@ -23,11 +23,11 @@ import (
 	"path/filepath"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 
-	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -44,13 +44,13 @@ type options struct {
 }
 
 type command struct {
-	logger *logrus.Logger
+	log *logger.FunLogger
 }
 
 // NewCommand constructs the create command with the specified logger
-func NewCommand(logger *logrus.Logger) *cli.Command {
+func NewCommand(log *logger.FunLogger) *cli.Command {
 	c := command{
-		logger: logger,
+		log: log,
 	}
 	return c.build()
 }
@@ -93,8 +93,7 @@ func (m command) build() *cli.Command {
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				fmt.Printf("failed to read config file: %v\n", err)
-				return err
+				return fmt.Errorf("error reading config file: %s", err)
 			}
 
 			// set cache path
@@ -102,6 +101,11 @@ func (m command) build() *cli.Command {
 				opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
 			}
 			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
+
+			// if no containerruntime is specified, default to none
+			if opts.cfg.Spec.ContainerRuntime.Name == "" {
+				opts.cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
+			}
 
 			return nil
 		},
@@ -115,7 +119,7 @@ func (m command) build() *cli.Command {
 
 func (m command) run(c *cli.Context, opts *options) error {
 	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
-		err := createAWS(opts)
+		err := createAWS(m.log, opts)
 		if err != nil {
 			return fmt.Errorf("failed to create AWS infra: %v", err)
 		}
@@ -125,11 +129,12 @@ func (m command) run(c *cli.Context, opts *options) error {
 			return fmt.Errorf("failed to read cache file: %v", err)
 		}
 	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
+		m.log.Info("SSH infrastructure \u2601")
 		opts.cache = opts.cfg
 	}
 
 	if opts.provision {
-		err := runProvision(opts)
+		err := runProvision(m.log, opts)
 		if err != nil {
 			return fmt.Errorf("failed to provision: %v", err)
 		}
@@ -138,8 +143,11 @@ func (m command) run(c *cli.Context, opts *options) error {
 	return nil
 }
 
-func runProvision(opts *options) error {
+func runProvision(log *logger.FunLogger, opts *options) error {
 	var hostUrl string
+
+	log.Info("Provisioning \u2699")
+
 	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
 		for _, p := range opts.cache.Status.Properties {
 			if p.Name == aws.PublicDnsName {
@@ -151,7 +159,7 @@ func runProvision(opts *options) error {
 		hostUrl = opts.cfg.Spec.Instance.HostUrl
 	}
 
-	p, err := provisioner.New(opts.cfg.Spec.Auth.PrivateKey, hostUrl)
+	p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, hostUrl)
 	if err != nil {
 		return err
 	}
@@ -161,8 +169,13 @@ func runProvision(opts *options) error {
 	}
 
 	// Download kubeconfig
-	if opts.cfg.Spec.Kubernetes.Install {
-		if err = getKubeConfig(opts, p); err != nil {
+	if opts.cfg.Spec.Kubernetes.Install && opts.cfg.Spec.Kubernetes.KubeConfig != "" {
+		if opts.cfg.Spec.Kubernetes.KubernetesInstaller == "microk8s" || opts.cfg.Spec.Kubernetes.KubernetesInstaller == "kind" {
+			log.Warning("kubeconfig is not supported for %s, skipping kubeconfig download", opts.cfg.Spec.Kubernetes.KubernetesInstaller)
+			return nil
+		}
+
+		if err = getKubeConfig(log, opts, p); err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %v", err)
 		}
 	}
@@ -171,12 +184,12 @@ func runProvision(opts *options) error {
 }
 
 // getKubeConfig downloads the kubeconfig file from the remote host
-func getKubeConfig(opts *options, p *provisioner.Provisioner) error {
+func getKubeConfig(log *logger.FunLogger, opts *options, p *provisioner.Provisioner) error {
 	remoteFilePath := "/home/ubuntu/.kube/config"
 	if opts.cfg.Spec.Kubernetes.KubeConfig == "" {
 		// and
 		if opts.kubeconfig == "" {
-			fmt.Printf("kubeconfig is not set, use default kubeconfig path: %s\n", filepath.Join(opts.cachePath, "kubeconfig"))
+			log.Warning("kubeconfig is not set, use default kubeconfig path: %s\n", filepath.Join(opts.cachePath, "kubeconfig"))
 			// if kubeconfig is not set, use set to current directory as default
 			// first get current directory
 			pwd := os.Getenv("PWD")
@@ -189,23 +202,20 @@ func getKubeConfig(opts *options, p *provisioner.Provisioner) error {
 	// Create a session
 	session, err := p.Client.NewSession()
 	if err != nil {
-		fmt.Printf("Failed to create session: %v\n", err)
-		return err
+		return fmt.Errorf("error creating session: %v", err)
 	}
 	defer session.Close()
 
 	// Set up a pipe to receive the remote file content
 	remoteFile, err := session.StdoutPipe()
 	if err != nil {
-		fmt.Printf("Error obtaining remote file pipe: %v\n", err)
-		return err
+		return fmt.Errorf("error creating remote file pipe: %v", err)
 	}
 
 	// Start the remote command to read the file content
 	err = session.Start(fmt.Sprintf("/usr/bin/cat  %s", remoteFilePath))
 	if err != nil {
-		fmt.Printf("Error starting remote command: %v\n", err)
-		return err
+		return fmt.Errorf("error starting remote command: %v", err)
 	}
 
 	// Create a new file on the local system to save the downloaded content
@@ -218,24 +228,23 @@ func getKubeConfig(opts *options, p *provisioner.Provisioner) error {
 	// Copy the remote file content to the local file
 	_, err = io.Copy(localFile, remoteFile)
 	if err != nil {
-		fmt.Printf("Error copying file content: %v\n", err)
-		return err
+		return fmt.Errorf("error copying remote file to local: %v", err)
 	}
 
 	// Wait for the remote command to finish
 	err = session.Wait()
 	if err != nil {
-		fmt.Printf("Error waiting for remote command: %v\n", err)
-		return err
+		return fmt.Errorf("error waiting for remote command: %v", err)
 	}
 
-	fmt.Printf("Kubeconfig saved to %s\n", opts.kubeconfig)
+	log.Info(fmt.Sprintf("Kubeconfig saved to %s\n", opts.kubeconfig))
 
 	return nil
 }
 
-func createAWS(opts *options) error {
-	client, err := aws.New(opts.cfg, opts.cachefile)
+func createAWS(log *logger.FunLogger, opts *options) error {
+	log.Info("Creating AWS infrastructure \u2601")
+	client, err := aws.New(log, opts.cfg, opts.cachefile)
 	if err != nil {
 		return err
 	}

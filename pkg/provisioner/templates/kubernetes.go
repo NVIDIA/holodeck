@@ -25,21 +25,7 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
-type Kubernetes struct {
-	Version               string
-	Installer             string
-	KubeletReleaseVersion string
-	Arch                  string
-	CniPluginsVersion     string
-	CalicoVersion         string
-	CrictlVersion         string
-	K8sEndpointHost       string
-	KubeAdmnFeatureGates  string
-	// Kind exclusive
-	KindConfig string
-}
-
-const KubernetesTemplate = `
+const KubeadmTemplate = `
 
 # Install kubeadm, kubectl, and k8s-cni
 : ${K8S_VERSION:={{.Version}}}
@@ -148,24 +134,46 @@ sudo chown -R $(id -u):$(id -g) $HOME/.kube/
 with_retry 3 10s kind create cluster --name holodeck --config kind.yaml --kubeconfig="${HOME}/.kube/config"
 `
 
-func ExecuteKubernetes(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	kubernetesTemplate := new(template.Template)
+const microk8sTemplate = `
 
-	switch env.Spec.Kubernetes.KubernetesInstaller {
-	case "kubeadm":
-		kubernetesTemplate = template.Must(template.New("kubeadm").Parse(KubernetesTemplate))
-	case "kind":
-		kubernetesTemplate = template.Must(template.New("kind").Parse(KindTemplate))
-	default:
-		return fmt.Errorf("unknown kubernetes installer %s", env.Spec.Kubernetes.KubernetesInstaller)
-	}
+# Install microk8s
+sudo apt-get update
 
+sudo snap install microk8s --classic --channel={{.Version}}
+sudo microk8s enable gpu dashboard dns registry
+sudo usermod -a -G microk8s ubuntu
+mkdir -p ~/.kube
+sudo chown -f -R ubuntu ~/.kube
+sudo microk8s config > ~/.kube/config
+sudo chown -f -R ubuntu ~/.kube
+sudo snap alias microk8s.kubectl kubectl
+
+echo "Microk8s {{.Version}} installed successfully"
+echo "you can now access the cluster with:"
+echo "ssh -i <your-private-key> ubuntu@{{.K8sEndpointHost}}"
+`
+
+type Kubernetes struct {
+	Version               string
+	Installer             string
+	KubeletReleaseVersion string
+	Arch                  string
+	CniPluginsVersion     string
+	CalicoVersion         string
+	CrictlVersion         string
+	K8sEndpointHost       string
+	KubeAdmnFeatureGates  string
+	// Kind exclusive
+	KindConfig string
+}
+
+func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	kubernetes := &Kubernetes{
 		Version: env.Spec.Kubernetes.KubernetesVersion,
 	}
 	// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
 	// if not, set the default version
-	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
+	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s" {
 		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.27.9\n", env.Spec.Kubernetes.KubernetesVersion)
 		kubernetes.Version = "v1.27.9"
 	}
@@ -201,9 +209,27 @@ func ExecuteKubernetes(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 		kubernetes.KindConfig = env.Spec.Kubernetes.KindConfig
 	}
 
-	err := kubernetesTemplate.Execute(tpl, kubernetes)
+	return kubernetes, nil
+}
+
+func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	kubernetesTemplate := new(template.Template)
+
+	switch env.Spec.Kubernetes.KubernetesInstaller {
+	case "kubeadm":
+		kubernetesTemplate = template.Must(template.New("kubeadm").Parse(KubeadmTemplate))
+	case "kind":
+		kubernetesTemplate = template.Must(template.New("kind").Parse(KindTemplate))
+	case "microk8s":
+		kubernetesTemplate = template.Must(template.New("microk8s").Parse(microk8sTemplate))
+	default:
+		return fmt.Errorf("unknown kubernetes installer %s", env.Spec.Kubernetes.KubernetesInstaller)
+	}
+
+	err := kubernetesTemplate.Execute(tpl, k)
 	if err != nil {
 		return fmt.Errorf("failed to execute kubernetes template: %v", err)
 	}
+
 	return nil
 }

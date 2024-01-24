@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"sigs.k8s.io/yaml"
 
@@ -77,9 +78,10 @@ type Client struct {
 	cacheFile string
 
 	*v1alpha1.Environment
+	log *logger.FunLogger
 }
 
-func New(env v1alpha1.Environment, cacheFile string) (*Client, error) {
+func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Client, error) {
 	// Create an AWS session and configure the EC2 client
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(env.Spec.Region))
 	if err != nil {
@@ -99,6 +101,7 @@ func New(env v1alpha1.Environment, cacheFile string) (*Client, error) {
 		r53,
 		cacheFile,
 		&env,
+		log,
 	}
 
 	return c, nil

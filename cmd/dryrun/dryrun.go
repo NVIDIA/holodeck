@@ -18,13 +18,16 @@ package dryrun
 
 import (
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
+	"golang.org/x/crypto/ssh"
 
-	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -35,13 +38,13 @@ type options struct {
 }
 
 type command struct {
-	logger *logrus.Logger
+	log *logger.FunLogger
 }
 
-// NewCommand constructs a dryrun command with the specified logger
-func NewCommand(logger *logrus.Logger) *cli.Command {
+// NewCommand constructs the DryRun command with the specified logger
+func NewCommand(log *logger.FunLogger) *cli.Command {
 	c := command{
-		logger: logger,
+		log: log,
 	}
 	return c.build()
 }
@@ -66,8 +69,11 @@ func (m command) build() *cli.Command {
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				fmt.Printf("failed to read config file: %v\n", err)
-				return err
+				return fmt.Errorf("failed to read config file %s: %v", opts.envFile, err)
+			}
+
+			if opts.cfg.Spec.ContainerRuntime.Name == "" && opts.cfg.Spec.Kubernetes.Install {
+				m.log.Warning("No container runtime specified, will default defaulting to containerd")
 			}
 
 			return nil
@@ -81,17 +87,17 @@ func (m command) build() *cli.Command {
 }
 
 func (m command) run(c *cli.Context, opts *options) error {
+	m.log.Info("Dryrun environment %s \U0001f50d", opts.cfg.Name)
+
 	// Check Provider
 	switch opts.cfg.Spec.Provider {
 	case v1alpha1.ProviderAWS:
-		err := validateAWS(opts)
+		err := validateAWS(m.log, opts)
 		if err != nil {
 			return err
 		}
 	case v1alpha1.ProviderSSH:
-		// Creating a new provisioner will validate the private key and hostUrl
-		_, err := provisioner.New(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Instance.HostUrl)
-		if err != nil {
+		if err := connectOrDie(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Instance.HostUrl); err != nil {
 			return err
 		}
 	default:
@@ -99,24 +105,62 @@ func (m command) run(c *cli.Context, opts *options) error {
 	}
 
 	// Check Provisioner
-	err := provisioner.Dryrun(opts.cfg)
-	if err != nil {
+	if err := provisioner.Dryrun(m.log, opts.cfg); err != nil {
 		return err
 	}
 
-	fmt.Printf("Dryrun succeeded\n")
+	m.log.Check("Dryrun succeeded\n")
 
 	return nil
 }
 
-func validateAWS(opts *options) error {
-	client, err := aws.New(opts.cfg, opts.envFile)
+func validateAWS(log *logger.FunLogger, opts *options) error {
+	client, err := aws.New(log, opts.cfg, opts.envFile)
 	if err != nil {
 		return err
 	}
 
 	if err = client.DryRun(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// createSshClient creates a ssh client, and retries if it fails to connect
+func connectOrDie(keyPath, hostUrl string) error {
+	var err error
+	key, err := os.ReadFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read key file: %v", err)
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("failed to parse private key: %v", err)
+	}
+	sshConfig := &ssh.ClientConfig{
+		User: "ubuntu",
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+
+	connectionFailed := false
+	for i := 0; i < 20; i++ {
+		client, err := ssh.Dial("tcp", hostUrl+":22", sshConfig)
+		if err == nil {
+			client.Close()
+			return nil // Connection succeeded,
+		}
+		connectionFailed = true
+		// Sleep for a brief moment before retrying.
+		// You can adjust the duration based on your requirements.
+		time.Sleep(1 * time.Second)
+	}
+
+	if connectionFailed {
+		return fmt.Errorf("failed to connect to %s", hostUrl)
 	}
 
 	return nil
