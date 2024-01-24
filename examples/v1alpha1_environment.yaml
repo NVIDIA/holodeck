@@ -16,9 +16,7 @@ spec:
     image:
       architecture: amd64
       imageId: ami-0fe8bec493a81c7da
-  containerRuntime:
-    install: true
   kubernetes:
     install: true
-    installer: kind
-    version: 1.29
+    installer: kubeadm
+    version: v1.28.5

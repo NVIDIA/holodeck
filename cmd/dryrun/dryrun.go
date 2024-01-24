@@ -72,10 +72,6 @@ func (m command) build() *cli.Command {
 				return fmt.Errorf("failed to read config file %s: %v", opts.envFile, err)
 			}
 
-			if opts.cfg.Spec.ContainerRuntime.Name == "" && opts.cfg.Spec.Kubernetes.Install {
-				m.log.Warning("No container runtime specified, will default defaulting to containerd")
-			}
-
 			return nil
 		},
 		Action: func(c *cli.Context) error {
@@ -109,7 +105,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 		return err
 	}
 
-	m.log.Check("Dryrun succeeded\n")
+	m.log.Info("Dryrun succeeded \U0001F389")
 
 	return nil
 }

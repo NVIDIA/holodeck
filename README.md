@@ -57,7 +57,7 @@ metadata:
   name: holodeck
   description: "Devel infra environment"
 spec:
-  provider: aws # or ssh for now
+  provider: aws # or ssh currently supported
   auth:
     keyName: user
     privateKey: "/Users/user/.ssh/user.pem"
@@ -75,7 +75,7 @@ spec:
     version: 1.6.24
   kubernetes:
     install: true
-    installer: kubeadm # supported installers: kubeadm, kind
+    installer: kubeadm # supported installers: kubeadm, kind, microk8s
     version: v1.28.5
 ```
 
@@ -83,20 +83,23 @@ spec:
 
 ```bash
 $ holodeck create -f ./examples/v1alpha1_environment.yaml
+...
 ```
 
 ### Delete an environment
 
 ```bash
 $ holodeck delete -f ./examples/v1alpha1_environment.yaml
+...
 ```
 
 ### Dry Run
 
 ```bash
 $ holodeck dryrun -f ./examples/v1alpha1_environment.yaml
-Checking if instance type g4dn.xlarge is supported in region xx-xxxx-1
-Checking if image ami-xxxxxxxxx is supported in region xx-xxxx-1
-Resolving dependencies...
-Dryrun succeeded
+Dryrun environment holodeck 🔍
+✔       Checking if instance type g4dn.xlarge is supported in region eu-north-1
+✔       Checking if image ami-0fe8bec493a81c7da is supported in region eu-north-1
+✔      Resolving dependencies 📦
+Dryrun succeeded 🎉
 ```
