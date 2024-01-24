@@ -18,8 +18,7 @@ spec:
       imageId: ami-0fe8bec493a81c7da
   containerRuntime:
     install: true
-    name: containerd
   kubernetes:
     install: true
-    installer: kubeadm
-    version: v1.28.5
+    installer: kind
+    version: 1.29

@@ -22,10 +22,10 @@ import (
 	"path/filepath"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 
-	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -40,13 +40,13 @@ type options struct {
 }
 
 type command struct {
-	logger *logrus.Logger
+	log *logger.FunLogger
 }
 
 // NewCommand constructs the delete command with the specified logger
-func NewCommand(logger *logrus.Logger) *cli.Command {
+func NewCommand(log *logger.FunLogger) *cli.Command {
 	c := command{
-		logger: logger,
+		log: log,
 	}
 	return c.build()
 }
@@ -77,13 +77,11 @@ func (m command) build() *cli.Command {
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				fmt.Printf("Error reading config file: %s\n", err)
-				return err
+				return fmt.Errorf("error reading config file: %s", err)
 			}
 
 			if opts.cfg.Spec.Provider != v1alpha1.ProviderAWS {
-				fmt.Printf("Only AWS provider is supported\n")
-				return err
+				return fmt.Errorf("provider %s not supported", opts.cfg.Spec.Provider)
 			}
 
 			// read hostUrl from cache
@@ -113,15 +111,15 @@ func (m command) run(c *cli.Context, opts *options) error {
 
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 	if err != nil {
-		fmt.Printf("Error reading config file: %s\n", err)
-		os.Exit(1)
+		m.log.Error(err)
+		m.log.Exit(1)
 	}
 	cachefile := filepath.Join(opts.cachePath, cfg.Name+".yaml")
 
-	client, err := aws.New(cfg, cachefile)
+	client, err := aws.New(m.log, cfg, cachefile)
 	if err != nil {
-		fmt.Printf("Error creating client: %s\n", err)
-		os.Exit(1)
+		m.log.Error(err)
+		m.log.Exit(1)
 	}
 
 	// check if cache exists
@@ -131,13 +129,12 @@ func (m command) run(c *cli.Context, opts *options) error {
 		os.Exit(1)
 	}
 
-	err = client.Delete()
-	if err != nil {
-		fmt.Printf("Error deleting environment: %s\n", err)
-		os.Exit(1)
+	if err := client.Delete(); err != nil {
+		m.log.Error(err)
+		m.log.Exit(1)
 	}
 
-	fmt.Printf("Successfully deleted environment %s\n", cfg.Name)
+	m.log.Info("Successfully deleted environment %s\n", cfg.Name)
 
 	return nil
 }

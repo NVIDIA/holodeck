@@ -157,6 +157,8 @@ const (
 	ContainerRuntimeContainerd ContainerRuntimeName = "containerd"
 	// ContainerRuntimeCrio means the container runtime is Crio
 	ContainerRuntimeCrio ContainerRuntimeName = "crio"
+	// ContainerRuntimeNone means the container runtime is not defined
+	ContainerRuntimeNone ContainerRuntimeName = ""
 )
 
 type Kubernetes struct {

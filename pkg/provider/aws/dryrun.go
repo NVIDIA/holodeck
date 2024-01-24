@@ -81,18 +81,34 @@ func (a *Client) checkImages() error {
 
 func (a *Client) DryRun() error {
 	// Check if the desired instance type is supported in the region
-	fmt.Printf("Checking if instance type %s is supported in region %s\n", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
+	a.log.Wg.Add(1)
+	go a.log.Loading("Checking if instance type %s is supported in region %s\n", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
 	err := a.checkInstanceTypes()
 	if err != nil {
+		a.fail()
 		return err
 	}
+	a.done()
 
 	// Check if the desired image is supported in the region
-	fmt.Printf("Checking if image %s is supported in region %s\n", *a.Spec.Instance.Image.ImageId, a.Spec.Instance.Region)
+	a.log.Wg.Add(1)
+	go a.log.Loading("Checking if image %s is supported in region %s\n", *a.Spec.Instance.Image.ImageId, a.Spec.Instance.Region)
 	err = a.checkImages()
 	if err != nil {
+		a.fail()
 		return fmt.Errorf("failed to get images: %v", err)
 	}
+	a.done()
 
 	return nil
+}
+
+func (a *Client) done() {
+	a.log.Done <- struct{}{}
+	a.log.Wg.Wait()
+}
+
+func (a *Client) fail() {
+	a.log.Fail <- struct{}{}
+	a.log.Wg.Wait()
 }

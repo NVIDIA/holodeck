@@ -48,7 +48,10 @@ func (a *Client) delete(cache *AWS) error {
 	if err != nil {
 		return fmt.Errorf("error deleting instance: %v", err)
 	}
-	fmt.Printf("Waiting for instance %s to be terminated\n", cache.Instanceid)
+
+	a.log.Wg.Add(1)
+	go a.log.Loading("Waiting for instance %s to be terminated\n", cache.Instanceid)
+
 	waiterOptions := []func(*ec2.InstanceTerminatedWaiterOptions){
 		func(o *ec2.InstanceTerminatedWaiterOptions) {
 			o.MaxDelay = 1 * time.Minute
@@ -56,10 +59,10 @@ func (a *Client) delete(cache *AWS) error {
 		},
 	}
 	wait := ec2.NewInstanceTerminatedWaiter(a.ec2, waiterOptions...)
-	err = wait.Wait(context.Background(), &ec2.DescribeInstancesInput{
+	if err := wait.Wait(context.Background(), &ec2.DescribeInstancesInput{
 		InstanceIds: []string{cache.Instanceid},
-	}, 5*time.Minute, waiterOptions...)
-	if err != nil {
+	}, 5*time.Minute, waiterOptions...); err != nil {
+		a.fail()
 		return fmt.Errorf("error waiting for instance to be terminated: %v", err)
 	}
 
@@ -69,6 +72,7 @@ func (a *Client) delete(cache *AWS) error {
 	}
 	_, err = a.ec2.DeleteSecurityGroup(context.Background(), deleteSecurityGroup)
 	if err != nil {
+		a.fail()
 		return fmt.Errorf("error deleting security group: %v", err)
 	}
 
@@ -78,6 +82,7 @@ func (a *Client) delete(cache *AWS) error {
 	}
 	_, err = a.ec2.DeleteSubnet(context.Background(), deleteSubnet)
 	if err != nil {
+		a.fail()
 		return fmt.Errorf("error deleting subnet: %v", err)
 	}
 
@@ -87,6 +92,7 @@ func (a *Client) delete(cache *AWS) error {
 	}
 	_, err = a.ec2.DeleteRouteTable(context.Background(), deleteRouteTable)
 	if err != nil {
+		a.fail()
 		return fmt.Errorf("error deleting route table: %v", err)
 	}
 
@@ -97,6 +103,7 @@ func (a *Client) delete(cache *AWS) error {
 	}
 	_, err = a.ec2.DetachInternetGateway(context.Background(), detachInternetGateway)
 	if err != nil {
+		a.fail()
 		return fmt.Errorf("error detaching Internet Gateway: %v", err)
 	}
 
@@ -106,6 +113,7 @@ func (a *Client) delete(cache *AWS) error {
 	}
 	_, err = a.ec2.DeleteInternetGateway(context.Background(), deleteInternetGatewayInput)
 	if err != nil {
+		a.fail()
 		return fmt.Errorf("error deleting Internet Gateway: %v", err)
 	}
 
@@ -115,8 +123,10 @@ func (a *Client) delete(cache *AWS) error {
 	}
 	_, err = a.ec2.DeleteVpc(context.Background(), dVpc)
 	if err != nil {
+		a.fail()
 		return fmt.Errorf("error deleting VPC: %v", err)
 	}
 
+	a.done()
 	return a.updateTerminatedCondition(*a.Environment, cache)
 }

@@ -16,7 +16,15 @@
 
 package templates
 
-const Docker = `
+import (
+	"bytes"
+	"fmt"
+	"text/template"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
+
+const dockerTemplate = `
 
 # Based on https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
 : ${DOCKER_VERSION:={{.Version}}}
@@ -66,3 +74,29 @@ sudo systemctl restart docker
 sudo usermod -aG docker $USER
 newgrp docker
 `
+
+type Docker struct {
+	Version string
+}
+
+func NewDocker(env v1alpha1.Environment) *Docker {
+	var version string
+
+	if env.Spec.ContainerRuntime.Version != "" {
+		version = env.Spec.ContainerRuntime.Version
+	} else {
+		version = "latest"
+	}
+	return &Docker{
+		Version: version,
+	}
+}
+
+func (t *Docker) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	dockerTemplate := template.Must(template.New("docker").Parse(dockerTemplate))
+	if err := dockerTemplate.Execute(tpl, t); err != nil {
+		return fmt.Errorf("failed to execute docker template: %v", err)
+	}
+
+	return nil
+}
