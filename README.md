@@ -79,6 +79,17 @@ spec:
     version: v1.28.5
 ```
 
+The dependencies are resolved automatically, from top to bottom. Following the
+pattern:
+
+> Kubernetes -> Container Runtime -> Container Toolkit -> NVDriver
+
+If Kubernetes is requested, and no container runtime is requested, a default
+container runtime will be added to the environment..
+
+If Container Toolkit is requested, and no container runtime is requested, a
+default container runtime will be added to the environment.
+
 ### Create an environment
 
 ```bash

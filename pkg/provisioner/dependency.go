@@ -42,15 +42,14 @@ var (
 
 // buildDependencyGraph builds a dependency graph based on the environment
 // and returns a topologically sorted list of provisioning functions
-// to be executed in an opinionated order
+// to be executed in an opinionated order. We go from up to bottom in the graph
+// Kubernetes -> Container Runtime -> Container Toolkit -> NVDriver
+// if a dependency is needed and not defined, we set an opinionated default
 func buildDependencyGraph(env v1alpha1.Environment) ([]ProvisionFunc, error) {
 	//  Predefined dependency graph
-	graph := DependencyGraph{
-		"kubeadm":          {},
-		"containerToolkit": {"containerToolkit", "nvdriver"},
-	}
+	graph := make(DependencyGraph)
 
-	// for kubeadm
+	// for kubeadm kubernetes installer
 	if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeContainerd {
 		graph["kubeadm"] = append(graph["kubeadm"], "containerd")
 	} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeCrio {
@@ -66,29 +65,27 @@ func buildDependencyGraph(env v1alpha1.Environment) ([]ProvisionFunc, error) {
 	if env.Spec.NVContainerToolKit.Install {
 		graph["kubeadm"] = append(graph["kubeadm"], "containerToolkit")
 		graph["kubeadm"] = append(graph["kubeadm"], "nvdriver")
-	}
 
-	// for container toolkit
-	if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeContainerd {
-		graph["containerToolkit"] = append(graph["containerToolkit"], "containerd")
-	} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeCrio {
-		graph["containerToolkit"] = append(graph["containerToolkit"], "crio")
-	} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeDocker {
-		graph["containerToolkit"] = append(graph["containerToolkit"], "docker")
-	} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeNone {
-		// default to containerd if ContainerRuntime is empty
-		graph["kubeadm"] = append(graph["kubeadm"], "containerd")
-	}
+		// for container toolkit
+		if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeContainerd {
+			graph["containerToolkit"] = append(graph["containerToolkit"], "containerd")
+		} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeCrio {
+			graph["containerToolkit"] = append(graph["containerToolkit"], "crio")
+		} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeDocker {
+			graph["containerToolkit"] = append(graph["containerToolkit"], "docker")
+		} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeNone {
+			// default to containerd if ContainerRuntime is empty
+			graph["containerToolkit"] = append(graph["containerToolkit"], "containerd")
+		}
 
-	// user might request to install container toolkit without nvdriver for testing purpose
-	if env.Spec.NVDriver.Install {
-		graph["containerToolkit"] = append(graph["containerToolkit"], "nvdriver")
-	}
+		graph["containerToolkit"] = append(graph["containerToolkit"], "containerToolkit")
 
+		// user might request to install container toolkit without nvdriver for testing purpose
+		if env.Spec.NVDriver.Install {
+			graph["containerToolkit"] = append(graph["containerToolkit"], "nvdriver")
+		}
+	}
 	ordered := []ProvisionFunc{}
-	// We go from up to bottom in the graph
-	// Kubernetes -> Container Toolkit -> Container Runtime -> NVDriver
-	// if a dependency is needed and not defined, we set an opinionated default
 	if env.Spec.Kubernetes.Install {
 		switch env.Spec.Kubernetes.KubernetesInstaller {
 		case "kubeadm":
@@ -124,11 +121,14 @@ func buildDependencyGraph(env v1alpha1.Environment) ([]ProvisionFunc, error) {
 			ordered = append(ordered, functions["containerd"])
 			return ordered, nil
 		case "crio":
+			ordered = append(ordered, functions["crio"])
 			return ordered, nil
 		case "docker":
+			ordered = append(ordered, functions["docker"])
 			return ordered, nil
 		default:
 			// default to containerd if ContainerRuntime.Name is empty
+			ordered = append(ordered, functions["containerd"])
 			return ordered, nil
 		}
 	}

@@ -105,6 +105,13 @@ kubectl label node --all nvidia.com/holodeck.managed=true
 
 const KindTemplate = `
 
+: ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
+KIND_CONFIG=""
+if [ -n "{{.KindConfig}}"]; then
+  KIND_CONFIG="--config {{.KindConfig}}"
+fi
+
+
 # Download kind
 [ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
 [ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-arm64
@@ -131,10 +138,16 @@ sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts --in
 export KUBECONFIG="${HOME}/.kube/config:/var/run/kubernetes/admin.kubeconfig"
 mkdir -p $HOME/.kube
 sudo chown -R $(id -u):$(id -g) $HOME/.kube/
-with_retry 3 10s kind create cluster --name holodeck --config kind.yaml --kubeconfig="${HOME}/.kube/config"
+with_retry 3 10s kind create cluster --name holodeck $KIND_CONFIG --kubeconfig="${HOME}/.kube/config"
+
+echo "KIND installed successfully"
+echo "you can now access the cluster with:"
+echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 `
 
 const microk8sTemplate = `
+
+: ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
 
 # Install microk8s
 sudo apt-get update
@@ -150,7 +163,7 @@ sudo snap alias microk8s.kubectl kubectl
 
 echo "Microk8s {{.Version}} installed successfully"
 echo "you can now access the cluster with:"
-echo "ssh -i <your-private-key> ubuntu@{{.K8sEndpointHost}}"
+echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 `
 
 type Kubernetes struct {
