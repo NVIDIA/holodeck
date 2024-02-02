@@ -93,7 +93,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 			return err
 		}
 	case v1alpha1.ProviderSSH:
-		if err := connectOrDie(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Instance.HostUrl); err != nil {
+		if err := connectOrDie(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.Instance.HostUrl); err != nil {
 			return err
 		}
 	default:
@@ -124,7 +124,7 @@ func validateAWS(log *logger.FunLogger, opts *options) error {
 }
 
 // createSshClient creates a ssh client, and retries if it fails to connect
-func connectOrDie(keyPath, hostUrl string) error {
+func connectOrDie(keyPath, userName, hostUrl string) error {
 	var err error
 	key, err := os.ReadFile(keyPath)
 	if err != nil {
@@ -135,7 +135,7 @@ func connectOrDie(keyPath, hostUrl string) error {
 		return fmt.Errorf("failed to parse private key: %v", err)
 	}
 	sshConfig := &ssh.ClientConfig{
-		User: "ubuntu",
+		User: userName,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},

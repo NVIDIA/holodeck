@@ -126,6 +126,8 @@ type Properties struct {
 
 type Auth struct {
 	KeyName string `json:"keyName"`
+	// Username for the SSH connection
+	Username string `json:"username"`
 	// Path to the public key file on the local machine
 	PublicKey string `json:"publicKey"`
 	// Path to the private key file on the local machine

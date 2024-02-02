@@ -44,25 +44,27 @@ type Provisioner struct {
 	Client         *ssh.Client
 	SessionManager *ssm.Client
 
-	HostUrl string
-	KeyPath string
-	tpl     bytes.Buffer
+	HostUrl  string
+	UserName string
+	KeyPath  string
+	tpl      bytes.Buffer
 
 	log *logger.FunLogger
 }
 
-func New(log *logger.FunLogger, keyPath, hostUrl string) (*Provisioner, error) {
-	client, err := connectOrDie(keyPath, hostUrl)
+func New(log *logger.FunLogger, keyPath, userName, hostUrl string) (*Provisioner, error) {
+	client, err := connectOrDie(keyPath, userName, hostUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %v", hostUrl, err)
 	}
 
 	p := &Provisioner{
-		Client:  client,
-		HostUrl: hostUrl,
-		KeyPath: keyPath,
-		tpl:     bytes.Buffer{},
-		log:     log,
+		Client:   client,
+		HostUrl:  hostUrl,
+		UserName: userName,
+		KeyPath:  keyPath,
+		tpl:      bytes.Buffer{},
+		log:      log,
 	}
 
 	return p, nil
@@ -121,7 +123,7 @@ func (p *Provisioner) provision() error {
 	var err error
 
 	// Create a new ssh connection
-	p.Client, err = connectOrDie(p.KeyPath, p.HostUrl)
+	p.Client, err = connectOrDie(p.KeyPath, p.UserName, p.HostUrl)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %v", p.HostUrl, err)
 	}
@@ -221,7 +223,7 @@ func addScriptHeader(tpl *bytes.Buffer) error {
 }
 
 // createSshClient creates a ssh client, and retries if it fails to connect
-func connectOrDie(keyPath, hostUrl string) (*ssh.Client, error) {
+func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	var client *ssh.Client
 	var err error
 	key, err := os.ReadFile(keyPath)
@@ -233,7 +235,7 @@ func connectOrDie(keyPath, hostUrl string) (*ssh.Client, error) {
 		return nil, fmt.Errorf("failed to parse private key: %v", err)
 	}
 	sshConfig := &ssh.ClientConfig{
-		User: "ubuntu",
+		User: userName,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},

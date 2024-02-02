@@ -107,6 +107,20 @@ func (m command) build() *cli.Command {
 				opts.cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
 			}
 
+			// If no username is specified, default to ubuntu
+			if opts.cfg.Spec.Auth.Username == "" {
+				// TODO (ArangoGutierrez): This should be based on the OS
+				// Amazon Linux: ec2-user
+				// Ubuntu: ubuntu
+				// CentOS: centos
+				// Debian: admin
+				// RHEL: ec2-user
+				// Fedora: ec2-user
+				// SUSE: ec2-user
+
+				opts.cfg.Spec.Auth.Username = "ubuntu"
+			}
+
 			return nil
 		},
 		Action: func(c *cli.Context) error {
@@ -159,7 +173,7 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 		hostUrl = opts.cfg.Spec.Instance.HostUrl
 	}
 
-	p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, hostUrl)
+	p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Auth.Username, hostUrl)
 	if err != nil {
 		return err
 	}
