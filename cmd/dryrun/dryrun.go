@@ -93,6 +93,10 @@ func (m command) run(c *cli.Context, opts *options) error {
 			return err
 		}
 	case v1alpha1.ProviderSSH:
+		// if username is not provided, use the current user
+		if opts.cfg.Spec.Username == "" {
+			opts.cfg.Spec.Username = os.Getenv("USER")
+		}
 		if err := connectOrDie(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.Instance.HostUrl); err != nil {
 			return err
 		}
