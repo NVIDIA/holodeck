@@ -107,20 +107,6 @@ func (m command) build() *cli.Command {
 				opts.cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
 			}
 
-			// If no username is specified, default to ubuntu
-			if opts.cfg.Spec.Auth.Username == "" {
-				// TODO (ArangoGutierrez): This should be based on the OS
-				// Amazon Linux: ec2-user
-				// Ubuntu: ubuntu
-				// CentOS: centos
-				// Debian: admin
-				// RHEL: ec2-user
-				// Fedora: ec2-user
-				// SUSE: ec2-user
-
-				opts.cfg.Spec.Auth.Username = "ubuntu"
-			}
-
 			return nil
 		},
 		Action: func(c *cli.Context) error {
@@ -133,6 +119,18 @@ func (m command) build() *cli.Command {
 
 func (m command) run(c *cli.Context, opts *options) error {
 	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
+		// If no username is specified, default to ubuntu
+		if opts.cfg.Spec.Auth.Username == "" {
+			// TODO (ArangoGutierrez): This should be based on the OS
+			// Amazon Linux: ec2-user
+			// Ubuntu: ubuntu
+			// CentOS: centos
+			// Debian: admin
+			// RHEL: ec2-user
+			// Fedora: ec2-user
+			// SUSE: ec2-user
+			opts.cfg.Spec.Auth.Username = "ubuntu"
+		}
 		err := createAWS(m.log, opts)
 		if err != nil {
 			return fmt.Errorf("failed to create AWS infra: %v", err)
@@ -143,6 +141,10 @@ func (m command) run(c *cli.Context, opts *options) error {
 			return fmt.Errorf("failed to read cache file: %v", err)
 		}
 	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
+		// If username is not provided, use the current user
+		if opts.cfg.Spec.Username == "" {
+			opts.cfg.Spec.Username = os.Getenv("USER")
+		}
 		m.log.Info("SSH infrastructure \u2601")
 		opts.cache = opts.cfg
 	}
