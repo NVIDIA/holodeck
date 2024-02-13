@@ -83,7 +83,11 @@ type Client struct {
 
 func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Client, error) {
 	// Create an AWS session and configure the EC2 client
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(env.Spec.Region))
+	region := env.Spec.Region
+	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
+		region = envRegion
+	}
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
