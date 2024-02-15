@@ -8,7 +8,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-.PHONY: build fmt verify
+.PHONY: build fmt verify release
 
 GO_CMD ?= go
 GO_FMT ?= gofmt
@@ -39,6 +39,16 @@ verify:
 	    echo "$$out"; \
 	    exit 1; \
 	fi
+
+release:
+	@rm -rf bin
+	@mkdir -p bin
+	@for os in linux darwin; do \
+		for arch in amd64 arm64; do \
+			echo "Building $$os-$$arch"; \
+			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-$$os-$$arch cmd/main.go; \
+		done; \
+	done
 
 .PHONY: generate
 generate: controller-gen
