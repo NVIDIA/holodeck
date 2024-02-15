@@ -189,7 +189,7 @@ type ExtraPortMapping struct {
 	HostPort      int `json:"hostPort"`
 }
 
-type NVContainerToolKit struct {
+type NVContainerToolkit struct {
 	Install bool `json:"install"`
 	// If not set the latest stable version will be used
 	// +optional

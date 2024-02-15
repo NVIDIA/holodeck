@@ -62,7 +62,7 @@ func buildDependencyGraph(env v1alpha1.Environment) ([]ProvisionFunc, error) {
 	}
 
 	// if container toolkit is enabled then add container toolkit and nvdriver to kubeadm
-	if env.Spec.NVContainerToolKit.Install {
+	if env.Spec.NVContainerToolkit.Install {
 		graph["kubeadm"] = append(graph["kubeadm"], "containerToolkit")
 		graph["kubeadm"] = append(graph["kubeadm"], "nvdriver")
 
@@ -107,7 +107,7 @@ func buildDependencyGraph(env v1alpha1.Environment) ([]ProvisionFunc, error) {
 	}
 
 	// If no kubernetes is requested, we move to container-toolkit
-	if env.Spec.NVContainerToolKit.Install {
+	if env.Spec.NVContainerToolkit.Install {
 		for _, f := range graph["containerToolkit"] {
 			ordered = append(ordered, functions[f])
 		}
