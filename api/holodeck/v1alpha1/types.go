@@ -30,11 +30,11 @@ type EnvironmentSpec struct {
 	Instance `json:"instance"`
 
 	// +optional
-	NVDriver NVDriver `json:"nvDriver"`
+	NVDriver NVDriver `json:"nvidiaDriver"`
 	// +optional
 	ContainerRuntime ContainerRuntime `json:"containerRuntime"`
 	// +optional
-	NVContainerToolKit NVContainerToolKit `json:"nvContainerToolKit"`
+	NVContainerToolkit NVContainerToolkit `json:"nvidiaContainerToolkit"`
 	// +optional
 	Kubernetes Kubernetes `json:"kubernetes"`
 }
