@@ -30,11 +30,11 @@ type EnvironmentSpec struct {
 	Instance `json:"instance"`
 
 	// +optional
-	NVDriver NVDriver `json:"nvDriver"`
+	NVIDIADriver NVIDIADriver `json:"nvidiaDriver"`
 	// +optional
 	ContainerRuntime ContainerRuntime `json:"containerRuntime"`
 	// +optional
-	NVContainerToolKit NVContainerToolKit `json:"nvContainerToolKit"`
+	NVIDIAContainerToolkit NVIDIAContainerToolkit `json:"nvidiaContainerToolkit"`
 	// +optional
 	Kubernetes Kubernetes `json:"kubernetes"`
 }
@@ -134,7 +134,7 @@ type Auth struct {
 	PrivateKey string `json:"privateKey"`
 }
 
-type NVDriver struct {
+type NVIDIADriver struct {
 	Install bool `json:"install"`
 	// If not set the latest stable version will be used
 	// +optional
@@ -189,7 +189,7 @@ type ExtraPortMapping struct {
 	HostPort      int `json:"hostPort"`
 }
 
-type NVContainerToolKit struct {
+type NVIDIAContainerToolkit struct {
 	Install bool `json:"install"`
 	// If not set the latest stable version will be used
 	// +optional

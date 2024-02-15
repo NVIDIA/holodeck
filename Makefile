@@ -8,7 +8,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-.PHONY: build fmt verify
+.PHONY: build fmt verify release
 
 GO_CMD ?= go
 GO_FMT ?= gofmt
@@ -40,6 +40,16 @@ verify:
 	    exit 1; \
 	fi
 
+release:
+	@rm -rf bin
+	@mkdir -p bin
+	@for os in linux darwin; do \
+		for arch in amd64 arm64; do \
+			echo "Building $$os-$$arch"; \
+			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-$$os-$$arch cmd/main.go; \
+		done; \
+	done
+
 .PHONY: generate
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
@@ -47,7 +57,7 @@ generate: controller-gen
 CONTROLLER_GEN = $(PROJECT_DIR)/bin/controller-gen
 .PHONY: controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	@GOBIN=$(PROJECT_DIR)/bin GO111MODULE=on $(GO_CMD) install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.12.1
+	@GOBIN=$(PROJECT_DIR)/bin GO111MODULE=on $(GO_CMD) install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0
 
 # Generate manifests e.g. CRD, RBAC etc.
 .PHONY: manifests
