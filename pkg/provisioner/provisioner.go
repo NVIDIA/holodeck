@@ -84,6 +84,10 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		}
 	}
 
+	if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {
+		env.Spec.Kubernetes.K8sEndpointHost = p.HostUrl
+	}
+
 	for _, node := range graph {
 		// Add script header and common functions to the script
 		if err := addScriptHeader(&p.tpl); err != nil {

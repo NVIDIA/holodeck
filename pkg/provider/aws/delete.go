@@ -40,40 +40,45 @@ func (a *Client) Delete() error {
 }
 
 func (a *Client) delete(cache *AWS) error {
+	var err error
 	// Delete the EC2 instance
-	terminateInstancesInput := &ec2.TerminateInstancesInput{
-		InstanceIds: []string{cache.Instanceid},
-	}
-	_, err := a.ec2.TerminateInstances(context.Background(), terminateInstancesInput)
-	if err != nil {
-		return fmt.Errorf("error deleting instance: %v", err)
-	}
+	if cache.Instanceid == "" {
+		a.log.Warning("No instance found to delete")
+	} else {
+		terminateInstancesInput := &ec2.TerminateInstancesInput{
+			InstanceIds: []string{cache.Instanceid},
+		}
+		_, err := a.ec2.TerminateInstances(context.Background(), terminateInstancesInput)
+		if err != nil {
+			return fmt.Errorf("error deleting instance: %v", err)
+		}
 
-	a.log.Wg.Add(1)
-	go a.log.Loading("Waiting for instance %s to be terminated\n", cache.Instanceid)
+		a.log.Wg.Add(1)
+		go a.log.Loading("Waiting for instance %s to be terminated\n", cache.Instanceid)
 
-	waiterOptions := []func(*ec2.InstanceTerminatedWaiterOptions){
-		func(o *ec2.InstanceTerminatedWaiterOptions) {
-			o.MaxDelay = 1 * time.Minute
-			o.MinDelay = 5 * time.Second
-		},
-	}
-	wait := ec2.NewInstanceTerminatedWaiter(a.ec2, waiterOptions...)
-	if err := wait.Wait(context.Background(), &ec2.DescribeInstancesInput{
-		InstanceIds: []string{cache.Instanceid},
-	}, 5*time.Minute, waiterOptions...); err != nil {
-		a.fail()
-		return fmt.Errorf("error waiting for instance to be terminated: %v", err)
-	}
+		waiterOptions := []func(*ec2.InstanceTerminatedWaiterOptions){
+			func(o *ec2.InstanceTerminatedWaiterOptions) {
+				o.MaxDelay = 1 * time.Minute
+				o.MinDelay = 5 * time.Second
+			},
+		}
+		wait := ec2.NewInstanceTerminatedWaiter(a.ec2, waiterOptions...)
+		if err := wait.Wait(context.Background(), &ec2.DescribeInstancesInput{
+			InstanceIds: []string{cache.Instanceid},
+		}, 5*time.Minute, waiterOptions...); err != nil {
+			a.fail()
+			return fmt.Errorf("error waiting for instance to be terminated: %v", err)
+		}
 
-	// Delete the security group
-	deleteSecurityGroup := &ec2.DeleteSecurityGroupInput{
-		GroupId: &cache.SecurityGroupid,
-	}
-	_, err = a.ec2.DeleteSecurityGroup(context.Background(), deleteSecurityGroup)
-	if err != nil {
-		a.fail()
-		return fmt.Errorf("error deleting security group: %v", err)
+		// Delete the security group
+		deleteSecurityGroup := &ec2.DeleteSecurityGroupInput{
+			GroupId: &cache.SecurityGroupid,
+		}
+		_, err = a.ec2.DeleteSecurityGroup(context.Background(), deleteSecurityGroup)
+		if err != nil {
+			a.fail()
+			return fmt.Errorf("error deleting security group: %v", err)
+		}
 	}
 
 	// Delete the subnet

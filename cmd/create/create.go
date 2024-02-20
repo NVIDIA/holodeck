@@ -185,13 +185,13 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	}
 
 	// Download kubeconfig
-	if opts.cfg.Spec.Kubernetes.Install && opts.cfg.Spec.Kubernetes.KubeConfig != "" {
+	if opts.cfg.Spec.Kubernetes.Install && (opts.cfg.Spec.Kubernetes.KubeConfig != "" || opts.kubeconfig != "") {
 		if opts.cfg.Spec.Kubernetes.KubernetesInstaller == "microk8s" || opts.cfg.Spec.Kubernetes.KubernetesInstaller == "kind" {
 			log.Warning("kubeconfig is not supported for %s, skipping kubeconfig download", opts.cfg.Spec.Kubernetes.KubernetesInstaller)
 			return nil
 		}
 
-		if err = getKubeConfig(log, opts, p); err != nil {
+		if err = getKubeConfig(log, opts, hostUrl); err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %v", err)
 		}
 	}
@@ -200,7 +200,7 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 }
 
 // getKubeConfig downloads the kubeconfig file from the remote host
-func getKubeConfig(log *logger.FunLogger, opts *options, p *provisioner.Provisioner) error {
+func getKubeConfig(log *logger.FunLogger, opts *options, hostUrl string) error {
 	remoteFilePath := "/home/ubuntu/.kube/config"
 	if opts.cfg.Spec.Kubernetes.KubeConfig == "" {
 		// and
@@ -215,7 +215,12 @@ func getKubeConfig(log *logger.FunLogger, opts *options, p *provisioner.Provisio
 		}
 	}
 
-	// Create a session
+	// Create a new ssh session
+	p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Auth.Username, hostUrl)
+	if err != nil {
+		return err
+	}
+
 	session, err := p.Client.NewSession()
 	if err != nil {
 		return fmt.Errorf("error creating session: %v", err)
