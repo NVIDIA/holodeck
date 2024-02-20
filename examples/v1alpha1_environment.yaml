@@ -6,16 +6,16 @@ metadata:
 spec:
   provider: aws
   auth:
-    keyName: eduardoa
-    privateKey: "/Users/eduardoa/.ssh/eduardoa.pem"
+    keyName: cnt-ci
+    privateKey: "/Users/eduardoa/.ssh/cnt-ci.pem"
   instance:
     type: g4dn.xlarge
-    region: eu-north-1
+    region: us-west-1
     ingressIpRanges:
-      - 213.179.129.0/26
+      - 0.0.0.0/0
     image:
       architecture: amd64
-      imageId: ami-0fe8bec493a81c7da
+      imageId: ami-0ce2cb35386fc22e9
   kubernetes:
     install: true
     installer: kubeadm

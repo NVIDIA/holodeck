@@ -92,6 +92,7 @@ func buildDependencyGraph(env v1alpha1.Environment) ([]ProvisionFunc, error) {
 			for _, f := range graph["kubeadm"] {
 				ordered = append(ordered, functions[f])
 			}
+			ordered = append(ordered, functions["kubeadm"])
 			return ordered, nil
 		case "kind":
 			return []ProvisionFunc{docker, containerToolkit, nvdriver, kind}, nil

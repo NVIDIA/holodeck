@@ -175,7 +175,7 @@ type Kubernetes struct {
 	CalicoVersion         string
 	CrictlVersion         string
 	K8sEndpointHost       string
-	KubeAdmnFeatureGates  string
+	K8sFeatureGates       string
 	// Kind exclusive
 	KindConfig string
 }
@@ -217,6 +217,9 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	}
 	if env.Spec.Kubernetes.K8sEndpointHost != "" {
 		kubernetes.K8sEndpointHost = env.Spec.Kubernetes.K8sEndpointHost
+	}
+	if env.Spec.Kubernetes.K8sFeatureGates != nil {
+		kubernetes.K8sFeatureGates = strings.Join(env.Spec.Kubernetes.K8sFeatureGates, ",")
 	}
 	if env.Spec.Kubernetes.KindConfig != "" {
 		kubernetes.KindConfig = env.Spec.Kubernetes.KindConfig
