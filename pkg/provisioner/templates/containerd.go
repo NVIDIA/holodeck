@@ -29,8 +29,8 @@ const containerdTemplate = `
 : ${CONTAINERD_VERSION:={{.Version}}}
 
 # Install required packages
-sudo apt-get update
-sudo apt-get install ca-certificates curl gnupg -y
+with_retry 3 10s sudo apt-get update
+install_packages_with_retry ca-certificates curl gnupg -y
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
@@ -40,7 +40,7 @@ echo \
   "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
+  with_retry 3 10s sudo apt-get update
 
 # Install containerd
 install_packages_with_retry containerd.io=${CONTAINERD_VERSION}-1
@@ -64,15 +64,13 @@ type Containerd struct {
 func NewContainerd(env v1alpha1.Environment) *Containerd {
 	var version string
 
-	if env.Spec.ContainerRuntime.Version != "" {
-		if strings.HasPrefix(env.Spec.ContainerRuntime.Version, "v") {
-			version = strings.TrimPrefix(env.Spec.ContainerRuntime.Version, "v")
-		} else {
-			version = env.Spec.ContainerRuntime.Version
-		}
-	} else {
+	if env.Spec.ContainerRuntime.Version == "" {
 		version = "1.6.27"
+	} else {
+		// remove the 'v' prefix from the version if it exists
+		version = strings.TrimPrefix(env.Spec.ContainerRuntime.Version, "v")
 	}
+
 	return &Containerd{
 		Version: version,
 	}
@@ -80,7 +78,7 @@ func NewContainerd(env v1alpha1.Environment) *Containerd {
 
 func (t *Containerd) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	containerdTemplate := template.Must(template.New("containerd").Parse(containerdTemplate))
-	err := containerdTemplate.Execute(tpl, &Containerd{Version: env.Spec.ContainerRuntime.Version})
+	err := containerdTemplate.Execute(tpl, &Containerd{Version: t.Version})
 	if err != nil {
 		return fmt.Errorf("failed to execute containerd template: %v", err)
 	}
