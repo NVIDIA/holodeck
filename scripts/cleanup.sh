@@ -12,18 +12,18 @@
 ## limitations under the License.
 ## 
 
-FROM golang:1.21
+#! /usr/bin/env bash
+set +x
 
-WORKDIR /src
-COPY . .
+export DEBIAN_FRONTEND=noninteractive
 
-RUN make build
-RUN install -m 755 /src/bin/holodeck /usr/local/bin/holodeck && \
-    install -m 755 /src/scripts/run.sh /usr/local/bin/run.sh && \
-    install -m 755 /src/scripts/cleanup.sh /usr/local/bin/cleanup.sh
+if [ ! -d /github/workspace/.cache ]; then
+    echo "Cache directory not found in /workspace"
+    exit 1
+fi
 
-RUN echo "nobody:x:65534:65534:Nobody:/:" > /etc_passwd
-# Run as unprivileged user
-USER 65534:65534
+/user/bin/holodeck delete -f /github/workspace/$INPUT_HOLODECK_CONFIG -c /github/workspace/.cache
 
-ENTRYPOINT ["/usr/local/bin/run.sh"]
+rm -rf /github/workspace/.cache
+rm -f /github/workspace/key.pem
+rm -f /github/workspace/kubeconfig
