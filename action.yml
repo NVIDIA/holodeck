@@ -13,8 +13,7 @@
 ## 
 
 name: Holodeck
-author: NVIDIA
-description: A tool for creating and managing GPU ready Cloud test environments.
+description: A tool for creating and managing GPU-ready cloud test environments.
 
 runs:
   using: docker

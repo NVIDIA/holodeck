@@ -22,7 +22,7 @@ RUN install -m 755 /src/bin/holodeck /usr/local/bin/holodeck && \
     install -m 755 /src/scripts/run.sh /usr/local/bin/run.sh && \
     install -m 755 /src/scripts/cleanup.sh /usr/local/bin/cleanup.sh
 
-RUN echo "nobody:x:65534:65534:Nobody:/:" > /etc_passwd
+RUN echo "nobody:x:65534:65534:Nobody:/:" >> /etc/passwd
 # Run as unprivileged user
 USER 65534:65534
 

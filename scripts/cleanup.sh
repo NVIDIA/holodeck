@@ -14,16 +14,13 @@
 
 #! /usr/bin/env bash
 set +x
+set +e
 
 export DEBIAN_FRONTEND=noninteractive
-
-if [ ! -d /github/workspace/.cache ]; then
-    echo "Cache directory not found in /workspace"
-    exit 1
-fi
+rm -f /github/workspace/key.pem /github/workspace/kubeconfig
 
 /user/bin/holodeck delete -f /github/workspace/$INPUT_HOLODECK_CONFIG -c /github/workspace/.cache
+exit_code=$?
 
 rm -rf /github/workspace/.cache
-rm -f /github/workspace/key.pem
-rm -f /github/workspace/kubeconfig
+exit $exit_code
