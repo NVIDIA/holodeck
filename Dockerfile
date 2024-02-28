@@ -12,29 +12,18 @@
 ## limitations under the License.
 ## 
 
-name: Go
+FROM golang:1.21
 
-on:
-  push:
-    branches: 
-      - main
-      - release-*
-  pull_request:
-    branches:
-      - main
-      - release-*
+WORKDIR /src
+COPY . .
 
-jobs:
+RUN make build
+RUN install -m 755 /src/bin/holodeck /usr/local/bin/holodeck && \
+    install -m 755 /src/scripts/run.sh /usr/local/bin/run.sh && \
+    install -m 755 /src/scripts/cleanup.sh /usr/local/bin/cleanup.sh
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
+RUN echo "nobody:x:65534:65534:Nobody:/:" >> /etc/passwd
+# Run as unprivileged user
+USER 65534:65534
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version-file: 'go.mod'
-
-    - name: Build
-      run: go build -v ./...
+ENTRYPOINT ["/usr/local/bin/run.sh"]

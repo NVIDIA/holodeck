@@ -12,29 +12,26 @@
 ## limitations under the License.
 ## 
 
-name: Go
+name: Holodeck
+description: A tool for creating and managing GPU-ready cloud test environments.
 
-on:
-  push:
-    branches: 
-      - main
-      - release-*
-  pull_request:
-    branches:
-      - main
-      - release-*
+runs:
+  using: docker
+  image: `docker://ghcr.io/nvidia/holodeck:main`
+  entrypoint: 'run.sh'
+  post-entrypoint: 'cleanup.sh'
 
-jobs:
+inputs:
+  aws-access-key-id:
+    description: 'AWS Access Key ID'
+    required: true
+  aws-secret-access-key:
+    description: 'AWS Secret Access Key'
+    required: true
+  holodeck-config:
+    description: 'Holodeck configuration file'
+    required: true
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version-file: 'go.mod'
-
-    - name: Build
-      run: go build -v ./...
+branding:
+  icon: 'cloud'
+  color: 'green'

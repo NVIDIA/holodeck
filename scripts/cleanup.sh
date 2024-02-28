@@ -12,29 +12,15 @@
 ## limitations under the License.
 ## 
 
-name: Go
+#! /usr/bin/env bash
+set +x
+set +e
 
-on:
-  push:
-    branches: 
-      - main
-      - release-*
-  pull_request:
-    branches:
-      - main
-      - release-*
+export DEBIAN_FRONTEND=noninteractive
+rm -f /github/workspace/key.pem /github/workspace/kubeconfig
 
-jobs:
+/user/bin/holodeck delete -f /github/workspace/$INPUT_HOLODECK_CONFIG -c /github/workspace/.cache
+exit_code=$?
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version-file: 'go.mod'
-
-    - name: Build
-      run: go build -v ./...
+rm -rf /github/workspace/.cache
+exit $exit_code
