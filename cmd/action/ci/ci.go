@@ -40,6 +40,7 @@ func Run(log *logger.FunLogger) error {
 		}
 	} else {
 		if err := entrypoint(log); err != nil {
+			log.Error(err)
 			if err := cleanup(log); err != nil {
 				return err
 			}

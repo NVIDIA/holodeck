@@ -34,6 +34,7 @@ func cleanup(log *logger.FunLogger) error {
 		log.Error(fmt.Errorf("config file not provided"))
 		os.Exit(1)
 	}
+	configFile = "/github/workspace/" + configFile
 
 	// Read the config file
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
