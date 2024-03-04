@@ -12,7 +12,7 @@
 ## limitations under the License.
 ## 
 
-#! /usr/bin/env bash
+#!/bin/bash
 set +x
 set +e
 

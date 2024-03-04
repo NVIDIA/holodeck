@@ -12,13 +12,13 @@
 ## limitations under the License.
 ## 
 
-#! /usr/bin/env bash
+#!/bin/bash
 set +x
 
 export DEBIAN_FRONTEND=noninteractive
 
-if [ -n "$INPUT_HOLODECK_CONFIG" ]; then
-    if [ ! -f "/github/workspace/$INPUT_HOLODECK_CONFIG" ]; then
+if [ -n "${INPUT_HOLODECK_CONFIG}" ]; then
+    if [ ! -f "/github/workspace/${INPUT_HOLODECK_CONFIG}" ]; then
         echo "Holodeck config file not found in /workspace"
         exit 1
     fi
@@ -32,7 +32,7 @@ fi
 export AWS_ACCESS_KEY_ID=$INPUT_AWS_ACCESS_KEY_ID
 export AWS_SECRET_ACCESS_KEY=$INPUT_AWS_SECRET_ACCESS_KEY
 
-if [ -n "$SSH_KEY" ]; then
+if [ -n "$INPUT_AWS_SSH_KEY" ]; then
     $(umask 077;   echo "$SSH_KEY" > /github/workspace/key.pem)
 fi
 
