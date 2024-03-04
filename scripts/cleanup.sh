@@ -12,7 +12,7 @@
 ## limitations under the License.
 ## 
 
-#!/bin/bash
+#!/bin/sh -l
 set +x
 set +e
 
