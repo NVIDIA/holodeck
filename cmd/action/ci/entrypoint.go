@@ -36,6 +36,7 @@ func entrypoint(log *logger.FunLogger) error {
 		log.Error(fmt.Errorf("config file not provided"))
 		os.Exit(1)
 	}
+	configFile = "/github/workspace/" + configFile
 
 	// Get INPUT_AWS_SSH_KEY and write it to a file
 	sshKey := os.Getenv("INPUT_AWS_SSH_KEY")
