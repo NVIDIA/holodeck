@@ -44,12 +44,6 @@ func entrypoint(log *logger.FunLogger) error {
 		os.Exit(1)
 	}
 
-	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
-	if err != nil {
-		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		os.Exit(1)
-	}
-
 	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
 	// to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
 	accessKeyID := os.Getenv("INPUT_AWS_ACCESS_KEY_ID")
@@ -66,6 +60,21 @@ func entrypoint(log *logger.FunLogger) error {
 
 	os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
 	os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
+
+	// Create cachedir directory
+	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
+		err := os.Mkdir(cachedir, 0755)
+		if err != nil {
+			log.Error(fmt.Errorf("error creating cache directory: %s", err))
+			os.Exit(1)
+		}
+	}
+
+	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
+	if err != nil {
+		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
+		os.Exit(1)
+	}
 
 	// Read the config file
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
