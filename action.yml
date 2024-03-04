@@ -17,7 +17,7 @@ description: A tool for creating and managing GPU-ready cloud test environments.
 
 runs:
   using: docker
-  image: `docker://ghcr.io/nvidia/holodeck:main`
+  image: Dockerfile
   entrypoint: 'run.sh'
   post-entrypoint: 'cleanup.sh'
 
