@@ -12,33 +12,33 @@
 ## limitations under the License.
 ## 
 
-#! /usr/bin/env bash
+#!/bin/bash
 set +x
 
 export DEBIAN_FRONTEND=noninteractive
 
-if [ -n "$INPUT_HOLODECK-CONFIG" ]; then
-    if [ ! -f "/github/workspace/$INPUT_HOLODECK-CONFIG" ]; then
+if [ -n "${INPUT_HOLODECK_CONFIG}" ]; then
+    if [ ! -f "/github/workspace/${INPUT_HOLODECK_CONFIG}" ]; then
         echo "Holodeck config file not found in /workspace"
         exit 1
     fi
 fi
 
-if [ -z "$INPUT_AWS-ACCESS-KEY-ID" ] || [ -z "$INPUT_AWS-SECRET-ACCESS-KEY" ]; then
+if [ -z "$INPUT_AWS_ACCESS_KEY_ID" ] || [ -z "$INPUT_AWS_SECRET_ACCESS_KEY" ]; then
     echo "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not set"
     exit 1
 fi
 
-export AWS_ACCESS_KEY_ID=$INPUT_AWS-ACCESS-KEY-ID
-export AWS_SECRET_ACCESS_KEY=$INPUT_AWS-SECRET-ACCESS-KEY
+export AWS_ACCESS_KEY_ID=$INPUT_AWS_ACCESS_KEY_ID
+export AWS_SECRET_ACCESS_KEY=$INPUT_AWS_SECRET_ACCESS_KEY
 
-if [ -n "$SSH_KEY" ]; then
+if [ -n "$INPUT_AWS_SSH_KEY" ]; then
     $(umask 077;   echo "$SSH_KEY" > /github/workspace/key.pem)
 fi
 
 mkdir -p /github/workspace/.cache
 
 /user/local/bin/holodeck create --provision  \
-    -f /github/workspace/$INPUT_HOLODECK-CONFIG \
+    -f /github/workspace/$INPUT_HOLODECK_CONFIG \
     -c /github/workspace/.cache \
     -k /github/workspace/kubeconfig

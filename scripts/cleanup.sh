@@ -12,14 +12,14 @@
 ## limitations under the License.
 ## 
 
-#! /usr/bin/env bash
+#!/bin/bash
 set +x
 set +e
 
 export DEBIAN_FRONTEND=noninteractive
 rm -f /github/workspace/key.pem /github/workspace/kubeconfig
 
-/user/bin/holodeck delete -f /github/workspace/$INPUT_HOLODECK-CONFIG -c /github/workspace/.cache
+/user/bin/holodeck delete -f /github/workspace/$INPUT_HOLODECK_CONFIG -c /github/workspace/.cache
 exit_code=$?
 
 rm -rf /github/workspace/.cache

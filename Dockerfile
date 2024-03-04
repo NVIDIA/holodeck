@@ -12,7 +12,7 @@
 ## limitations under the License.
 ## 
 
-FROM golang:1.21
+FROM golang:1.21-bookworm
 
 WORKDIR /src
 COPY . .
@@ -26,4 +26,4 @@ RUN echo "nobody:x:65534:65534:Nobody:/:" >> /etc/passwd
 # Run as unprivileged user
 USER 65534:65534
 
-ENTRYPOINT ["/usr/local/bin/run.sh"]
+ENTRYPOINT ["/bin/bash", "-c", "run.sh"]

@@ -22,13 +22,16 @@ runs:
   post-entrypoint: 'cleanup.sh'
 
 inputs:
-  aws-access-key-id:
+  aws_access_key_id:
     description: 'AWS Access Key ID'
     required: true
-  aws-secret-access-key:
+  aws_secret_access_key:
     description: 'AWS Secret Access Key'
     required: true
-  holodeck-config:
+  aws_ssh_key:
+    description: 'AWS SSH Key'
+    required: false
+  holodeck_config:
     description: 'Holodeck configuration file'
     required: true
 
