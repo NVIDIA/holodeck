@@ -12,12 +12,11 @@
 ## limitations under the License.
 ## 
 
-FROM golang:1.22-bookworm
+FROM golang:1.22-bookworm AS builder
 
 WORKDIR /src
 COPY . .
 
 RUN make build-action
-RUN install -m 755 /src/bin/holodeck /usr/local/bin/holodeck
 
-ENTRYPOINT ["/usr/local/bin/holodeck"]
+ENTRYPOINT ["/go/bin/holodeck"]
