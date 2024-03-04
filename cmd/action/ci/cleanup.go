@@ -24,11 +24,10 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"k8s.io/klog/v2"
 )
 
 func cleanup(log *logger.FunLogger) error {
-	klog.Info("Running Cleanup function")
+	log.Info("Running Cleanup function")
 
 	configFile := os.Getenv("INPUT_HOLODECK_CONFIG")
 	if configFile == "" {
