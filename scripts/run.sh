@@ -12,7 +12,7 @@
 ## limitations under the License.
 ## 
 
-#!/bin/bash
+#!/bin/sh -l
 set +x
 
 export DEBIAN_FRONTEND=noninteractive
