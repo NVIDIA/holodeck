@@ -26,9 +26,13 @@ IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 
-build:
+build-action:
 	@rm -rf bin
-	$(GO_CMD) build -o bin/$(BINARY_NAME) cmd/main.go
+	$(GO_CMD) build -o bin/$(BINARY_NAME) cmd/action/main.go
+
+build-cli:
+	@rm -rf bin
+	$(GO_CMD) build -o bin/$(BINARY_NAME) cmd/cli/main.go
 
 fmt:
 	@$(GO_FMT) -w -l $$(find . -name '*.go')

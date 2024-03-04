@@ -84,7 +84,7 @@ func (m command) build() *cli.Command {
 				return fmt.Errorf("provider %s not supported", opts.cfg.Spec.Provider)
 			}
 
-			// read hostUrl from cache
+			// read cache
 			if opts.cachePath == "" {
 				opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
 			}

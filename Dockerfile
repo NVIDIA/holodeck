@@ -12,18 +12,12 @@
 ## limitations under the License.
 ## 
 
-FROM golang:1.21-bookworm
+FROM golang:1.22-bookworm
 
 WORKDIR /src
 COPY . .
 
-RUN make build
-RUN install -m 755 /src/bin/holodeck /usr/local/bin/holodeck && \
-    install -m 755 /src/scripts/run.sh /usr/local/bin/run.sh && \
-    install -m 755 /src/scripts/cleanup.sh /usr/local/bin/cleanup.sh
+RUN make build-action
+RUN install -m 755 /src/bin/holodeck /usr/local/bin/holodeck
 
-RUN echo "nobody:x:65534:65534:Nobody:/:" >> /etc/passwd
-# Run as unprivileged user
-USER 65534:65534
-
-ENTRYPOINT ["/bin/bash", "-c", "run.sh"]
+ENTRYPOINT ["/usr/local/bin/holodeck"]

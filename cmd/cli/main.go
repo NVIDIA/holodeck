@@ -19,9 +19,9 @@ package main
 import (
 	"os"
 
-	"github.com/NVIDIA/holodeck/cmd/create"
-	"github.com/NVIDIA/holodeck/cmd/delete"
-	"github.com/NVIDIA/holodeck/cmd/dryrun"
+	"github.com/NVIDIA/holodeck/cmd/cli/create"
+	"github.com/NVIDIA/holodeck/cmd/cli/delete"
+	"github.com/NVIDIA/holodeck/cmd/cli/dryrun"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
 	cli "github.com/urfave/cli/v2"
