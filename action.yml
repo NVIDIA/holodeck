@@ -18,8 +18,8 @@ description: A tool for creating and managing GPU-ready cloud test environments.
 runs:
   using: docker
   image: Dockerfile
-  entrypoint: 'run.sh'
-  post-entrypoint: 'cleanup.sh'
+  entrypoint: 'holodeck'
+  post-entrypoint: 'holodeck'
 
 inputs:
   aws_access_key_id:
