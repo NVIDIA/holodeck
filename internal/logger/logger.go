@@ -22,7 +22,22 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/mattn/go-isatty"
 )
+
+var (
+	// outFile is where Out* functions send output to. Set using SetOutFile()
+	outFile fdWriter
+	// errFile is where Err* functions send output to. Set using SetErrFile()
+	errFile fdWriter
+)
+
+// fdWriter is the subset of file.File that implements io.Writer and Fd()
+type fdWriter interface {
+	io.Writer
+	Fd() uintptr
+}
 
 const (
 	// ANSI escape code to reset color
@@ -39,6 +54,9 @@ const (
 	redXEmoji = "\u274C"
 	// Unicode character for the warning sign
 	warningSign = "\u26A0"
+
+	// Unicode character for the loading emoji
+	loadingEmoji = "\u231B"
 )
 
 // NewLogger creates a new instance of FunLogger.
@@ -111,6 +129,20 @@ func printMessage(color, emoji, message string) {
 func (l *FunLogger) Loading(format string, a ...any) {
 	defer l.Wg.Done()
 	message := fmt.Sprintf(format, a...)
+	// if running in a non-interactive terminal, don't print the loading animation
+	if !isInteractiveTerminal() && isCILogs() {
+		// print the message with loading emoji
+		printMessage(yellowText, loadingEmoji, message)
+		for {
+			select {
+			case <-l.Done:
+				return
+			case <-l.Fail:
+				return
+			}
+		}
+	}
+
 	// if message ends with a newline, remove it
 	if message[len(message)-1] == '\n' {
 		message = message[:len(message)-1]
@@ -141,6 +173,19 @@ func (l *FunLogger) Loading(format string, a ...any) {
 			ticker = time.After(330 * time.Millisecond)
 		}
 	}
+}
+
+func isInteractiveTerminal() bool {
+	return isTerminal(os.Stdout)
+}
+
+// isTerminal returns whether we have a terminal or not
+func isTerminal(w fdWriter) bool {
+	return isatty.IsTerminal(w.Fd())
+}
+
+func isCILogs() bool {
+	return os.Getenv("CI") == "true"
 }
 
 func (l *FunLogger) Exit(code int) {

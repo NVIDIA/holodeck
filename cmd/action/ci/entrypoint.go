@@ -83,22 +83,16 @@ func entrypoint(log *logger.FunLogger) error {
 		return fmt.Errorf("error reading config file: %s", err)
 	}
 
+	// Set auth.PrivateKey
+	cfg.Spec.Auth.PrivateKey = sshKeyFile
+
 	// If no containerruntime is specified, default to none
 	if cfg.Spec.ContainerRuntime.Name == "" {
 		cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
 	}
 
 	// Set env name
-	sha := os.Getenv("GITHUB_SHA")
-	// short sha
-	if len(sha) > 8 {
-		sha = sha[:8]
-	}
-	if sha == "" {
-		log.Error(fmt.Errorf("github sha not provided"))
-		os.Exit(1)
-	}
-	cfg.SetName(sha)
+	setCfgName(&cfg)
 
 	client, err := aws.New(log, cfg, cacheFile)
 	if err != nil {

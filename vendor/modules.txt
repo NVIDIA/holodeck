@@ -143,6 +143,9 @@ github.com/jmespath/go-jmespath
 github.com/json-iterator/go
 # github.com/kr/text v0.2.0
 ## explicit
+# github.com/mattn/go-isatty v0.0.20
+## explicit; go 1.15
+github.com/mattn/go-isatty
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 ## explicit
 github.com/modern-go/concurrent
@@ -177,6 +180,7 @@ golang.org/x/net/idna
 # golang.org/x/sys v0.15.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
+golang.org/x/sys/unix
 # golang.org/x/text v0.14.0
 ## explicit; go 1.18
 golang.org/x/text/secure/bidirule

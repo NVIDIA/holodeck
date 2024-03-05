@@ -17,8 +17,10 @@
 package ci
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
@@ -40,7 +42,6 @@ func Run(log *logger.FunLogger) error {
 		}
 	} else {
 		if err := entrypoint(log); err != nil {
-			log.Error(err)
 			if err := cleanup(log); err != nil {
 				return err
 			}
@@ -51,4 +52,13 @@ func Run(log *logger.FunLogger) error {
 	log.Check("Holodeck completed successfully")
 
 	return nil
+}
+
+func setCfgName(cfg *v1alpha1.Environment) {
+	sha := os.Getenv("GITHUB_SHA")
+	// short sha
+	if len(sha) > 8 {
+		sha = sha[:8]
+	}
+	cfg.Name = fmt.Sprintf("ci-%s", sha)
 }
