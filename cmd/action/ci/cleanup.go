@@ -42,6 +42,9 @@ func cleanup(log *logger.FunLogger) error {
 		return fmt.Errorf("error reading config file: %s", err)
 	}
 
+	// Set env name
+	setCfgName(&cfg)
+
 	client, err := aws.New(log, cfg, cacheFile)
 	if err != nil {
 		log.Error(err)

@@ -28,7 +28,7 @@ func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 	// Resolve dependencies from top to bottom
 	log.Wg.Add(1)
 
-	go log.Loading("Resolving dependencies \U0001F4E6")
+	go log.Loading("Resolving dependencies \U0001F4E6\n")
 	// Kubernetes -> Container Toolkit -> Container Runtime -> NVDriver
 	if env.Spec.Kubernetes.Install {
 		// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
