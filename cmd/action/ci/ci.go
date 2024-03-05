@@ -29,6 +29,8 @@ const (
 	cacheFile  = "/github/workspace/.cache/holodeck.yaml"
 	kubeconfig = "/github/workspace/kubeconfig"
 	sshKeyFile = "/github/workspace/.cache/key"
+	// Default EC2 instance UserName for ubuntu AMI's
+	username = "ubuntu"
 )
 
 func Run(log *logger.FunLogger) error {

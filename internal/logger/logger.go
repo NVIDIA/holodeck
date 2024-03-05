@@ -56,7 +56,7 @@ const (
 	warningSign = "\u26A0"
 
 	// Unicode character for the loading emoji
-	loadingEmoji = "\u231B"
+	loadingEmoji = "\U0001f300"
 )
 
 // NewLogger creates a new instance of FunLogger.
