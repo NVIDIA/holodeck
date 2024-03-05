@@ -64,12 +64,17 @@ func cleanup(log *logger.FunLogger) error {
 	}
 
 	// Delete the cache kubeconfig and ssh key
-	if err := os.Remove(kubeconfig); err != nil {
-		log.Error(fmt.Errorf("error deleting kubeconfig: %s", err))
+	// if kubeconfig exists, delete it
+	if _, err := os.Stat(kubeconfig); err == nil {
+		if err := os.Remove(kubeconfig); err != nil {
+			log.Error(fmt.Errorf("error deleting kubeconfig: %s", err))
+		}
 	}
 
-	if err := os.Remove(sshKeyFile); err != nil {
-		log.Error(fmt.Errorf("error deleting ssh key: %s", err))
+	if _, err := os.Stat(sshKeyFile); err == nil {
+		if err := os.Remove(sshKeyFile); err != nil {
+			log.Error(fmt.Errorf("error deleting ssh key: %s", err))
+		}
 	}
 
 	if err := os.RemoveAll(cachedir); err != nil {

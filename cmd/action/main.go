@@ -37,4 +37,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Exit with success
+	// https://docs.github.com/en/actions/creating-actions/setting-exit-codes-for-actions
+	os.Exit(0)
 }

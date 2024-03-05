@@ -28,16 +28,14 @@ const (
 	cachedir   = "/github/workspace/.cache"
 	cacheFile  = "/github/workspace/.cache/holodeck.yaml"
 	kubeconfig = "/github/workspace/kubeconfig"
-	sshKeyFile = "/github/workspace/.cache/key"
+	sshKeyFile = "/github/workspace/.cache/key.pem"
 	// Default EC2 instance UserName for ubuntu AMI's
 	username = "ubuntu"
 )
 
 func Run(log *logger.FunLogger) error {
-	log.Info("Running Holodeck function")
-	// Check if .cache folder exists in the /github/workspace directory and if it does, call cleanup function
-	// If it doesn't, call entrypoint function
-	// If the entrypoint function returns an error, call cleanup function
+	log.Info("Holodeck Settting up test environment")
+
 	if _, err := os.Stat(cachedir); err == nil {
 		if err := cleanup(log); err != nil {
 			return err
