@@ -56,9 +56,10 @@ func Run(log *logger.FunLogger) error {
 
 func setCfgName(cfg *v1alpha1.Environment) {
 	sha := os.Getenv("GITHUB_SHA")
+	attempt := os.Getenv("GITHUB_RUN_ATTEMPT")
 	// short sha
 	if len(sha) > 8 {
 		sha = sha[:8]
 	}
-	cfg.Name = fmt.Sprintf("ci-%s", sha)
+	cfg.Name = fmt.Sprintf("ci%s-%s", attempt, sha)
 }

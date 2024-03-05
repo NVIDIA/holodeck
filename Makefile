@@ -28,7 +28,7 @@ PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 
 build-action:
 	@rm -rf bin
-	GOOS=linux $(GO_CMD) build -v -ldflags "-s -w -extldflags '-static'" -o /go/bin/$(BINARY_NAME) cmd/action/main.go
+	GOOS=linux $(GO_CMD) build -o /go/bin/$(BINARY_NAME) cmd/action/main.go
 
 build-cli:
 	@rm -rf bin

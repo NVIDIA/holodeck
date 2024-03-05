@@ -29,6 +29,23 @@ import (
 func cleanup(log *logger.FunLogger) error {
 	log.Info("Running Cleanup function")
 
+	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
+	// to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+	accessKeyID := os.Getenv("INPUT_AWS_ACCESS_KEY_ID")
+	if accessKeyID == "" {
+		log.Error(fmt.Errorf("aws access key id not provided"))
+		os.Exit(1)
+	}
+
+	secretAccessKey := os.Getenv("INPUT_AWS_SECRET_ACCESS_KEY")
+	if secretAccessKey == "" {
+		log.Error(fmt.Errorf("aws secret access key not provided"))
+		os.Exit(1)
+	}
+
+	os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
+	os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
+
 	configFile := os.Getenv("INPUT_HOLODECK_CONFIG")
 	if configFile == "" {
 		log.Error(fmt.Errorf("config file not provided"))
