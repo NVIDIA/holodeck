@@ -103,7 +103,7 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		}
 		// Reset the connection, this step is needed to make sure some configuration changes take effect
 		// e.g after installing docker, the user needs to be added to the docker group
-		if err := p.resetConnection(env.Spec.Auth.PrivateKey, p.HostUrl); err != nil {
+		if err := p.resetConnection(); err != nil {
 			return fmt.Errorf("failed to reset connection: %v", err)
 		}
 		// Clear the template buffer
@@ -114,7 +114,7 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 }
 
 // resetConnection resets the ssh connection, and retries if it fails to connect
-func (p *Provisioner) resetConnection(keyPath, hostUrl string) error {
+func (p *Provisioner) resetConnection() error {
 	// Close the current ssh connection
 	if err := p.Client.Close(); err != nil {
 		return fmt.Errorf("failed to close ssh client: %v", err)

@@ -85,6 +85,7 @@ func entrypoint(log *logger.FunLogger) error {
 
 	// Set auth.PrivateKey
 	cfg.Spec.Auth.PrivateKey = sshKeyFile
+	cfg.Spec.Auth.Username = username
 
 	// If no containerruntime is specified, default to none
 	if cfg.Spec.ContainerRuntime.Name == "" {
@@ -111,9 +112,6 @@ func entrypoint(log *logger.FunLogger) error {
 	}
 
 	var hostUrl string
-
-	log.Info("Provisioning \u2699")
-
 	for _, p := range cache.Status.Properties {
 		if p.Name == aws.PublicDnsName {
 			hostUrl = p.Value
@@ -121,11 +119,12 @@ func entrypoint(log *logger.FunLogger) error {
 		}
 	}
 
-	p, err := provisioner.New(log, cfg.Spec.Auth.PrivateKey, cfg.Spec.Auth.Username, hostUrl)
+	p, err := provisioner.New(log, sshKeyFile, username, hostUrl)
 	if err != nil {
 		return err
 	}
 
+	log.Info("Provisioning \u2699")
 	if err = p.Run(cfg); err != nil {
 		return fmt.Errorf("failed to run provisioner: %v", err)
 	}
