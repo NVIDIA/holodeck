@@ -12,7 +12,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.2
 	golang.org/x/crypto v0.23.0
 	k8s.io/apimachinery v0.30.0
-	sigs.k8s.io/controller-runtime v0.16.3
+	sigs.k8s.io/controller-runtime v0.18.2
 	sigs.k8s.io/yaml v1.4.0
 )
 
