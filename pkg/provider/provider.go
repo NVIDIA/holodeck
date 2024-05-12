@@ -22,8 +22,12 @@ type Provider interface {
 	Name() string
 
 	// Core methods
+
+	// Create creates the resources in the provider
 	Create() error
+	// Delete deletes the resources in the provider
 	Delete() error
+	// DryRun preflight checks
 	DryRun() error
 
 	// Metada methods

@@ -155,3 +155,29 @@ func (p *Provider) describeImages(filter []types.Filter) ([]ImageInfo, error) {
 
 	return images, nil
 }
+
+func (p *Provider) checkInstanceTypes() error {
+	var nextToken *string
+
+	for {
+		// Use the DescribeInstanceTypes API to get a list of supported instance types in the current region
+		resp, err := p.ec2.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{NextToken: nextToken})
+		if err != nil {
+			return err
+		}
+
+		for _, it := range resp.InstanceTypes {
+			if it.InstanceType == types.InstanceType(p.Spec.Instance.Type) {
+				return nil
+			}
+		}
+
+		if resp.NextToken != nil {
+			nextToken = resp.NextToken
+		} else {
+			break
+		}
+	}
+
+	return fmt.Errorf("instance type %s is not supported in the current region %s", string(p.Spec.Instance.Type), p.Spec.Instance.Region)
+}

@@ -58,14 +58,14 @@ func (p *Provider) delete(cache *AWS) error {
 
 		waiterOptions := []func(*ec2.InstanceTerminatedWaiterOptions){
 			func(o *ec2.InstanceTerminatedWaiterOptions) {
-				o.MaxDelay = 1 * time.Minute
+				o.MaxDelay = 10 * time.Minute
 				o.MinDelay = 5 * time.Second
 			},
 		}
 		wait := ec2.NewInstanceTerminatedWaiter(p.ec2, waiterOptions...)
 		if err := wait.Wait(context.Background(), &ec2.DescribeInstancesInput{
 			InstanceIds: []string{cache.Instanceid},
-		}, 5*time.Minute, waiterOptions...); err != nil {
+		}, 10*time.Minute, waiterOptions...); err != nil {
 			p.fail()
 			return fmt.Errorf("error waiting for instance to be terminated: %v", err)
 		}

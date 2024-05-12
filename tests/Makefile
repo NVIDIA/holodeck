@@ -14,19 +14,25 @@
 
 GO_CMD ?= go
 
-E2E_ENV_FILE ?= $(CURDIR)/tests/test_env.yml
+AWS_ENV_FILE ?= $(CURDIR)/tests/test_aws.yml
+VSPHERE_ENV_FILE ?= $(CURDIR)/tests/test_vsphere.yml
 LOG_ARTIFACTS ?= $(CURDIR)/e2e_logs
 
-.PHONY: e2e-test
-e2e-test:
-	@if [ -z ${AWS_SECRET_ACCESS_KEY} ] || [ -z ${AWS_ACCESS_KEY_ID} ]; then \
-		echo "[ERR] AWS_SECRET_ACCESS_KEY and AWS_ACCESS_KEY_ID must be defined"; \
-		exit 1; \
-	fi
-	@echo "Running e2e tests"
+.PHONY: e2e-aws e2e-vsphere
+e2e-aws:
+	@echo "Running AWS e2e tests"
 	$(GO_CMD) test -v $(CURDIR)/tests -args \
-		-env-file=$(E2E_ENV_FILE)\
+		-env-file=$(AWS_ENV_FILE)\
 		-log-artifacts=$(LOG_ARTIFACTS) \
-		-ginkgo.focus="Holodeck" \
+		-ginkgo.focus="AWS" \
+		-test.timeout=1h \
+		-ginkgo.v
+
+e2e-vsphere:
+	@echo "Running VSPHERE e2e tests"
+	$(GO_CMD) test -v $(CURDIR)/tests -args \
+		-env-file=$(VSPHERE_ENV_FILE)\
+		-log-artifacts=$(LOG_ARTIFACTS) \
+		-ginkgo.focus="VSPHERE" \
 		-test.timeout=1h \
 		-ginkgo.v
