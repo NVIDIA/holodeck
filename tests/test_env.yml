@@ -1,0 +1,21 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck
+  description: "Devel infra environment"
+spec:
+  provider: aws
+  auth:
+    keyName: eduardoa
+    privateKey: "/Users/eduardoa/.ssh/eduardoa.pem"
+  instance:
+    type: g4dn.xlarge
+    region: eu-north-1
+    ingressIpRanges:
+      - 213.179.129.0/26
+    image:
+      architecture: amd64
+      imageId: ami-0fe8bec493a81c7da
+  kubernetes:
+    install: true
+    installer: microk8s
