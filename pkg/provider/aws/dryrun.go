@@ -82,7 +82,7 @@ func (a *Client) checkImages() error {
 func (a *Client) DryRun() error {
 	// Check if the desired instance type is supported in the region
 	a.log.Wg.Add(1)
-	go a.log.Loading("Checking if instance type %s is supported in region %s\n", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
+	go a.log.Loading("Checking if instance type %s is supported in region %s", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
 	err := a.checkInstanceTypes()
 	if err != nil {
 		a.fail()
@@ -92,7 +92,7 @@ func (a *Client) DryRun() error {
 
 	// Check if the desired image is supported in the region
 	a.log.Wg.Add(1)
-	go a.log.Loading("Checking if image %s is supported in region %s\n", *a.Spec.Instance.Image.ImageId, a.Spec.Instance.Region)
+	go a.log.Loading("Checking if image %s is supported in region %s", *a.Spec.Instance.Image.ImageId, a.Spec.Instance.Region)
 	err = a.checkImages()
 	if err != nil {
 		a.fail()
