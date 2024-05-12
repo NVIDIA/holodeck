@@ -6,16 +6,15 @@ metadata:
 spec:
   provider: aws
   auth:
-    keyName: eduardoa
-    privateKey: "/Users/eduardoa/.ssh/eduardoa.pem"
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
   instance:
     type: g4dn.xlarge
     region: eu-north-1
     ingressIpRanges:
-      - 213.179.129.0/26
+      - <MyIP>/<Range>
     image:
       architecture: amd64
-      imageId: ami-0fe8bec493a81c7da
   kubernetes:
     install: true
     installer: kind
