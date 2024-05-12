@@ -1,3 +1,4 @@
 kubeconfig
 bin
 .DS_Store
+e2e_logs
