@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go v1.49.13
 	github.com/aws/aws-sdk-go-v2/config v1.26.2
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.142.0
-	github.com/aws/aws-sdk-go-v2/service/route53 v1.36.0
+	github.com/aws/aws-sdk-go-v2/service/route53 v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.50.1
 	github.com/urfave/cli/v2 v2.27.2
 	golang.org/x/crypto v0.23.0
