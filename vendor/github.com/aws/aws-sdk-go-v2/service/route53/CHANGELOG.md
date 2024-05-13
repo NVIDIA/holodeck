@@ -1,3 +1,58 @@
+# v1.40.5 (2024-05-08)
+
+* **Bug Fix**: GoDoc improvement
+
+# v1.40.4 (2024-03-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.3 (2024-03-18)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.2 (2024-03-07)
+
+* **Bug Fix**: Remove dependency on go-cmp.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.1 (2024-02-23)
+
+* **Bug Fix**: Move all common, SDK-side middleware stack ops into the service client module to prevent cross-module compatibility issues in the future.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.0 (2024-02-22)
+
+* **Feature**: Add middleware stack snapshot tests.
+
+# v1.39.2 (2024-02-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.39.1 (2024-02-20)
+
+* **Bug Fix**: When sourcing values for a service's `EndpointParameters`, the lack of a configured region (i.e. `options.Region == ""`) will now translate to a `nil` value for `EndpointParameters.Region` instead of a pointer to the empty string `""`. This will result in a much more explicit error when calling an operation instead of an obscure hostname lookup failure.
+
+# v1.39.0 (2024-02-16)
+
+* **Feature**: Add new ClientOptions field to waiter config which allows you to extend the config for operation calls made by waiters.
+
+# v1.38.0 (2024-02-13)
+
+* **Feature**: Bump minimum Go version to 1.20 per our language support policy.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.37.1 (2024-01-30)
+
+* **Documentation**: Update the SDKs for text changes in the APIs.
+
+# v1.37.0 (2024-01-10)
+
+* **Feature**: Route53 now supports geoproximity routing in AWS regions
+
+# v1.36.1 (2024-01-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.36.0 (2023-12-20)
 
 * **Feature**: Amazon Route 53 now supports the Canada West (Calgary) Region (ca-west-1) for latency records, geoproximity records, and private DNS for Amazon VPCs in that region.
