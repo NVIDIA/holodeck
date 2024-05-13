@@ -18,22 +18,6 @@ updates:
         exclude-patterns:
         - k8s.io/klog/*
 
-  - package-ecosystem: "gomod"
-    target-branch: release-0.1
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "sunday"
-    labels:
-    - dependencies
-    - maintenance
-    groups:
-      k8sio:
-        patterns:
-        - k8s.io/*
-        exclude-patterns:
-        - k8s.io/klog/*
-
   - package-ecosystem: "github-actions"
     target-branch: main
     directory: "/"
