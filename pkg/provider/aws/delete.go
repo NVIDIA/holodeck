@@ -54,7 +54,7 @@ func (a *Client) delete(cache *AWS) error {
 		}
 
 		a.log.Wg.Add(1)
-		go a.log.Loading("Waiting for instance %s to be terminated\n", cache.Instanceid)
+		go a.log.Loading("Waiting for instance %s to be terminated", cache.Instanceid)
 
 		waiterOptions := []func(*ec2.InstanceTerminatedWaiterOptions){
 			func(o *ec2.InstanceTerminatedWaiterOptions) {
@@ -79,8 +79,12 @@ func (a *Client) delete(cache *AWS) error {
 			a.fail()
 			return fmt.Errorf("error deleting security group: %v", err)
 		}
+
+		a.done()
 	}
 
+	a.log.Wg.Add(1)
+	go a.log.Loading("Deleting VPC resources")
 	// Delete the subnet
 	deleteSubnet := &ec2.DeleteSubnetInput{
 		SubnetId: &cache.Subnetid,
