@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.50.1
 	github.com/mattn/go-isatty v0.0.20
-	github.com/urfave/cli/v2 v2.27.1
+	github.com/urfave/cli/v2 v2.27.2
 	golang.org/x/crypto v0.23.0
 	k8s.io/apimachinery v0.30.0
 	sigs.k8s.io/controller-runtime v0.18.2
@@ -30,7 +30,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.24.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.28.7 // indirect
 	github.com/aws/smithy-go v1.20.2 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.3 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
@@ -40,7 +40,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
+	github.com/xrash/smetrics v0.0.0-20240312152122-5f08fbb34913 // indirect
 	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
