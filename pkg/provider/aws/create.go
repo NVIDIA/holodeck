@@ -281,6 +281,13 @@ func (a *Client) createEC2Instance(cache *AWS) error {
 	a.log.Wg.Add(1)
 	go a.log.Loading("Creating EC2 instance")
 
+	// Check if the image is provided, if not get the latest image
+	err := a.setAMI()
+	if err != nil {
+		a.fail()
+		return fmt.Errorf("error getting AMI: %w", err)
+	}
+
 	instanceIn := &ec2.RunInstancesInput{
 		ImageId:      a.Spec.Image.ImageId,
 		InstanceType: types.InstanceType(a.Spec.Instance.Type),
