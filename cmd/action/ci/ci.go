@@ -23,6 +23,8 @@ import (
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 const (
@@ -77,4 +79,24 @@ func generateUID() string {
 	}
 
 	return string(b)
+}
+
+// instanceTags returns the tags to be applied to the EC2 instance
+// based on the GitHub environment variables https://docs.github.com/en/actions/learn-github-actions/variables
+func instanceTags() []types.Tag {
+	envs := []string{
+		"GITHUB_JOB",
+		"GITHUB_REPOSITORY",
+		"GITHUB_ACTOR",
+		"GITHUB_SHA",
+	}
+	var tags []types.Tag
+	for _, env := range envs {
+		tag := types.Tag{
+			Key:   aws.String(env),
+			Value: aws.String(os.Getenv(env)),
+		}
+		tags = append(tags, tag)
+	}
+	return tags
 }

@@ -112,11 +112,27 @@ func entrypoint(log *logger.FunLogger) error {
 	}
 
 	var hostUrl string
+	var instanceID string
+	var vpcID string
 	for _, p := range cache.Status.Properties {
-		if p.Name == aws.PublicDnsName {
+		switch p.Name {
+		case aws.PublicDnsName:
 			hostUrl = p.Value
-			break
+		case aws.InstanceID:
+			instanceID = p.Value
+		case aws.VpcID:
+			vpcID = p.Value
+		default:
+			continue
 		}
+	}
+
+	// Tag the instance with info the GitHub event
+	resources := []string{instanceID, vpcID}
+	tags := instanceTags()
+	err = client.UpdateResourcesTags(tags, resources...)
+	if err != nil {
+		return err
 	}
 
 	p, err := provisioner.New(log, sshKeyFile, username, hostUrl)
