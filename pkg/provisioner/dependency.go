@@ -23,125 +23,31 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/provisioner/templates"
 )
 
-type ProvisionFunc func(tpl *bytes.Buffer, env v1alpha1.Environment) error
-
-type DependencyGraph map[string][]string
+const (
+	kubeadmInstaller          = "kubeadm"
+	kindInstaller             = "kind"
+	microk8sInstaller         = "microk8s"
+	containerdRuntime         = "containerd"
+	crioRuntime               = "crio"
+	dockerRuntime             = "docker"
+	nvdriverInstaller         = "nvdriver"
+	containerToolkitInstaller = "containerToolkit"
+)
 
 var (
 	functions = map[string]ProvisionFunc{
-		"kubeadm":          kubeadm,
-		"kind":             kind,
-		"microk8s":         microk8s,
-		"containerd":       containerd,
-		"crio":             criO,
-		"docker":           docker,
-		"nvdriver":         nvdriver,
-		"containerToolkit": containerToolkit,
+		kubeadmInstaller:          kubeadm,
+		kindInstaller:             kind,
+		microk8sInstaller:         microk8s,
+		containerdRuntime:         containerd,
+		crioRuntime:               criO,
+		dockerRuntime:             docker,
+		nvdriverInstaller:         nvdriver,
+		containerToolkitInstaller: containerToolkit,
 	}
 )
 
-// buildDependencyGraph builds a dependency graph based on the environment
-// and returns a topologically sorted list of provisioning functions
-// to be executed in an opinionated order. We go from up to bottom in the graph
-// Kubernetes -> Container Runtime -> Container Toolkit -> NVDriver
-// if a dependency is needed and not defined, we set an opinionated default
-func buildDependencyGraph(env v1alpha1.Environment) ([]ProvisionFunc, error) {
-	//  Predefined dependency graph
-	graph := make(DependencyGraph)
-
-	// for kubeadm kubernetes installer
-	if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeContainerd {
-		graph["kubeadm"] = append(graph["kubeadm"], "containerd")
-	} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeCrio {
-		graph["kubeadm"] = append(graph["kubeadm"], "crio")
-	} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeDocker {
-		graph["kubeadm"] = append(graph["kubeadm"], "docker")
-	} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeNone {
-		// default to containerd if ContainerRuntime is empty
-		graph["kubeadm"] = append(graph["kubeadm"], "containerd")
-	}
-
-	// if container toolkit is enabled then add container toolkit and nvdriver to kubeadm
-	if env.Spec.NVIDIAContainerToolkit.Install {
-		graph["kubeadm"] = append(graph["kubeadm"], "containerToolkit")
-		graph["kubeadm"] = append(graph["kubeadm"], "nvdriver")
-
-		// for container toolkit
-		if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeContainerd {
-			graph["containerToolkit"] = append(graph["containerToolkit"], "containerd")
-		} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeCrio {
-			graph["containerToolkit"] = append(graph["containerToolkit"], "crio")
-		} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeDocker {
-			graph["containerToolkit"] = append(graph["containerToolkit"], "docker")
-		} else if env.Spec.ContainerRuntime.Name == v1alpha1.ContainerRuntimeNone {
-			// default to containerd if ContainerRuntime is empty
-			graph["containerToolkit"] = append(graph["containerToolkit"], "containerd")
-		}
-
-		graph["containerToolkit"] = append(graph["containerToolkit"], "containerToolkit")
-
-		// user might request to install container toolkit without nvdriver for testing purpose
-		if env.Spec.NVIDIADriver.Install {
-			graph["containerToolkit"] = append(graph["containerToolkit"], "nvdriver")
-		}
-	}
-	ordered := []ProvisionFunc{}
-	if env.Spec.Kubernetes.Install {
-		switch env.Spec.Kubernetes.KubernetesInstaller {
-		case "kubeadm":
-			for _, f := range graph["kubeadm"] {
-				ordered = append(ordered, functions[f])
-			}
-			ordered = append(ordered, functions["kubeadm"])
-			return ordered, nil
-		case "kind":
-			return []ProvisionFunc{docker, containerToolkit, nvdriver, kind}, nil
-		case "microk8s":
-			return []ProvisionFunc{microk8s}, nil
-		default:
-			// default to kubeadm if KubernetesInstaller is empty
-			for _, f := range graph["kubeadm"] {
-				ordered = append(ordered, functions[f])
-			}
-			return ordered, nil
-		}
-	}
-
-	// If no kubernetes is requested, we move to container-toolkit
-	if env.Spec.NVIDIAContainerToolkit.Install {
-		for _, f := range graph["containerToolkit"] {
-			ordered = append(ordered, functions[f])
-		}
-		return ordered, nil
-	}
-
-	// If no container-toolkit is requested, we move to container-runtime
-	if env.Spec.ContainerRuntime.Install {
-		switch env.Spec.ContainerRuntime.Name {
-		case "containerd":
-			ordered = append(ordered, functions["containerd"])
-			return ordered, nil
-		case "crio":
-			ordered = append(ordered, functions["crio"])
-			return ordered, nil
-		case "docker":
-			ordered = append(ordered, functions["docker"])
-			return ordered, nil
-		default:
-			// default to containerd if ContainerRuntime.Name is empty
-			ordered = append(ordered, functions["containerd"])
-			return ordered, nil
-		}
-	}
-
-	// If no container-runtime is requested, we move to nvdriver
-	if env.Spec.NVIDIADriver.Install {
-		ordered = append(ordered, functions["nvdriver"])
-		return ordered, nil
-	}
-
-	return nil, nil
-}
+type ProvisionFunc func(tpl *bytes.Buffer, env v1alpha1.Environment) error
 
 func nvdriver(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	nvdriver := templates.NewNvDriver()
@@ -190,4 +96,88 @@ func kind(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 		return err
 	}
 	return kind.Execute(tpl, env)
+}
+
+// DependencySolver is a struct that holds the dependency list
+type DependencyResolver struct {
+	Dependencies []ProvisionFunc
+	env          v1alpha1.Environment
+}
+
+// DependencyConfigurator defines methods for configuring dependencies
+type DependencyConfigurator interface {
+	withKubernetes() *DependencyResolver
+	withContainerRuntime() *DependencyResolver
+	withContainerToolkit() *DependencyResolver
+	withNVDriver() *DependencyResolver
+	Resolve() []ProvisionFunc
+}
+
+func NewDependencies(env v1alpha1.Environment) *DependencyResolver {
+	return &DependencyResolver{
+		env: env,
+	}
+}
+
+func (d *DependencyResolver) withKubernetes() {
+	switch d.env.Spec.Kubernetes.KubernetesInstaller {
+	case kubeadmInstaller:
+		d.Dependencies = append(d.Dependencies, functions[kubeadmInstaller])
+	case kindInstaller:
+		d.Dependencies = append(d.Dependencies, functions[kindInstaller])
+	case microk8sInstaller:
+		// reset the list to only include microk8s
+		d.Dependencies = nil
+		d.Dependencies = append(d.Dependencies, functions[microk8sInstaller])
+	default:
+		// default to kubeadm if KubernetesInstaller is empty
+		d.Dependencies = append(d.Dependencies, functions[kubeadmInstaller])
+	}
+}
+
+func (d *DependencyResolver) withContainerRuntime() {
+	switch d.env.Spec.ContainerRuntime.Name {
+	case containerdRuntime:
+		d.Dependencies = append(d.Dependencies, functions[containerdRuntime])
+	case crioRuntime:
+		d.Dependencies = append(d.Dependencies, functions[crioRuntime])
+	case dockerRuntime:
+		d.Dependencies = append(d.Dependencies, functions[dockerRuntime])
+	default:
+		// default to containerd if ContainerRuntime.Name is empty
+		d.Dependencies = append(d.Dependencies, functions[containerdRuntime])
+	}
+}
+
+func (d *DependencyResolver) withContainerToolkit() {
+	d.Dependencies = append(d.Dependencies, functions[containerToolkitInstaller])
+}
+
+func (d *DependencyResolver) withNVDriver() {
+	d.Dependencies = append(d.Dependencies, functions[nvdriverInstaller])
+}
+
+// Resolve returns the dependency list in the correct order
+func (d *DependencyResolver) Resolve() []ProvisionFunc {
+	// Add NVDriver to the list
+	if d.env.Spec.NVIDIADriver.Install {
+		d.withNVDriver()
+	}
+
+	// Add Container Runtime to the list
+	if d.env.Spec.ContainerRuntime.Install {
+		d.withContainerRuntime()
+	}
+
+	// Add Container Toolkit to the list
+	if d.env.Spec.NVIDIAContainerToolkit.Install {
+		d.withContainerToolkit()
+	}
+
+	// Add Kubernetes to the list
+	if d.env.Spec.Kubernetes.Install {
+		d.withKubernetes()
+	}
+
+	return d.Dependencies
 }
