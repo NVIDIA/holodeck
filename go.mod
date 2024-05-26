@@ -6,7 +6,7 @@ toolchain go1.22.2
 require (
 	github.com/aws/aws-sdk-go v1.53.8
 	github.com/aws/aws-sdk-go-v2/config v1.27.15
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.161.3
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.161.4
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.50.3
 	github.com/mattn/go-isatty v0.0.20
