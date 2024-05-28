@@ -123,6 +123,7 @@ func entrypoint(log *logger.FunLogger) error {
 	if err != nil {
 		return err
 	}
+	defer p.Client.Close()
 
 	log.Info("Provisioning \u2699")
 	if err = p.Run(cfg); err != nil {
