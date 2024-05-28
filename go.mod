@@ -1,6 +1,7 @@
 module github.com/NVIDIA/holodeck
 
 go 1.21.5
+
 toolchain go1.22.2
 
 require (
