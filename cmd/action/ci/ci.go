@@ -18,6 +18,7 @@ package ci
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -61,5 +62,19 @@ func setCfgName(cfg *v1alpha1.Environment) {
 	if len(sha) > 8 {
 		sha = sha[:8]
 	}
-	cfg.Name = fmt.Sprintf("ci%s-%s", attempt, sha)
+	// uid is unique for each run
+	uid := generateUID()
+
+	cfg.Name = fmt.Sprintf("ci%s-%s-%s", attempt, sha, uid)
+}
+
+func generateUID() string {
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+	b := make([]byte, 8)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(b)
 }
