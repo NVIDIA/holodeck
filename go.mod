@@ -1,7 +1,7 @@
 module github.com/NVIDIA/holodeck
 
 go 1.21.5
-toolchain go1.22.2
+toolchain go1.22.3
 
 require (
 	github.com/aws/aws-sdk-go v1.53.8
@@ -13,7 +13,7 @@ require (
 	github.com/urfave/cli/v2 v2.27.2
 	golang.org/x/crypto v0.23.0
 	k8s.io/apimachinery v0.30.1
-	sigs.k8s.io/controller-runtime v0.18.2
+	sigs.k8s.io/controller-runtime v0.18.4
 	sigs.k8s.io/yaml v1.4.0
 )
 
