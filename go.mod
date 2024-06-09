@@ -1,10 +1,10 @@
 module github.com/NVIDIA/holodeck
 
 go 1.21.5
-toolchain go1.22.2
+toolchain go1.22.3
 
 require (
-	github.com/aws/aws-sdk-go v1.53.8
+	github.com/aws/aws-sdk-go v1.53.19
 	github.com/aws/aws-sdk-go-v2/config v1.27.15
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.161.3
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.40.5
