@@ -129,6 +129,12 @@ func (c *Client) addOperationDescribeAssociationExecutionTargetsMiddlewares(stac
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
 		return err
 	}
+	if err = addTimeOffsetBuild(stack, c); err != nil {
+		return err
+	}
+	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
 	if err = addOpDescribeAssociationExecutionTargetsValidationMiddleware(stack); err != nil {
 		return err
 	}
@@ -152,14 +158,6 @@ func (c *Client) addOperationDescribeAssociationExecutionTargetsMiddlewares(stac
 	}
 	return nil
 }
-
-// DescribeAssociationExecutionTargetsAPIClient is a client that implements the
-// DescribeAssociationExecutionTargets operation.
-type DescribeAssociationExecutionTargetsAPIClient interface {
-	DescribeAssociationExecutionTargets(context.Context, *DescribeAssociationExecutionTargetsInput, ...func(*Options)) (*DescribeAssociationExecutionTargetsOutput, error)
-}
-
-var _ DescribeAssociationExecutionTargetsAPIClient = (*Client)(nil)
 
 // DescribeAssociationExecutionTargetsPaginatorOptions is the paginator options
 // for DescribeAssociationExecutionTargets
@@ -228,6 +226,9 @@ func (p *DescribeAssociationExecutionTargetsPaginator) NextPage(ctx context.Cont
 	}
 	params.MaxResults = limit
 
+	optFns = append([]func(*Options){
+		addIsPaginatorUserAgent,
+	}, optFns...)
 	result, err := p.client.DescribeAssociationExecutionTargets(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -246,6 +247,14 @@ func (p *DescribeAssociationExecutionTargetsPaginator) NextPage(ctx context.Cont
 
 	return result, nil
 }
+
+// DescribeAssociationExecutionTargetsAPIClient is a client that implements the
+// DescribeAssociationExecutionTargets operation.
+type DescribeAssociationExecutionTargetsAPIClient interface {
+	DescribeAssociationExecutionTargets(context.Context, *DescribeAssociationExecutionTargetsInput, ...func(*Options)) (*DescribeAssociationExecutionTargetsOutput, error)
+}
+
+var _ DescribeAssociationExecutionTargetsAPIClient = (*Client)(nil)
 
 func newServiceMetadataMiddleware_opDescribeAssociationExecutionTargets(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
