@@ -33,7 +33,7 @@ const KubeadmTemplate = `
 : ${CALICO_VERSION:={{.CalicoVersion}}}
 : ${CRICTL_VERSION:={{.CrictlVersion}}}
 : ${ARCH:={{.Arch}}} # amd64, arm64, ppc64le, s390x
-: ${KUBELET_RELEASE_VERSION:={{.KubeletReleaseVersion}}} # v0.16.2
+: ${KUBELET_RELEASE_VERSION:={{.KubeletReleaseVersion}}} # v0.17.1
 
 # Disable swap
 # see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#before-you-begin
@@ -166,6 +166,16 @@ echo "you can now access the cluster with:"
 echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 `
 
+// Default Versions
+const (
+	defaultArch                  = "amd64"
+	defaultKubernetesVersion     = "v1.30.2"
+	defaultKubeletReleaseVersion = "v0.17.1"
+	defaultCNIPluginsVersion     = "v1.5.1"
+	defaultCRIVersion            = "v1.30.0"
+	defaultCalicoVersion         = "v3.27.4"
+)
+
 type Kubernetes struct {
 	Version               string
 	Installer             string
@@ -188,12 +198,12 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	// if not, set the default version
 	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s" {
 		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.27.9\n", env.Spec.Kubernetes.KubernetesVersion)
-		kubernetes.Version = "v1.27.9"
+		kubernetes.Version = defaultKubernetesVersion
 	}
 	if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
 		kubernetes.KubeletReleaseVersion = env.Spec.Kubernetes.KubeletReleaseVersion
 	} else {
-		kubernetes.KubeletReleaseVersion = "v0.16.2"
+		kubernetes.KubeletReleaseVersion = defaultKubeletReleaseVersion
 	}
 	if env.Spec.Kubernetes.Arch != "" {
 		kubernetes.Arch = env.Spec.Kubernetes.Arch
@@ -203,17 +213,17 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	if env.Spec.Kubernetes.CniPluginsVersion != "" {
 		kubernetes.CniPluginsVersion = env.Spec.Kubernetes.CniPluginsVersion
 	} else {
-		kubernetes.CniPluginsVersion = "v0.8.7"
+		kubernetes.CniPluginsVersion = defaultCNIPluginsVersion
 	}
 	if env.Spec.Kubernetes.CalicoVersion != "" {
 		kubernetes.CalicoVersion = env.Spec.Kubernetes.CalicoVersion
 	} else {
-		kubernetes.CalicoVersion = "v3.27.0"
+		kubernetes.CalicoVersion = defaultCalicoVersion
 	}
 	if env.Spec.Kubernetes.CrictlVersion != "" {
 		kubernetes.CrictlVersion = env.Spec.Kubernetes.CrictlVersion
 	} else {
-		kubernetes.CrictlVersion = "v1.22.0"
+		kubernetes.CrictlVersion = defaultCRIVersion
 	}
 	if env.Spec.Kubernetes.K8sEndpointHost != "" {
 		kubernetes.K8sEndpointHost = env.Spec.Kubernetes.K8sEndpointHost
