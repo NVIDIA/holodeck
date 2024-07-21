@@ -12,7 +12,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/urfave/cli/v2 v2.27.2
 	golang.org/x/crypto v0.25.0
-	k8s.io/apimachinery v0.30.2
+	k8s.io/apimachinery v0.30.3
 	sigs.k8s.io/controller-runtime v0.18.4
 	sigs.k8s.io/yaml v1.4.0
 )
