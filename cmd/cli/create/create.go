@@ -179,6 +179,7 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	if err != nil {
 		return err
 	}
+	defer p.Client.Close()
 
 	if err = p.Run(opts.cfg); err != nil {
 		return fmt.Errorf("failed to run provisioner: %v", err)
