@@ -6,16 +6,22 @@ metadata:
 spec:
   provider: aws
   auth:
-    keyName: cnt-ci
-    privateKey: "/Users/eduardoa/.ssh/cnt-ci.pem"
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
   instance:
     type: g4dn.xlarge
-    region: us-west-1
+    region: eu-north-1
     ingressIpRanges:
-      - 0.0.0.0/0
+      - <MyIp>/<Range>
     image:
-      architecture: amd64
-      imageId: ami-0ce2cb35386fc22e9
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
   kubernetes:
     install: true
     installer: kubeadm
