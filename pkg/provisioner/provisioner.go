@@ -71,10 +71,7 @@ func New(log *logger.FunLogger, keyPath, userName, hostUrl string) (*Provisioner
 }
 
 func (p *Provisioner) Run(env v1alpha1.Environment) error {
-	graph, err := buildDependencyGraph(env)
-	if err != nil {
-		return fmt.Errorf("failed to build dependency graph: %v", err)
-	}
+	dependencies := NewDependencies(env)
 
 	// kind-config
 	// Create kind config file if it is provided
@@ -88,7 +85,7 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		env.Spec.Kubernetes.K8sEndpointHost = p.HostUrl
 	}
 
-	for _, node := range graph {
+	for _, node := range dependencies.Resolve() {
 		// Add script header and common functions to the script
 		if err := addScriptHeader(&p.tpl); err != nil {
 			return fmt.Errorf("failed to add shebang to the script: %v", err)
