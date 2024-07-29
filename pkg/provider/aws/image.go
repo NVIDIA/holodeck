@@ -38,39 +38,39 @@ func (a ByCreationDate) Len() int           { return len(a) }
 func (a ByCreationDate) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByCreationDate) Less(i, j int) bool { return a[i].CreationDate < a[j].CreationDate }
 
-func (a *Client) checkImages() error {
+func (p *Provider) checkImages() error {
 	// Check if the given image is supported in the region
-	if a.Spec.Instance.Image.ImageId != nil {
-		return a.assertImageIdSupported()
+	if p.Spec.Instance.Image.ImageId != nil {
+		return p.assertImageIdSupported()
 	}
 
-	return a.setAMI()
+	return p.setAMI()
 }
 
-func (a *Client) setAMI() error {
+func (p *Provider) setAMI() error {
 	// If the image ID is already set by the user, return
-	if a.Spec.Image.ImageId != nil {
+	if p.Spec.Image.ImageId != nil {
 		return nil
 	}
 
 	// Default to the official Ubuntu images in the AWS Marketplace
 	// TODO: Add support for other image OS types
 	awsOwner := []string{"099720109477", "679593333241"}
-	if a.Spec.Instance.Image.OwnerId != nil {
-		awsOwner = []string{*a.Spec.Instance.Image.OwnerId}
+	if p.Spec.Instance.Image.OwnerId != nil {
+		awsOwner = []string{*p.Spec.Instance.Image.OwnerId}
 	}
 
 	var filterNameValue []string
 	var filterArchitectureValue []string
 
-	if a.Spec.Instance.Image.Architecture != "" {
-		switch a.Spec.Instance.Image.Architecture {
+	if p.Spec.Instance.Image.Architecture != "" {
+		switch p.Spec.Instance.Image.Architecture {
 		case "x86_64", "amd64":
 			filterArchitectureValue = []string{"x86_64", "amd64"}
 		case "arm64", "aarch64":
 			filterArchitectureValue = []string{"arm64"}
 		default:
-			return fmt.Errorf("invalid architecture %s", a.Spec.Instance.Image.Architecture)
+			return fmt.Errorf("invalid architecture %s", p.Spec.Instance.Image.Architecture)
 		}
 	}
 
@@ -93,7 +93,7 @@ func (a *Client) setAMI() error {
 		},
 	}
 
-	images, err := a.describeImages(filter)
+	images, err := p.describeImages(filter)
 	if err != nil {
 		return fmt.Errorf("failed to describe images: %w", err)
 	}
@@ -104,31 +104,31 @@ func (a *Client) setAMI() error {
 	sort.Slice(images, func(i, j int) bool {
 		return images[i].CreationDate > images[j].CreationDate
 	})
-	a.Spec.Image.ImageId = &images[0].ImageID
+	p.Spec.Image.ImageId = &images[0].ImageID
 
 	return nil
 }
 
-func (a *Client) assertImageIdSupported() error {
-	images, err := a.describeImages([]types.Filter{})
+func (p *Provider) assertImageIdSupported() error {
+	images, err := p.describeImages([]types.Filter{})
 	if err == nil {
 		for _, image := range images {
-			if image.ImageID == *a.Spec.Instance.Image.ImageId {
+			if image.ImageID == *p.Spec.Instance.Image.ImageId {
 				return nil
 			}
 		}
 	}
 
-	return errors.Join(err, fmt.Errorf("image %s is not supported in the current region %s", *a.Spec.Instance.Image.ImageId, a.Spec.Instance.Region))
+	return errors.Join(err, fmt.Errorf("image %s is not supported in the current region %s", *p.Spec.Instance.Image.ImageId, p.Spec.Instance.Region))
 }
 
-func (a *Client) describeImages(filter []types.Filter) ([]ImageInfo, error) {
+func (p *Provider) describeImages(filter []types.Filter) ([]ImageInfo, error) {
 	var images []ImageInfo
 	var nextToken *string
 
 	for {
 		// Use the DescribeImages API to get a list of supported images in the current region
-		resp, err := a.ec2.DescribeImages(context.TODO(), &ec2.DescribeImagesInput{
+		resp, err := p.ec2.DescribeImages(context.TODO(), &ec2.DescribeImagesInput{
 			NextToken: nextToken,
 			Filters:   filter,
 		})

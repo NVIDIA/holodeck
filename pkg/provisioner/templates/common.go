@@ -31,8 +31,8 @@ echo "APT::Get::AllowUnauthenticated 1;" | sudo tee /etc/apt/apt.conf.d/99allow-
 
 install_packages_with_retry() {
     local packages=("$@")
-    local max_retries=3
-    local retry_delay=3
+    local max_retries=5
+    local retry_delay=5
 
     for ((i=1; i<=$max_retries; i++)); do
         echo "Attempt $i to install packages: ${packages[@]}"

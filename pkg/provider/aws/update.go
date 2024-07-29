@@ -21,24 +21,33 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 // Update updates an AWS resources tags
-func (a *Client) UpdateResourcesTags(tags []types.Tag, resources ...string) error {
-	a.log.Wg.Add(1)
-	go a.log.Loading("Tagging AWS resources...")
+func (p *Provider) UpdateResourcesTags(tags map[string]string, resources ...string) error {
+	p.log.Wg.Add(1)
+	go p.log.Loading("Tagging AWS resources...")
+
+	var awsTags []types.Tag
+	for k, v := range tags {
+		awsTags = append(awsTags, types.Tag{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		})
+	}
 
 	createTagsIn := &ec2.CreateTagsInput{
 		Resources: resources,
-		Tags:      tags,
+		Tags:      awsTags,
 	}
 
-	_, err := a.ec2.CreateTags(context.Background(), createTagsIn)
+	_, err := p.ec2.CreateTags(context.Background(), createTagsIn)
 	if err != nil {
-		a.fail()
+		p.fail()
 		return err
 	}
-	a.done()
+	p.done()
 
 	return nil
 }

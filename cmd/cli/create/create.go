@@ -18,15 +18,17 @@ package create
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
+	"github.com/NVIDIA/holodeck/pkg/provider"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
+	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	cli "github.com/urfave/cli/v2"
 )
@@ -118,6 +120,9 @@ func (m command) build() *cli.Command {
 }
 
 func (m command) run(c *cli.Context, opts *options) error {
+	var provider provider.Provider
+	var err error
+
 	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
 		// If no username is specified, default to ubuntu
 		if opts.cfg.Spec.Auth.Username == "" {
@@ -131,14 +136,17 @@ func (m command) run(c *cli.Context, opts *options) error {
 			// SUSE: ec2-user
 			opts.cfg.Spec.Auth.Username = "ubuntu"
 		}
-		err := createAWS(m.log, opts)
+		provider, err = aws.New(m.log, opts.cfg, opts.cachefile)
 		if err != nil {
-			return fmt.Errorf("failed to create AWS infra: %v", err)
+			return err
 		}
-		// Read cache after creating the environment
-		opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
+	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderVSphere {
+		if opts.cfg.Spec.Auth.Username == "" {
+			opts.cfg.Spec.Auth.Username = "nvidia"
+		}
+		provider, err = vsphere.New(m.log, opts.cfg, opts.cachefile)
 		if err != nil {
-			return fmt.Errorf("failed to read cache file: %v", err)
+			return err
 		}
 	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
 		// If username is not provided, use the current user
@@ -147,6 +155,17 @@ func (m command) run(c *cli.Context, opts *options) error {
 		}
 		m.log.Info("SSH infrastructure \u2601")
 		opts.cache = opts.cfg
+	}
+
+	err = provider.Create()
+	if err != nil {
+		return err
+	}
+
+	// Read cache after provisioning the environment
+	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
+	if err != nil {
+		return fmt.Errorf("failed to read cache file: %v", err)
 	}
 
 	if opts.provision {
@@ -171,6 +190,13 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 				break
 			}
 		}
+	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderVSphere {
+		for _, p := range opts.cache.Status.Properties {
+			if p.Name == vsphere.IpAddress {
+				hostUrl = p.Value
+				break
+			}
+		}
 	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
 		hostUrl = opts.cfg.Spec.Instance.HostUrl
 	}
@@ -188,92 +214,13 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	// Download kubeconfig
 	if opts.cfg.Spec.Kubernetes.Install && (opts.cfg.Spec.Kubernetes.KubeConfig != "" || opts.kubeconfig != "") {
 		if opts.cfg.Spec.Kubernetes.KubernetesInstaller == "microk8s" || opts.cfg.Spec.Kubernetes.KubernetesInstaller == "kind" {
-			log.Warning("kubeconfig is not supported for %s, skipping kubeconfig download", opts.cfg.Spec.Kubernetes.KubernetesInstaller)
+			log.Warning("kubeconfig retrieval is not supported for %s, skipping kubeconfig download", opts.cfg.Spec.Kubernetes.KubernetesInstaller)
 			return nil
 		}
 
-		if err = getKubeConfig(log, opts, hostUrl); err != nil {
+		if err = utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %v", err)
 		}
-	}
-
-	return nil
-}
-
-// getKubeConfig downloads the kubeconfig file from the remote host
-func getKubeConfig(log *logger.FunLogger, opts *options, hostUrl string) error {
-	remoteFilePath := "/home/ubuntu/.kube/config"
-	if opts.cfg.Spec.Kubernetes.KubeConfig == "" {
-		// and
-		if opts.kubeconfig == "" {
-			log.Warning("kubeconfig is not set, use default kubeconfig path: %s\n", filepath.Join(opts.cachePath, "kubeconfig"))
-			// if kubeconfig is not set, use set to current directory as default
-			// first get current directory
-			pwd := os.Getenv("PWD")
-			opts.kubeconfig = filepath.Join(pwd, "kubeconfig")
-		} else {
-			opts.cfg.Spec.Kubernetes.KubeConfig = opts.kubeconfig
-		}
-	}
-
-	// Create a new ssh session
-	p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Auth.Username, hostUrl)
-	if err != nil {
-		return err
-	}
-
-	session, err := p.Client.NewSession()
-	if err != nil {
-		return fmt.Errorf("error creating session: %v", err)
-	}
-	defer session.Close()
-
-	// Set up a pipe to receive the remote file content
-	remoteFile, err := session.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("error creating remote file pipe: %v", err)
-	}
-
-	// Start the remote command to read the file content
-	err = session.Start(fmt.Sprintf("/usr/bin/cat  %s", remoteFilePath))
-	if err != nil {
-		return fmt.Errorf("error starting remote command: %v", err)
-	}
-
-	// Create a new file on the local system to save the downloaded content
-	localFile, err := os.Create(opts.kubeconfig)
-	if err != nil {
-		return fmt.Errorf("error creating local file: %v", err)
-	}
-	defer localFile.Close()
-
-	// Copy the remote file content to the local file
-	_, err = io.Copy(localFile, remoteFile)
-	if err != nil {
-		return fmt.Errorf("error copying remote file to local: %v", err)
-	}
-
-	// Wait for the remote command to finish
-	err = session.Wait()
-	if err != nil {
-		return fmt.Errorf("error waiting for remote command: %v", err)
-	}
-
-	log.Info(fmt.Sprintf("Kubeconfig saved to %s\n", opts.kubeconfig))
-
-	return nil
-}
-
-func createAWS(log *logger.FunLogger, opts *options) error {
-	log.Info("Creating AWS infrastructure \u2601")
-	client, err := aws.New(log, opts.cfg, opts.cachefile)
-	if err != nil {
-		return err
-	}
-
-	err = client.Create()
-	if err != nil {
-		return err
 	}
 
 	return nil

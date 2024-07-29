@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,8 +26,12 @@ type EnvironmentSpec struct {
 	Provider Provider `json:"provider"`
 
 	Auth `json:"auth"`
+	// Instance is required for AWS provider
 	// +optional
 	Instance `json:"instance"`
+	// VsphereVirtualMachine is required for VSphere provider
+	// +optional
+	VsphereVirtualMachine `json:"VsphereVirtualMachine"`
 
 	// +optional
 	NVIDIADriver NVIDIADriver `json:"nvidiaDriver"`
@@ -39,6 +43,19 @@ type EnvironmentSpec struct {
 	Kubernetes Kubernetes `json:"kubernetes"`
 }
 
+type Provider string
+
+const (
+	// ProviderAWS means the infra provider is AWS
+	ProviderAWS Provider = "aws"
+	// ProviderVSphere means the infra provider is VSphere
+	ProviderVSphere Provider = "vsphere"
+	// ProviderSSH means the user already has a running instance
+	// and wants to use it as the infra provider via SSH
+	ProviderSSH Provider = "ssh"
+)
+
+// Instance defines and AWS instance
 type Instance struct {
 	Type   string `json:"type"`
 	Image  Image  `json:"image"`
@@ -50,17 +67,19 @@ type Instance struct {
 	HostUrl string `json:"hostUrl"`
 }
 
-type Provider string
+// VsphereVirtualMachine defines a VSphere VM
+type VsphereVirtualMachine struct {
+	VCenterURL    string `json:"vCenterURL"`
+	Datacenter    string `json:"datacenter"`
+	DataStore     string `json:"dataStore"`
+	Cluster       string `json:"cluster"`
+	Network       string `json:"network"`
+	VMFolder      string `json:"vmFolder"`
+	ResoursePool  string `json:"resoursePool"`
+	TemplateImage string `json:"templateImage"`
+}
 
-const (
-	// ProviderAWS means the infra provider is AWS
-	ProviderAWS Provider = "aws"
-	// ProviderSSH means the user already has a running instance
-	// and wants to use it as the infra provider via SSH
-	ProviderSSH Provider = "ssh"
-)
-
-// Describes an image.
+// Describes an image or vm template.
 type Image struct {
 	// The architecture of the image.
 	Architecture string `json:"architecture"`
@@ -125,6 +144,7 @@ type Properties struct {
 }
 
 type Auth struct {
+	// KeyName for the SSH connection
 	KeyName string `json:"keyName"`
 	// Username for the SSH connection
 	Username string `json:"username"`

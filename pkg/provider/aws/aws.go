@@ -71,7 +71,7 @@ type AWS struct {
 	PublicDnsName             string
 }
 
-type Client struct {
+type Provider struct {
 	Tags      []types.Tag
 	ec2       *ec2.Client
 	r53       *route53.Client
@@ -81,7 +81,7 @@ type Client struct {
 	log *logger.FunLogger
 }
 
-func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Client, error) {
+func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Provider, error) {
 	// Create an AWS session and configure the EC2 client
 	region := env.Spec.Region
 	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
@@ -94,7 +94,7 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Cl
 
 	client := ec2.NewFromConfig(cfg)
 	r53 := route53.NewFromConfig(cfg)
-	c := &Client{
+	p := &Provider{
 		[]types.Tag{
 			{Key: aws.String("Product"), Value: aws.String("Cloud Native")},
 			{Key: aws.String("Name"), Value: aws.String(env.Name)},
@@ -108,15 +108,15 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Cl
 		log,
 	}
 
-	return c, nil
+	return p, nil
 }
 
 // Name returns the name of the builder provisioner
-func (a *Client) Name() string { return Name }
+func (p *Provider) Name() string { return Name }
 
 // unmarsalCache unmarshals the cache file into the AWS struct
-func (a *Client) unmarsalCache() (*AWS, error) {
-	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](a.cacheFile)
+func (p *Provider) unmarsalCache() (*AWS, error) {
+	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](p.cacheFile)
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +151,8 @@ func (a *Client) unmarsalCache() (*AWS, error) {
 }
 
 // dump writes the AWS struct to the cache file
-func (a *Client) dumpCache(aws *AWS) error {
-	env := a.Environment.DeepCopy()
+func (p *Provider) dumpCache(aws *AWS) error {
+	env := p.Environment.DeepCopy()
 	env.Status.Properties = []v1alpha1.Properties{
 		{Name: VpcID, Value: aws.Vpcid},
 		{Name: SubnetID, Value: aws.Subnetid},
@@ -169,13 +169,24 @@ func (a *Client) dumpCache(aws *AWS) error {
 		return err
 	}
 
-	err = os.WriteFile(a.cacheFile, data, 0644)
+	err = os.WriteFile(p.cacheFile, data, 0644)
 	if err != nil {
 		return err
 	}
 
 	// Update the environment object with the new properties
-	a.Environment = env
+
+	p.Environment = env
 
 	return nil
+}
+
+func (p *Provider) done() {
+	p.log.Done <- struct{}{}
+	p.log.Wg.Wait()
+}
+
+func (p *Provider) fail() {
+	p.log.Fail <- struct{}{}
+	p.log.Wg.Wait()
 }
