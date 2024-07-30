@@ -36,7 +36,7 @@ const (
 	ConditionTerminated  string = "Terminated"
 )
 
-func (a *Client) updateStatus(env v1alpha1.Environment, cache *AWS, condition []metav1.Condition) error {
+func (p *Provider) updateStatus(env v1alpha1.Environment, cache *AWS, condition []metav1.Condition) error {
 	// The actual 'env' object should *not* be modified when trying to
 	// check the object's status. This variable is a dummy variable used
 	// to set temporary conditions.
@@ -82,46 +82,46 @@ func (a *Client) updateStatus(env v1alpha1.Environment, cache *AWS, condition []
 		}
 		modified = true
 	} else {
-		for _, p := range envCopy.Status.Properties {
-			switch p.Name {
+		for _, properties := range envCopy.Status.Properties {
+			switch properties.Name {
 			case VpcID:
-				if p.Value != cache.Vpcid {
-					p.Value = cache.Vpcid
+				if properties.Value != cache.Vpcid {
+					properties.Value = cache.Vpcid
 					modified = true
 				}
 			case SubnetID:
-				if p.Value != cache.Subnetid {
-					p.Value = cache.Subnetid
+				if properties.Value != cache.Subnetid {
+					properties.Value = cache.Subnetid
 					modified = true
 				}
 			case InternetGwID:
-				if p.Value != cache.InternetGwid {
-					p.Value = cache.InternetGwid
+				if properties.Value != cache.InternetGwid {
+					properties.Value = cache.InternetGwid
 					modified = true
 				}
 			case InternetGatewayAttachment:
-				if p.Value != cache.InternetGatewayAttachment {
-					p.Value = cache.InternetGatewayAttachment
+				if properties.Value != cache.InternetGatewayAttachment {
+					properties.Value = cache.InternetGatewayAttachment
 					modified = true
 				}
 			case RouteTable:
-				if p.Value != cache.RouteTable {
-					p.Value = cache.RouteTable
+				if properties.Value != cache.RouteTable {
+					properties.Value = cache.RouteTable
 					modified = true
 				}
 			case SecurityGroupID:
-				if p.Value != cache.SecurityGroupid {
-					p.Value = cache.SecurityGroupid
+				if properties.Value != cache.SecurityGroupid {
+					properties.Value = cache.SecurityGroupid
 					modified = true
 				}
 			case InstanceID:
-				if p.Value != cache.Instanceid {
-					p.Value = cache.Instanceid
+				if properties.Value != cache.Instanceid {
+					properties.Value = cache.Instanceid
 					modified = true
 				}
 			case PublicDnsName:
-				if p.Value != cache.PublicDnsName {
-					p.Value = cache.PublicDnsName
+				if properties.Value != cache.PublicDnsName {
+					properties.Value = cache.PublicDnsName
 					modified = true
 				}
 			default:
@@ -138,7 +138,7 @@ func (a *Client) updateStatus(env v1alpha1.Environment, cache *AWS, condition []
 		return nil
 	}
 
-	return update(envCopy, a.cacheFile)
+	return update(envCopy, p.cacheFile)
 }
 
 // update the status of the aws object into a cache file
@@ -175,9 +175,9 @@ func update(env *v1alpha1.Environment, cachePath string) error {
 }
 
 // updateAvailableCondition is used to mark a given resource as "available".
-func (a *Client) updateAvailableCondition(env v1alpha1.Environment, cache *AWS) error {
+func (p *Provider) updateAvailableCondition(env v1alpha1.Environment, cache *AWS) error {
 	availableCondition := getAvailableConditions()
-	if err := a.updateStatus(env, cache, availableCondition); err != nil {
+	if err := p.updateStatus(env, cache, availableCondition); err != nil {
 		return err
 	}
 
@@ -185,9 +185,9 @@ func (a *Client) updateAvailableCondition(env v1alpha1.Environment, cache *AWS) 
 }
 
 // updateTerminatedCondition is used to mark a given resource as "terminated".
-func (a *Client) updateTerminatedCondition(env v1alpha1.Environment, cache *AWS) error {
+func (p *Provider) updateTerminatedCondition(env v1alpha1.Environment, cache *AWS) error {
 	terminatedCondition := getDegradedConditions("v1alpha1.Terminated", "AWS resources have been terminated")
-	if err := a.updateStatus(env, cache, terminatedCondition); err != nil {
+	if err := p.updateStatus(env, cache, terminatedCondition); err != nil {
 		return err
 	}
 
@@ -195,18 +195,18 @@ func (a *Client) updateTerminatedCondition(env v1alpha1.Environment, cache *AWS)
 }
 
 // updateProgressingCondition is used to mark a given resource as "progressing".
-func (a *Client) updateProgressingCondition(env v1alpha1.Environment, cache *AWS, reason, message string) error {
+func (p *Provider) updateProgressingCondition(env v1alpha1.Environment, cache *AWS, reason, message string) error {
 	progressingCondition := getProgressingConditions(reason, message)
-	if err := a.updateStatus(env, cache, progressingCondition); err != nil {
+	if err := p.updateStatus(env, cache, progressingCondition); err != nil {
 		return err
 	}
 	return nil
 }
 
 // updateDegradedCondition is used to mark a given resource as "degraded".
-func (a *Client) updateDegradedCondition(env v1alpha1.Environment, cache *AWS, reason, message string) error {
+func (p *Provider) updateDegradedCondition(env v1alpha1.Environment, cache *AWS, reason, message string) error {
 	degradedCondition := getDegradedConditions(reason, message)
-	if err := a.updateStatus(env, cache, degradedCondition); err != nil {
+	if err := p.updateStatus(env, cache, degradedCondition); err != nil {
 		return err
 	}
 

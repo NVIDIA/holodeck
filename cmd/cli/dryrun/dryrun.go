@@ -25,6 +25,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"golang.org/x/crypto/ssh"
 
@@ -92,6 +93,11 @@ func (m command) run(c *cli.Context, opts *options) error {
 		if err != nil {
 			return err
 		}
+	case v1alpha1.ProviderVSphere:
+		err := validateVSphere(m.log, opts)
+		if err != nil {
+			return err
+		}
 	case v1alpha1.ProviderSSH:
 		// if username is not provided, use the current user
 		if opts.cfg.Spec.Username == "" {
@@ -116,6 +122,19 @@ func (m command) run(c *cli.Context, opts *options) error {
 
 func validateAWS(log *logger.FunLogger, opts *options) error {
 	client, err := aws.New(log, opts.cfg, opts.envFile)
+	if err != nil {
+		return err
+	}
+
+	if err = client.DryRun(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateVSphere(log *logger.FunLogger, opts *options) error {
+	client, err := vsphere.New(log, opts.cfg, opts.envFile)
 	if err != nil {
 		return err
 	}

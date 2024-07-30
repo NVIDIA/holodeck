@@ -91,12 +91,12 @@ with_retry 3 10s sudo kubeadm init ${KUBEADMIN_OPTIONS}
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
-export KUBECONFIG="/home/ubuntu/.kube/config"
+export KUBECONFIG="${HOME}/.kube/config"
 
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-with_retry 3 10s kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
-with_retry 3 10s kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+with_retry 3 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+with_retry 3 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 # Make single-node cluster schedulable
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 kubectl label node --all node-role.kubernetes.io/worker=

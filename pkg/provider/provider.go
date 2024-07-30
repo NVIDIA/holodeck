@@ -21,7 +21,11 @@ type Provider interface {
 	// Name returns a friendly name for this Provider
 	Name() string
 
+	// Core methods
 	Create() error
-	Destroy() error
+	Delete() error
 	DryRun() error
+
+	// Metada methods
+	UpdateResourcesTags(tags map[string]string, resources ...string) error
 }

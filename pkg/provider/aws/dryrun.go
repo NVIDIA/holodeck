@@ -24,18 +24,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
-func (a *Client) checkInstanceTypes() error {
+func (p *Provider) checkInstanceTypes() error {
 	var nextToken *string
 
 	for {
 		// Use the DescribeInstanceTypes API to get a list of supported instance types in the current region
-		resp, err := a.ec2.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{NextToken: nextToken})
+		resp, err := p.ec2.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{NextToken: nextToken})
 		if err != nil {
 			return err
 		}
 
 		for _, it := range resp.InstanceTypes {
-			if it.InstanceType == types.InstanceType(a.Spec.Instance.Type) {
+			if it.InstanceType == types.InstanceType(p.Spec.Instance.Type) {
 				return nil
 			}
 		}
@@ -47,39 +47,29 @@ func (a *Client) checkInstanceTypes() error {
 		}
 	}
 
-	return fmt.Errorf("instance type %s is not supported in the current region %s", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
+	return fmt.Errorf("instance type %s is not supported in the current region %s", string(p.Spec.Instance.Type), p.Spec.Instance.Region)
 }
 
-func (a *Client) DryRun() error {
+func (p *Provider) DryRun() error {
 	// Check if the desired instance type is supported in the region
-	a.log.Wg.Add(1)
-	go a.log.Loading("Checking if instance type %s is supported in region %s", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
-	err := a.checkInstanceTypes()
+	p.log.Wg.Add(1)
+	go p.log.Loading("Checking if instance type %s is supported in region %s", string(p.Spec.Instance.Type), p.Spec.Instance.Region)
+	err := p.checkInstanceTypes()
 	if err != nil {
-		a.fail()
+		p.fail()
 		return err
 	}
-	a.done()
+	p.done()
 
 	// Check if the desired image is supported in the region
-	a.log.Wg.Add(1)
-	go a.log.Loading("Checking for supported image in region %s", a.Spec.Instance.Region)
-	err = a.checkImages()
+	p.log.Wg.Add(1)
+	go p.log.Loading("Checking if image %s is supported in region %s", *p.Spec.Instance.Image.ImageId, p.Spec.Instance.Region)
+	err = p.checkImages()
 	if err != nil {
-		a.fail()
-		return fmt.Errorf("failed to check image: %w", err)
+		p.fail()
+		return fmt.Errorf("failed to get images: %v", err)
 	}
-	a.done()
+	p.done()
 
 	return nil
-}
-
-func (a *Client) done() {
-	a.log.Done <- struct{}{}
-	a.log.Wg.Wait()
-}
-
-func (a *Client) fail() {
-	a.log.Fail <- struct{}{}
-	a.log.Wg.Wait()
 }
