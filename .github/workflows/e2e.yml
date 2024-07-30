@@ -39,11 +39,16 @@ jobs:
         with:
           go-version: 'stable'
           check-latest: true
-      - name: Run e2e tests
+      - name: Run e2e-aws tests
         env:
           LOG_ARTIFACTS: ${{ github.workspace }}/e2e_logs
         run: |
-          make -f tests/Makefile e2e-test
+          make -f tests/Makefile e2e-aws
+      - name: Run e2e-vsphere tests
+        env:
+          LOG_ARTIFACTS: ${{ github.workspace }}/e2e_logs
+        run: |
+          make -f tests/Makefile e2e-vsphere
       - name: Archive test logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
