@@ -50,30 +50,6 @@ func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (provider.Prov
 }
 
 func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provider, error) {
-	// Get INPUT_AWS_SSH_KEY and write it to a file
-	sshKey := os.Getenv("INPUT_AWS_SSH_KEY")
-	if sshKey == "" {
-		log.Error(fmt.Errorf("ssh key not provided"))
-		os.Exit(1)
-	}
-
-	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
-	// to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-	accessKeyID := os.Getenv("INPUT_AWS_ACCESS_KEY_ID")
-	if accessKeyID == "" {
-		log.Error(fmt.Errorf("aws access key id not provided"))
-		os.Exit(1)
-	}
-
-	secretAccessKey := os.Getenv("INPUT_AWS_SECRET_ACCESS_KEY")
-	if secretAccessKey == "" {
-		log.Error(fmt.Errorf("aws secret access key not provided"))
-		os.Exit(1)
-	}
-
-	os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
-	os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
-
 	// Create cachedir directory
 	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
 		err := os.Mkdir(cachedir, 0755)
@@ -81,12 +57,6 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provi
 			log.Error(fmt.Errorf("error creating cache directory: %s", err))
 			os.Exit(1)
 		}
-	}
-
-	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
-	if err != nil {
-		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		os.Exit(1)
 	}
 
 	// Set auth.PrivateKey
@@ -113,22 +83,6 @@ func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*vsphe
 			os.Exit(1)
 		}
 	}
-	// Get INPUT_HOLODECK_SSH_KEY and write it to a file
-	sshKey := os.Getenv("INPUT_HOLODECK_SSH_KEY")
-	if sshKey == "" {
-		log.Error(fmt.Errorf("ssh key not provided"))
-		os.Exit(1)
-	}
-	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
-	if err != nil {
-		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		os.Exit(1)
-	}
-
-	// Map INPUT_HOLODECK_VCENTER_USERNAME and INPUT_HOLODECK_VCENTER_PASSWORD
-	// to HOLODECK_VCENTER_USERNAME and HOLODECK_VCENTER_PASSWORD
-	os.Setenv("HOLODECK_VCENTER_USERNAME", os.Getenv("INPUT_HOLODECK_VCENTER_USERNAME"))
-	os.Setenv("HOLODECK_VCENTER_PASSWORD", os.Getenv("INPUT_HOLODECK_VCENTER_PASSWORD"))
 
 	// Set env name
 	setCfgName(&cfg)

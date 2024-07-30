@@ -12,7 +12,7 @@
 ## limitations under the License.
 ## 
 
-name: image
+name: Image
 
 on:
   pull_request:

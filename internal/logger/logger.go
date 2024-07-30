@@ -93,6 +93,8 @@ type FunLogger struct {
 	Fail chan struct{}
 	// Wg is a WaitGroup that can be used to wait for the loading animation to finish.
 	Wg *sync.WaitGroup
+	// IsCI is a boolean that is set to true if the logger is running in a CI environment.
+	IsCI bool
 }
 
 // Info prints an information message with no emoji.
@@ -130,7 +132,7 @@ func (l *FunLogger) Loading(format string, a ...any) {
 	defer l.Wg.Done()
 	message := fmt.Sprintf(format, a...)
 	// if running in a non-interactive terminal, don't print the loading animation
-	if !isInteractiveTerminal() && isCILogs() {
+	if !l.isInteractiveTerminal() {
 		// print the message with loading emoji
 		printMessage(yellowText, loadingEmoji, message)
 		for {
@@ -175,17 +177,15 @@ func (l *FunLogger) Loading(format string, a ...any) {
 	}
 }
 
-func isInteractiveTerminal() bool {
-	return isTerminal(os.Stdout)
+func (l *FunLogger) isInteractiveTerminal() bool {
+	return isTerminal(os.Stdout) && !l.isCILogs()
 }
 
-// isTerminal returns whether we have a terminal or not
-func isTerminal(w fdWriter) bool {
-	return isatty.IsTerminal(w.Fd())
-}
-
-func isCILogs() bool {
-	return os.Getenv("CI") == "true"
+func (l *FunLogger) isCILogs() bool {
+	if os.Getenv("CI") == "true" {
+		return true
+	}
+	return l.IsCI
 }
 
 func (l *FunLogger) Exit(code int) {
@@ -194,6 +194,11 @@ func (l *FunLogger) Exit(code int) {
 	l.Wg.Wait()
 
 	l.ExitFunc(code)
+}
+
+// isTerminal returns whether we have a terminal or not
+func isTerminal(w fdWriter) bool {
+	return isatty.IsTerminal(w.Fd())
 }
 
 type exitFunc func(int)

@@ -85,7 +85,7 @@ func (p *Provider) DryRun() error {
 	// Find the folder
 	if p.Environment.Spec.VsphereVirtualMachine.VMFolder != "" {
 		p.log.Wg.Add(1)
-		go p.log.Loading("Verifying folderv%s", p.Environment.Spec.VsphereVirtualMachine.VMFolder)
+		go p.log.Loading("Verifying folderv\t-\t%s", p.Environment.Spec.VsphereVirtualMachine.VMFolder)
 		_, err = finder.Folder(ctx, p.Environment.Spec.VsphereVirtualMachine.VMFolder)
 		if err != nil {
 			p.fail()
