@@ -77,14 +77,3 @@ func generateUID() string {
 
 	return string(b)
 }
-
-// instanceTags returns the tags to be applied to the holodeck instance
-// based on the GitHub environment variables https://docs.github.com/en/actions/learn-github-actions/variables
-func instanceTags() map[string]string {
-	return map[string]string{
-		"GITHUB_JOB":        os.Getenv("GITHUB_JOB"),
-		"GITHUB_REPOSITORY": os.Getenv("GITHUB_REPOSITORY"),
-		"GITHUB_ACTOR":      os.Getenv("GITHUB_ACTOR"),
-		"GITHUB_SHA":        os.Getenv("GITHUB_SHA"),
-	}
-}
