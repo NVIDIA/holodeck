@@ -24,10 +24,10 @@ runs:
 inputs:
   aws_access_key_id:
     description: 'AWS Access Key ID'
-    required: true
+    required: false
   aws_secret_access_key:
     description: 'AWS Secret Access Key'
-    required: true
+    required: false
   aws_ssh_key:
     description: 'AWS SSH Key'
     required: false
