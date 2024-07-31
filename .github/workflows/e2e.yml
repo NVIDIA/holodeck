@@ -15,18 +15,20 @@
 name: End-to-end Tests
 
 on:
-  workflow_run:
-    workflows: [Go]
-    types:
-      - completed
+  push:
+    tags:
+      - 'v*.*.*'  
+    branches:
+      - 'main'
+      - 'release-*'
+  pull_request:
     branches:
       - main
       - release-*
 
 jobs:
   e2e-tests:
-    runs-on: pdx01-arc-runners
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: pdx01-dind-arc-runners
     steps:
       - uses: actions/checkout@v4
         name: Check out code
@@ -34,25 +36,12 @@ jobs:
         id: vars
         run: |
           echo "COMMIT_SHORT_SHA=${GITHUB_SHA:0:8}" >> $GITHUB_ENV
-      - name: Install Go
-        uses: actions/setup-go@v5
+          echo "VSPHERE_SSH_KEY<<EOF" >> $GITHUB_ENV
+          echo "${VSPHERE_SSH_KEY}" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          echo "HOLODECK_VCENTER_USERNAME=${HOLODECK_VCENTER_USERNAME}" >> $GITHUB_ENV
+          echo "HOLODECK_VCENTER_PASSWORD=${HOLODECK_VCENTER_PASSWORD}" >> $GITHUB_ENV
+      - name: Set up Holodeck
+        uses: NVIDIA/holodeck@main
         with:
-          go-version: 'stable'
-          check-latest: true
-      - name: Run e2e-aws tests
-        env:
-          LOG_ARTIFACTS: ${{ github.workspace }}/e2e_logs
-        run: |
-          make -f tests/Makefile e2e-aws
-      - name: Run e2e-vsphere tests
-        env:
-          LOG_ARTIFACTS: ${{ github.workspace }}/e2e_logs
-        run: |
-          make -f tests/Makefile e2e-vsphere
-      - name: Archive test logs
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-test-logs
-          path: ./e2e_logs/
-          retention-days: 15
+          holodeck_config: "tests/test_vsphere.yml"
