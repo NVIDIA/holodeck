@@ -30,8 +30,6 @@ const (
 	cacheFile  = "/github/workspace/.cache/holodeck.yaml"
 	kubeconfig = "/github/workspace/kubeconfig"
 	sshKeyFile = "/github/workspace/.cache/key.pem"
-	// Default EC2 instance UserName for ubuntu AMI's
-	username = "ubuntu"
 )
 
 func Run(log *logger.FunLogger) error {
@@ -43,6 +41,7 @@ func Run(log *logger.FunLogger) error {
 		}
 	} else {
 		if err := entrypoint(log); err != nil {
+			log.Error(err)
 			if err := cleanup(log); err != nil {
 				return err
 			}
