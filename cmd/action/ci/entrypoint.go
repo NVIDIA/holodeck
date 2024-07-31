@@ -24,6 +24,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 )
@@ -64,30 +65,28 @@ func entrypoint(log *logger.FunLogger) error {
 		return fmt.Errorf("failed to read cache file: %v", err)
 	}
 
+	// Get the host url
 	var hostUrl string
-	var instanceID string
-	var vpcID string
-	for _, p := range cache.Status.Properties {
-		switch p.Name {
-		case aws.PublicDnsName:
-			hostUrl = p.Value
-		case aws.InstanceID:
-			instanceID = p.Value
-		case aws.VpcID:
-			vpcID = p.Value
-		default:
-			continue
+	var username string
+	if cfg.Spec.Provider == v1alpha1.ProviderAWS {
+		username = "ubuntu"
+		for _, p := range cache.Status.Properties {
+			if p.Name == aws.PublicDnsName {
+				hostUrl = p.Value
+				break
+			}
+		}
+	} else if cfg.Spec.Provider == v1alpha1.ProviderVSphere {
+		username = "nvidia"
+		for _, p := range cache.Status.Properties {
+			if p.Name == vsphere.IpAddress {
+				hostUrl = p.Value
+				break
+			}
 		}
 	}
 
-	// Tag the instance with info the GitHub event
-	resources := []string{instanceID, vpcID}
-	tags := instanceTags()
-	err = provider.UpdateResourcesTags(tags, resources...)
-	if err != nil {
-		return err
-	}
-
+	// Run the provisioner
 	p, err := provisioner.New(log, sshKeyFile, username, hostUrl)
 	if err != nil {
 		return err

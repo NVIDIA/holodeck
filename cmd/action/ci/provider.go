@@ -74,7 +74,7 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provi
 
 	// Set auth.PrivateKey
 	cfg.Spec.Auth.PrivateKey = sshKeyFile
-	cfg.Spec.Auth.Username = username
+	cfg.Spec.Auth.Username = "ubuntu"
 
 	// Set env name
 	setCfgName(&cfg)
@@ -112,6 +112,7 @@ func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*vsphe
 
 	// Set auth.PrivateKey
 	cfg.Spec.Auth.PrivateKey = sshKeyFile
+	cfg.Spec.Auth.Username = "nvidia"
 
 	// Set env name
 	setCfgName(&cfg)
