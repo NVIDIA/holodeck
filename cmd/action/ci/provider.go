@@ -59,9 +59,22 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provi
 		}
 	}
 
+	// Get AWS_SSH_KEY and write it to a file
+	sshKey := os.Getenv("AWS_SSH_KEY")
+	if sshKey == "" {
+		log.Error(fmt.Errorf("ssh key not provided"))
+		os.Exit(1)
+	}
+
+	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
+	if err != nil {
+		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
+		os.Exit(1)
+	}
+
 	// Set auth.PrivateKey
 	cfg.Spec.Auth.PrivateKey = sshKeyFile
-	cfg.Spec.Auth.Username = username
+	cfg.Spec.Auth.Username = "ubuntu"
 
 	// Set env name
 	setCfgName(&cfg)
@@ -83,6 +96,23 @@ func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*vsphe
 			os.Exit(1)
 		}
 	}
+
+	// Get VSPHERE_SSH_KEY and write it to a file
+	sshKey := os.Getenv("VSPHERE_SSH_KEY")
+	if sshKey == "" {
+		log.Error(fmt.Errorf("ssh key not provided"))
+		os.Exit(1)
+	}
+
+	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
+	if err != nil {
+		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
+		os.Exit(1)
+	}
+
+	// Set auth.PrivateKey
+	cfg.Spec.Auth.PrivateKey = sshKeyFile
+	cfg.Spec.Auth.Username = "nvidia"
 
 	// Set env name
 	setCfgName(&cfg)

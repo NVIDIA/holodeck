@@ -30,8 +30,6 @@ const (
 	cacheFile  = "/github/workspace/.cache/holodeck.yaml"
 	kubeconfig = "/github/workspace/kubeconfig"
 	sshKeyFile = "/github/workspace/.cache/key.pem"
-	// Default EC2 instance UserName for ubuntu AMI's
-	username = "ubuntu"
 )
 
 func Run(log *logger.FunLogger) error {
@@ -43,6 +41,7 @@ func Run(log *logger.FunLogger) error {
 		}
 	} else {
 		if err := entrypoint(log); err != nil {
+			log.Error(err)
 			if err := cleanup(log); err != nil {
 				return err
 			}
@@ -77,15 +76,4 @@ func generateUID() string {
 	}
 
 	return string(b)
-}
-
-// instanceTags returns the tags to be applied to the holodeck instance
-// based on the GitHub environment variables https://docs.github.com/en/actions/learn-github-actions/variables
-func instanceTags() map[string]string {
-	return map[string]string{
-		"GITHUB_JOB":        os.Getenv("GITHUB_JOB"),
-		"GITHUB_REPOSITORY": os.Getenv("GITHUB_REPOSITORY"),
-		"GITHUB_ACTOR":      os.Getenv("GITHUB_ACTOR"),
-		"GITHUB_SHA":        os.Getenv("GITHUB_SHA"),
-	}
 }
