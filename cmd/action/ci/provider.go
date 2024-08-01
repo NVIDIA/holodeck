@@ -27,7 +27,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 )
 
-func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (provider.Provider, error) {
+func newProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (provider.Provider, error) {
 	var provider provider.Provider
 	var err error
 
@@ -49,7 +49,7 @@ func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (provider.Prov
 	return provider, nil
 }
 
-func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provider, error) {
+func newAwsProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*aws.Provider, error) {
 	// Create cachedir directory
 	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
 		err := os.Mkdir(cachedir, 0755)
@@ -77,9 +77,9 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provi
 	cfg.Spec.Auth.Username = "ubuntu"
 
 	// Set env name
-	setCfgName(&cfg)
+	setCfgName(cfg)
 
-	a, err := aws.New(log, cfg, cacheFile)
+	a, err := aws.New(log, *cfg, cacheFile)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provi
 	return a, nil
 }
 
-func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*vsphere.Provider, error) {
+func newVsphereProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*vsphere.Provider, error) {
 	// Create cachedir directory
 	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
 		err := os.Mkdir(cachedir, 0755)
@@ -115,9 +115,9 @@ func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*vsphe
 	cfg.Spec.Auth.Username = "nvidia"
 
 	// Set env name
-	setCfgName(&cfg)
+	setCfgName(cfg)
 
-	v, err := vsphere.New(log, cfg, cacheFile)
+	v, err := vsphere.New(log, *cfg, cacheFile)
 	if err != nil {
 		return nil, err
 	}
