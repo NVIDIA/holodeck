@@ -35,6 +35,12 @@ const (
 func Run(log *logger.FunLogger) error {
 	log.Info("Holodeck Settting up test environment")
 
+	// Get GitHub Actions INPUT_* vars
+	err := readInputs()
+	if err != nil {
+		return err
+	}
+
 	if _, err := os.Stat(cachedir); err == nil {
 		if err := cleanup(log); err != nil {
 			return err
@@ -50,6 +56,38 @@ func Run(log *logger.FunLogger) error {
 	}
 
 	log.Check("Holodeck completed successfully")
+
+	return nil
+}
+
+// readInputs reads GitHub Actions Inputs
+// INPUT_* vars are optional since v0.2 of the action
+// Users can set the variables on self hosted runners.
+func readInputs() error {
+	// Get INPUT_AWS_SSH_KEY to set AWS_SSH_KEY
+	sshKey := os.Getenv("INPUT_AWS_SSH_KEY")
+	if sshKey != "" {
+		err := os.Setenv("AWS_SSH_KEY", sshKey)
+		if err != nil {
+			return fmt.Errorf("failed to set AWS_SSH_KEY: %v", err)
+		}
+	}
+	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
+	// to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+	accessKeyID := os.Getenv("INPUT_AWS_ACCESS_KEY_ID")
+	if accessKeyID != "" {
+		err := os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
+		if err != nil {
+			return fmt.Errorf("failed to set AWS_ACCESS_KEY_ID: %v", err)
+		}
+	}
+	secretAccessKey := os.Getenv("INPUT_AWS_SECRET_ACCESS_KEY")
+	if secretAccessKey != "" {
+		err := os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
+		if err != nil {
+			return fmt.Errorf("failed to set AWS_SECRET_ACCESS_KEY: %v", err)
+		}
+	}
 
 	return nil
 }
