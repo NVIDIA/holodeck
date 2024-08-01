@@ -55,7 +55,7 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provi
 		err := os.Mkdir(cachedir, 0755)
 		if err != nil {
 			log.Error(fmt.Errorf("error creating cache directory: %s", err))
-			os.Exit(1)
+			return nil, err
 		}
 	}
 
@@ -63,13 +63,13 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*aws.Provi
 	sshKey := os.Getenv("AWS_SSH_KEY")
 	if sshKey == "" {
 		log.Error(fmt.Errorf("ssh key not provided"))
-		os.Exit(1)
+		return nil, fmt.Errorf("ssh key not provided")
 	}
 
 	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
 	if err != nil {
 		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		os.Exit(1)
+		return nil, err
 	}
 
 	// Set auth.PrivateKey
@@ -93,7 +93,7 @@ func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*vsphe
 		err := os.Mkdir(cachedir, 0755)
 		if err != nil {
 			log.Error(fmt.Errorf("error creating cache directory: %s", err))
-			os.Exit(1)
+			return nil, err
 		}
 	}
 
@@ -101,13 +101,13 @@ func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment) (*vsphe
 	sshKey := os.Getenv("VSPHERE_SSH_KEY")
 	if sshKey == "" {
 		log.Error(fmt.Errorf("ssh key not provided"))
-		os.Exit(1)
+		return nil, fmt.Errorf("ssh key not provided")
 	}
 
 	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
 	if err != nil {
 		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		os.Exit(1)
+		return nil, err
 	}
 
 	// Set auth.PrivateKey
