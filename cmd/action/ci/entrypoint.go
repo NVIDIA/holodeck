@@ -52,34 +52,6 @@ func entrypoint(log *logger.FunLogger) error {
 	// Set default values for the environment
 	setCfgName(&cfg)
 
-	// Read Inputs
-	// INPUT_* vars are optional since v0.2 of the action
-	// Users can set the variables on self hosted runners.
-	// Get INPUT_AWS_SSH_KEY to set AWS_SSH_KEY
-	sshKey := os.Getenv("INPUT_AWS_SSH_KEY")
-	if sshKey != "" {
-		err := os.Setenv("AWS_SSH_KEY", sshKey)
-		if err != nil {
-			return fmt.Errorf("failed to set AWS_SSH_KEY: %v", err)
-		}
-	}
-	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
-	// to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-	accessKeyID := os.Getenv("INPUT_AWS_ACCESS_KEY_ID")
-	if accessKeyID != "" {
-		err := os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
-		if err != nil {
-			return fmt.Errorf("failed to set AWS_ACCESS_KEY_ID: %v", err)
-		}
-	}
-	secretAccessKey := os.Getenv("INPUT_AWS_SECRET_ACCESS_KEY")
-	if secretAccessKey != "" {
-		err := os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
-		if err != nil {
-			return fmt.Errorf("failed to set AWS_SECRET_ACCESS_KEY: %v", err)
-		}
-	}
-
 	provider, err := newProvider(log, &cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create provider: %v", err)
