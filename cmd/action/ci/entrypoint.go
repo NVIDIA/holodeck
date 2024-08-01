@@ -49,6 +49,9 @@ func entrypoint(log *logger.FunLogger) error {
 		cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
 	}
 
+	// Set default values for the environment
+	setCfgName(&cfg)
+
 	// Read Inputs
 	// INPUT_* vars are optional since v0.2 of the action
 	// Users can set the variables on self hosted runners.
@@ -77,7 +80,7 @@ func entrypoint(log *logger.FunLogger) error {
 		}
 	}
 
-	provider, err := newProvider(log, cfg)
+	provider, err := newProvider(log, &cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create provider: %v", err)
 	}

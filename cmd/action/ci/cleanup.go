@@ -50,7 +50,7 @@ func cleanup(log *logger.FunLogger) error {
 		os.Exit(1)
 	}
 
-	provider, err := newProvider(log, cfg)
+	provider, err := newProvider(log, &cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create provider: %v", err)
 	}
