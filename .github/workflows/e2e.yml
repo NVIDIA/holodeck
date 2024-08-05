@@ -35,6 +35,8 @@ jobs:
       with:
         go-version: 'stable'
         check-latest: true
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y make
     - name: Run e2e-aws tests
       run: make -f tests/Makefile e2e-aws
     - name: Run e2e-vsphere tests
