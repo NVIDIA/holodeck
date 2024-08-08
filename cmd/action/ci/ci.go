@@ -34,8 +34,6 @@ const (
 )
 
 func Run(log *logger.FunLogger) error {
-	log.Info("Holodeck Settting up test environment")
-
 	// Get GitHub Actions INPUT_* vars
 	err := readInputs()
 	if err != nil {

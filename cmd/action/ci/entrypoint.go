@@ -70,9 +70,12 @@ func entrypoint(log *logger.FunLogger) error {
 
 	// Get the host url
 	var hostUrl string
-	var username string
 	if cfg.Spec.Provider == v1alpha1.ProviderAWS {
-		username = "ubuntu"
+		if err := getSSHKeyFile(log, "AWS_SSH_KEY"); err != nil {
+			return err
+		}
+		cfg.Spec.Auth.PrivateKey = sshKeyFile
+		cfg.Spec.Auth.Username = "ubuntu"
 		for _, p := range cache.Status.Properties {
 			if p.Name == aws.PublicDnsName {
 				hostUrl = p.Value
@@ -80,7 +83,11 @@ func entrypoint(log *logger.FunLogger) error {
 			}
 		}
 	} else if cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		username = "nvidia"
+		if err := getSSHKeyFile(log, "VSPHERE_SSH_KEY"); err != nil {
+			return err
+		}
+		cfg.Spec.Auth.PrivateKey = sshKeyFile
+		cfg.Spec.Auth.Username = "nvidia"
 		for _, p := range cache.Status.Properties {
 			if p.Name == vsphere.IpAddress {
 				hostUrl = p.Value
@@ -90,7 +97,7 @@ func entrypoint(log *logger.FunLogger) error {
 	}
 
 	// Run the provisioner
-	p, err := provisioner.New(log, sshKeyFile, username, hostUrl)
+	p, err := provisioner.New(log, sshKeyFile, cfg.Spec.Auth.Username, hostUrl)
 	if err != nil {
 		return err
 	}
