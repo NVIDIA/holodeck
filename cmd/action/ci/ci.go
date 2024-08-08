@@ -30,7 +30,7 @@ const (
 	cacheFile          = "/github/workspace/.cache/holodeck.yaml"
 	kubeconfig         = "/github/workspace/kubeconfig"
 	sshKeyFile         = "/github/workspace/.cache/key"
-	holodeckSSHKeyFile = "/github/workspace/aws_ssh_key"
+	holodeckSSHKeyFile = "/github/workspace/holodeck_ssh_key"
 )
 
 func Run(log *logger.FunLogger) error {
