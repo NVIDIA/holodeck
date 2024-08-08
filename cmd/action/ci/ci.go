@@ -26,15 +26,14 @@ import (
 )
 
 const (
-	cachedir   = "/github/workspace/.cache"
-	cacheFile  = "/github/workspace/.cache/holodeck.yaml"
-	kubeconfig = "/github/workspace/kubeconfig"
-	sshKeyFile = "/github/workspace/.cache/key.pem"
+	cachedir           = "/github/workspace/.cache"
+	cacheFile          = "/github/workspace/.cache/holodeck.yaml"
+	kubeconfig         = "/github/workspace/kubeconfig"
+	sshKeyFile         = "/github/workspace/.cache/key"
+	holodeckSSHKeyFile = "/github/workspace/holodeck_ssh_key"
 )
 
 func Run(log *logger.FunLogger) error {
-	log.Info("Holodeck Settting up test environment")
-
 	// Get GitHub Actions INPUT_* vars
 	err := readInputs()
 	if err != nil {
@@ -65,9 +64,9 @@ func Run(log *logger.FunLogger) error {
 // Users can set the variables on self hosted runners.
 func readInputs() error {
 	// Get INPUT_AWS_SSH_KEY to set AWS_SSH_KEY
-	sshKey := os.Getenv("INPUT_AWS_SSH_KEY")
-	if sshKey != "" {
-		err := os.Setenv("AWS_SSH_KEY", sshKey)
+	awsSshKey := os.Getenv("INPUT_AWS_SSH_KEY")
+	if awsSshKey != "" {
+		err := os.Setenv("AWS_SSH_KEY", awsSshKey)
 		if err != nil {
 			return fmt.Errorf("failed to set AWS_SSH_KEY: %v", err)
 		}
@@ -86,6 +85,31 @@ func readInputs() error {
 		err := os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
 		if err != nil {
 			return fmt.Errorf("failed to set AWS_SECRET_ACCESS_KEY: %v", err)
+		}
+	}
+
+	// For vSphere
+	vsphereSshKey := os.Getenv("INPUT_VSPHERE_SSH_KEY")
+	if vsphereSshKey != "" {
+		err := os.Setenv("VSPHERE_SSH_KEY", vsphereSshKey)
+		if err != nil {
+			return fmt.Errorf("failed to set VSPHERE_SSH_KEY: %v", err)
+		}
+	}
+	// Map INPUT_VSPHERE_USERNAME and INPUT_VSPHERE_PASSWORD
+	// to VSPHERE_USERNAME and VSPHERE_PASSWORD
+	vsphereUsername := os.Getenv("INPUT_VSPHERE_USERNAME")
+	if vsphereUsername != "" {
+		err := os.Setenv("VSPHERE_USERNAME", vsphereUsername)
+		if err != nil {
+			return fmt.Errorf("failed to set VSPHERE_USERNAME: %v", err)
+		}
+	}
+	vspherePassword := os.Getenv("INPUT_VSPHERE_PASSWORD")
+	if vspherePassword != "" {
+		err := os.Setenv("VSPHERE_PASSWORD", vspherePassword)
+		if err != nil {
+			return fmt.Errorf("failed to set VSPHERE_PASSWORD: %v", err)
 		}
 	}
 

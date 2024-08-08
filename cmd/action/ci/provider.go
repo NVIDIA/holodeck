@@ -59,23 +59,6 @@ func newAwsProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*aws.Prov
 		}
 	}
 
-	// Get AWS_SSH_KEY and write it to a file
-	sshKey := os.Getenv("AWS_SSH_KEY")
-	if sshKey == "" {
-		log.Error(fmt.Errorf("ssh key not provided"))
-		return nil, fmt.Errorf("ssh key not provided")
-	}
-
-	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
-	if err != nil {
-		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		return nil, err
-	}
-
-	// Set auth.PrivateKey
-	cfg.Spec.Auth.PrivateKey = sshKeyFile
-	cfg.Spec.Auth.Username = "ubuntu"
-
 	// Set env name
 	setCfgName(cfg)
 
@@ -97,23 +80,6 @@ func newVsphereProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*vsph
 		}
 	}
 
-	// Get VSPHERE_SSH_KEY and write it to a file
-	sshKey := os.Getenv("VSPHERE_SSH_KEY")
-	if sshKey == "" {
-		log.Error(fmt.Errorf("ssh key not provided"))
-		return nil, fmt.Errorf("ssh key not provided")
-	}
-
-	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
-	if err != nil {
-		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		return nil, err
-	}
-
-	// Set auth.PrivateKey
-	cfg.Spec.Auth.PrivateKey = sshKeyFile
-	cfg.Spec.Auth.Username = "nvidia"
-
 	// Set env name
 	setCfgName(cfg)
 
@@ -123,4 +89,32 @@ func newVsphereProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*vsph
 	}
 
 	return v, nil
+}
+
+// look for file holodeck_ssh_key in GITHUB_WORKSPACE/holodeck_ssh_key
+// if file not found, look for env var envKey
+// if env var not found, return error
+func getSSHKeyFile(log *logger.FunLogger, envKey string) error {
+	if _, err := os.Stat(holodeckSSHKeyFile); os.IsNotExist(err) {
+		// look for env var set KEY
+		envSshKey := os.Getenv(envKey)
+		if envSshKey == "" {
+			log.Error(fmt.Errorf("ssh key not provided"))
+			return fmt.Errorf("ssh key not provided")
+		}
+		err := os.WriteFile(sshKeyFile, []byte(envSshKey), 0600)
+		if err != nil {
+			log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
+			return err
+		}
+	} else {
+		// copy file to sshKeyFile
+		err := os.Rename(holodeckSSHKeyFile, sshKeyFile)
+		if err != nil {
+			log.Error(fmt.Errorf("error copying ssh key file: %s", err))
+			return err
+		}
+	}
+
+	return nil
 }
