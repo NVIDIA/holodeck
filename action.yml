@@ -31,6 +31,15 @@ inputs:
   aws_ssh_key:
     description: 'AWS SSH Key'
     required: false
+  vsphere_ssh_key:
+    description: 'vSphere SSH Key'
+    required: false
+  vsphere_username:
+    description: 'vSphere Username'
+    required: false
+  vsphere_password:
+    description: 'vSphere Password'
+    required: false
   holodeck_config:
     description: 'Holodeck configuration file'
     required: true

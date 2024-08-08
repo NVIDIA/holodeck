@@ -89,6 +89,31 @@ func readInputs() error {
 		}
 	}
 
+	// For vSphere
+	vsphereSshKey := os.Getenv("INPUT_VSPHERE_SSH_KEY")
+	if vsphereSshKey != "" {
+		err := os.Setenv("VSPHERE_SSH_KEY", vsphereSshKey)
+		if err != nil {
+			return fmt.Errorf("failed to set VSPHERE_SSH_KEY: %v", err)
+		}
+	}
+	// Map INPUT_VSPHERE_USERNAME and INPUT_VSPHERE_PASSWORD
+	// to VSPHERE_USERNAME and VSPHERE_PASSWORD
+	vsphereUsername := os.Getenv("INPUT_VSPHERE_USERNAME")
+	if vsphereUsername != "" {
+		err := os.Setenv("VSPHERE_USERNAME", vsphereUsername)
+		if err != nil {
+			return fmt.Errorf("failed to set VSPHERE_USERNAME: %v", err)
+		}
+	}
+	vspherePassword := os.Getenv("INPUT_VSPHERE_PASSWORD")
+	if vspherePassword != "" {
+		err := os.Setenv("VSPHERE_PASSWORD", vspherePassword)
+		if err != nil {
+			return fmt.Errorf("failed to set VSPHERE_PASSWORD: %v", err)
+		}
+	}
+
 	return nil
 }
 
