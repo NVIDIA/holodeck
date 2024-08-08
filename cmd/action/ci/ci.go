@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	cachedir   = "/github/workspace/.cache"
-	cacheFile  = "/github/workspace/.cache/holodeck.yaml"
-	kubeconfig = "/github/workspace/kubeconfig"
-	sshKeyFile = "/github/workspace/.cache/key.pem"
+	cachedir           = "/github/workspace/.cache"
+	cacheFile          = "/github/workspace/.cache/holodeck.yaml"
+	kubeconfig         = "/github/workspace/kubeconfig"
+	sshKeyFile         = "/github/workspace/.cache/key"
+	holodeckSSHKeyFile = "/github/workspace/aws_ssh_key"
 )
 
 func Run(log *logger.FunLogger) error {
@@ -65,9 +66,9 @@ func Run(log *logger.FunLogger) error {
 // Users can set the variables on self hosted runners.
 func readInputs() error {
 	// Get INPUT_AWS_SSH_KEY to set AWS_SSH_KEY
-	sshKey := os.Getenv("INPUT_AWS_SSH_KEY")
-	if sshKey != "" {
-		err := os.Setenv("AWS_SSH_KEY", sshKey)
+	awsSshKey := os.Getenv("INPUT_AWS_SSH_KEY")
+	if awsSshKey != "" {
+		err := os.Setenv("AWS_SSH_KEY", awsSshKey)
 		if err != nil {
 			return fmt.Errorf("failed to set AWS_SSH_KEY: %v", err)
 		}
