@@ -59,14 +59,6 @@ func newAwsProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*aws.Prov
 		}
 	}
 
-	if err := getSSHKeyFile(log, "AWS_SSH_KEY"); err != nil {
-		return nil, err
-	}
-
-	// Set auth.PrivateKey
-	cfg.Spec.Auth.PrivateKey = sshKeyFile
-	cfg.Spec.Auth.Username = "ubuntu"
-
 	// Set env name
 	setCfgName(cfg)
 
@@ -87,14 +79,6 @@ func newVsphereProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*vsph
 			return nil, err
 		}
 	}
-
-	if err := getSSHKeyFile(log, "VSPHERE_SSH_KEY"); err != nil {
-		return nil, err
-	}
-
-	// Set auth.PrivateKey
-	cfg.Spec.Auth.PrivateKey = sshKeyFile
-	cfg.Spec.Auth.Username = "nvidia"
 
 	// Set env name
 	setCfgName(cfg)
