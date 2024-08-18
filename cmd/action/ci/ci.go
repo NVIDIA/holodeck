@@ -97,19 +97,19 @@ func readInputs() error {
 		}
 	}
 	// Map INPUT_VSPHERE_USERNAME and INPUT_VSPHERE_PASSWORD
-	// to VSPHERE_USERNAME and VSPHERE_PASSWORD
+	// to HOLODECK_VCENTER_USERNAME and HOLODECK_VCENTER_PASSWORD
 	vsphereUsername := os.Getenv("INPUT_VSPHERE_USERNAME")
 	if vsphereUsername != "" {
-		err := os.Setenv("VSPHERE_USERNAME", vsphereUsername)
+		err := os.Setenv("HOLODECK_VCENTER_USERNAME", vsphereUsername)
 		if err != nil {
-			return fmt.Errorf("failed to set VSPHERE_USERNAME: %v", err)
+			return fmt.Errorf("failed to set HOLODECK_VCENTER_USERNAME: %v", err)
 		}
 	}
 	vspherePassword := os.Getenv("INPUT_VSPHERE_PASSWORD")
 	if vspherePassword != "" {
-		err := os.Setenv("VSPHERE_PASSWORD", vspherePassword)
+		err := os.Setenv("HOLODECK_VCENTER_PASSWORD", vspherePassword)
 		if err != nil {
-			return fmt.Errorf("failed to set VSPHERE_PASSWORD: %v", err)
+			return fmt.Errorf("failed to set HOLODECK_VCENTER_PASSWORD: %v", err)
 		}
 	}
 
