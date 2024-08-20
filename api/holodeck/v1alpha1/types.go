@@ -53,6 +53,12 @@ const (
 	// ProviderSSH means the user already has a running instance
 	// and wants to use it as the infra provider via SSH
 	ProviderSSH Provider = "ssh"
+
+	// Possible values for the Conditions field
+	ConditionProgressing string = "Progressing"
+	ConditionDegraded    string = "Degraded"
+	ConditionAvailable   string = "Available"
+	ConditionTerminated  string = "Terminated"
 )
 
 // Instance defines and AWS instance

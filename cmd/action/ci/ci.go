@@ -41,8 +41,14 @@ func Run(log *logger.FunLogger) error {
 	}
 
 	if _, err := os.Stat(cachedir); err == nil {
-		if err := cleanup(log); err != nil {
-			return err
+		// Check if cache condition is Terminated
+		if ok, err := isTerminated(log); ok {
+			log.Info("Environment condition is Terminated no need to run Holodeck")
+			return nil
+		} else if err != nil {
+			if err := cleanup(log); err != nil {
+				return err
+			}
 		}
 	} else {
 		if err := entrypoint(log); err != nil {

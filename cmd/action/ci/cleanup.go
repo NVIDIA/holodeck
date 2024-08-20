@@ -74,11 +74,38 @@ func cleanup(log *logger.FunLogger) error {
 		}
 	}
 
-	if err := os.RemoveAll(cachedir); err != nil {
-		log.Error(fmt.Errorf("error deleting cache directory: %s", err))
-	}
-
 	log.Info("Successfully deleted environment %s\n", cfg.Name)
 
 	return nil
+}
+
+func isTerminated(log *logger.FunLogger) (bool, error) {
+	log.Info("Checking for Terminated condition")
+
+	// Read the config file
+	configFile := os.Getenv("INPUT_HOLODECK_CONFIG")
+	if configFile == "" {
+		log.Error(fmt.Errorf("config file not provided"))
+		os.Exit(1)
+	}
+	configFile = "/github/workspace/" + configFile
+	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
+	if err != nil {
+		return false, fmt.Errorf("error reading config file: %s", err)
+	}
+
+	// Set env name
+	setCfgName(&cfg)
+
+	provider, err := newProvider(log, &cfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to create provider: %v", err)
+	}
+
+	status, err := provider.Status()
+	if err != nil {
+		return false, fmt.Errorf("failed to get status: %v", err)
+	}
+
+	return status == "Terminated", nil
 }
