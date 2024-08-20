@@ -29,6 +29,8 @@ type Provider interface {
 	Delete() error
 	// DryRun preflight checks
 	DryRun() error
+	// Status returns the status of the resources in the provider
+	Status() (string, error)
 
 	// Metada methods
 	UpdateResourcesTags(tags map[string]string, resources ...string) error
