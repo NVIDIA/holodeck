@@ -30,7 +30,6 @@ import (
 // VPC, Subnet, Internet Gateway, Route Table, Security Group
 func (p *Provider) Create() error {
 	cache := new(AWS)
-	defer p.dumpCache(cache)
 
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources")
 
@@ -38,26 +37,31 @@ func (p *Provider) Create() error {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC")
 		return fmt.Errorf("error creating VPC: %v", err)
 	}
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "VPC created")
 
 	if err := p.createSubnet(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet")
 		return fmt.Errorf("error creating subnet: %v", err)
 	}
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created")
 
 	if err := p.createInternetGateway(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway")
 		return fmt.Errorf("error creating Internet Gateway: %v", err)
 	}
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created")
 
 	if err := p.createRouteTable(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table")
 		return fmt.Errorf("error creating route table: %v", err)
 	}
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created")
 
 	if err := p.createSecurityGroup(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group")
 		return fmt.Errorf("error creating security group: %v", err)
 	}
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created")
 
 	if err := p.createEC2Instance(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance")
