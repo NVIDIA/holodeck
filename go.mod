@@ -15,7 +15,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/onsi/ginkgo/v2 v2.20.0
 	github.com/onsi/gomega v1.34.1
-	github.com/urfave/cli/v2 v2.27.3
+	github.com/urfave/cli/v2 v2.27.4
 	github.com/vmware/govmomi v0.39.0
 	golang.org/x/crypto v0.26.0
 	k8s.io/apimachinery v0.31.0
