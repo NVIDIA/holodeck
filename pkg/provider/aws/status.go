@@ -43,6 +43,10 @@ func (p *Provider) Status() (string, error) {
 		return "", err
 	}
 
+	if len(env.Status.Conditions) == 0 {
+		return "", nil
+	}
+
 	return env.Status.Conditions[0].Type, nil
 }
 
