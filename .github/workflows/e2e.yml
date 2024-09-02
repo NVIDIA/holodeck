@@ -28,19 +28,27 @@ jobs:
     runs-on: pdx01-arc-runners
     if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     steps:
-    - uses: actions/checkout@v4
-      name: Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Install Go
       uses: actions/setup-go@v5
       with:
         go-version: 'stable'
         check-latest: true
+
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y make
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make
+        make ginkgo
+
     - name: Run e2e-aws tests
-      run: make -f tests/Makefile e2e-aws
+      run: ./hack/e2e_tests.sh aws
+
     - name: Run e2e-vsphere tests
-      run: make -f tests/Makefile e2e-vsphere
+      run: ./hack/e2e_tests.sh vsphere
+
     - name: Archive test logs
       if: ${{ failure() }}
       uses: actions/upload-artifact@v4

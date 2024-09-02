@@ -17,6 +17,7 @@ GO_SRC := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 BINARY_NAME ?= holodeck
 
 VERSION := 0.0.1
+GINKGO_VERSION ?= $(shell $(GO_CMD) list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2)
 
 IMAGE_REGISTRY ?= ghcr.io/arangogutierrez
 IMAGE_TAG_NAME ?= $(VERSION)
@@ -67,3 +68,8 @@ controller-gen: ## Download controller-gen locally if necessary.
 .PHONY: manifests
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+
+GINKGO = $(PROJECT_DIR)/bin/ginkgo
+.PHONY: ginkgo
+ginkgo: ## Download ginkgo locally if necessary.
+	@GOBIN=$(PROJECT_DIR)/bin GO111MODULE=on $(GO_CMD) install github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)

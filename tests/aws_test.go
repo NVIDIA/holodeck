@@ -52,13 +52,13 @@ var _ = Describe("AWS", func() {
 		BeforeAll(func(ctx context.Context) {
 			// Read the config file
 			var err error
-			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](*EnvFile)
+			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](EnvFile)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Set unique name for the environment
 			opts.cfg.Name = opts.cfg.Name + "-" + common.GenerateUID()
 			// set cache path
-			opts.cachePath = *LogArtifactDir
+			opts.cachePath = LogArtifactDir
 			// set cache file
 			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
 			// Create cachedir directory

@@ -29,7 +29,6 @@ import (
 // Create creates a VM on VSphere
 func (p *Provider) Create() error {
 	cache := new(Vsphere)
-	defer p.dumpCache(cache)
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -54,6 +53,7 @@ func (p *Provider) Create() error {
 	}
 	finder.SetDatacenter(dc)
 	cache.Datacenter = dc.Name()
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Datacenter Found")
 
 	// Find the cluster
 	datastore, err := finder.Datastore(ctx, p.Environment.Spec.VsphereVirtualMachine.DataStore)
@@ -62,6 +62,7 @@ func (p *Provider) Create() error {
 		return fmt.Errorf("error finding datastore: %v", err)
 	}
 	cache.DataStore = datastore.Name()
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Datastore Found")
 
 	// Find the network
 	_, err = finder.Network(ctx, p.Environment.Spec.VsphereVirtualMachine.Network)
@@ -70,6 +71,7 @@ func (p *Provider) Create() error {
 		return fmt.Errorf("error finding network: %v", err)
 	}
 	cache.Network = p.Environment.Spec.VsphereVirtualMachine.Network
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Network Found")
 
 	// Find the template
 	template, err := finder.VirtualMachine(ctx, p.Environment.Spec.VsphereVirtualMachine.TemplateImage)
@@ -78,6 +80,7 @@ func (p *Provider) Create() error {
 		return fmt.Errorf("error finding template: %v", err)
 	}
 	cache.TemplateImage = p.Environment.Spec.VsphereVirtualMachine.TemplateImage
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Template Found")
 
 	// Find the folder
 	var folder *object.Folder
@@ -95,6 +98,7 @@ func (p *Provider) Create() error {
 		}
 	}
 	cache.VMFolder = folder.Name()
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Folder Found")
 
 	// Find the resource pool
 	var pool *object.ResourcePool
@@ -113,6 +117,7 @@ func (p *Provider) Create() error {
 		}
 	}
 	cache.ResourcePool = pool.Name()
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Resource Pool Found")
 
 	datastoreRefrence := datastore.Reference()
 	folderReference := folder.Reference()
@@ -145,6 +150,7 @@ func (p *Provider) Create() error {
 		return fmt.Errorf("error waiting for task: %v", err)
 	}
 	p.done()
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "VM Cloned")
 
 	newVm := object.NewVirtualMachine(p.vsphereClient.Client, info.Result.(types.ManagedObjectReference))
 

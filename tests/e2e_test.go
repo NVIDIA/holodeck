@@ -17,41 +17,42 @@
 package e2e
 
 import (
-	"flag"
-	"log"
 	"os"
 	"testing"
 
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
-
-	"github.com/NVIDIA/k8s-test-infra/pkg/framework"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var (
-	LogArtifactDir = flag.String("log-artifacts", "", "Directory to store logs")
-	EnvFile        = flag.String("env-file", "", "Environment file to use")
+	LogArtifactDir string
+	EnvFile        string
+	cwd            string
 )
 
-func TestMain(m *testing.M) {
-	// Register test flags, then parse flags.
-	framework.RegisterClusterFlags(flag.CommandLine)
-	flag.Parse()
+func TestMain(t *testing.T) {
+	suiteName := "E2E Holodeck"
 
-	// check if flags are set and if not cancel the test run
-	if *EnvFile == "" {
-		log.Fatal("Required flags not set. Please set -env-file")
-	}
-
-	os.Exit(m.Run())
+	RegisterFailHandler(Fail)
+	RunSpecs(t,
+		suiteName,
+	)
 }
 
-func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	// Run tests through the Ginkgo runner with output to console + JUnit for Jenkins
-	suiteConfig, reporterConfig := ginkgo.GinkgoConfiguration()
-	// Randomize specs as well as suites
-	suiteConfig.RandomizeAllSpecs = true
+// cleanup cleans up the test environment
+func getTestEnv() {
+	var err error
 
-	ginkgo.RunSpecs(t, "nvidia holodeck e2e suite", suiteConfig, reporterConfig)
+	LogArtifactDir = os.Getenv("LOG_ARTIFACT_DIR")
+	EnvFile = os.Getenv("ENV_FILE")
+
+	// Get current working directory
+	cwd, err = os.Getwd()
+	Expect(err).NotTo(HaveOccurred())
 }
+
+// BeforeSuite runs before the test suite
+var _ = BeforeSuite(func() {
+	// Init
+	getTestEnv()
+})
