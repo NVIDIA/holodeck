@@ -175,7 +175,7 @@ const (
 	defaultKubeletReleaseVersion = "v0.17.1"
 	defaultCNIPluginsVersion     = "v1.5.1"
 	defaultCRIVersion            = "v1.30.0"
-	defaultCalicoVersion         = "v3.27.4"
+	defaultCalicoVersion         = "v3.28.1"
 )
 
 type Kubernetes struct {
