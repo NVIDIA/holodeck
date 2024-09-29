@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.43.2
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.52.8
 	github.com/mattn/go-isatty v0.0.20
-	github.com/onsi/ginkgo/v2 v2.20.1
+	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
 	github.com/urfave/cli/v2 v2.27.4
 	github.com/vmware/govmomi v0.42.0
