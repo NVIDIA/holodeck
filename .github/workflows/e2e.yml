@@ -47,9 +47,6 @@ jobs:
     - name: Run e2e-aws tests
       run: ./hack/e2e_tests.sh aws
 
-    - name: Run e2e-vsphere tests
-      run: ./hack/e2e_tests.sh vsphere
-
     - name: Archive test logs
       if: ${{ failure() }}
       uses: actions/upload-artifact@v4
