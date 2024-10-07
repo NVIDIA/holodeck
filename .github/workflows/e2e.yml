@@ -20,12 +20,13 @@ on:
     types:
       - completed
     branches:
+      - "pull-request/[0-9]+"
       - main
       - release-*
 
 jobs:
   e2e-tests:
-    runs-on: pdx01-arc-runners
+    runs-on: linux-amd64-cpu4
     if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     steps:
     - name: Checkout code
@@ -45,9 +46,6 @@ jobs:
 
     - name: Run e2e-aws tests
       run: ./hack/e2e_tests.sh aws
-
-    - name: Run e2e-vsphere tests
-      run: ./hack/e2e_tests.sh vsphere
 
     - name: Archive test logs
       if: ${{ failure() }}
