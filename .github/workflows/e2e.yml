@@ -45,6 +45,9 @@ jobs:
         make ginkgo
 
     - name: Run e2e-aws tests
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       run: ./hack/e2e_tests.sh aws
 
     - name: Archive test logs
