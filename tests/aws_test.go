@@ -92,7 +92,7 @@ var _ = Describe("AWS", func() {
 			})
 		})
 
-		Context("and calling provision to create the environment", func() {
+		Context("and calling provider to create the environment", func() {
 			AfterAll(func(ctx context.Context) {
 				// Delete the environment
 				// We delete using AfterAll so that the environment is deleted even if the test fails
