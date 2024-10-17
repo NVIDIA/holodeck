@@ -28,7 +28,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
+	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/tests/common"
 )
@@ -113,7 +113,7 @@ var _ = Describe("AWS", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				for _, p := range cache.Status.Properties {
-					if p.Name == vsphere.IpAddress {
+					if p.Name == aws.PublicDnsName {
 						hostUrl = p.Value
 						break
 					}
