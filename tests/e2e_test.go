@@ -56,7 +56,7 @@ func lockSShk() {
 	envSshKey := os.Getenv("AWS_SSH_KEY")
 	Expect(envSshKey).NotTo(BeEmpty())
 
-	_, err := os.Create("/home/runner/.cache")
+	err := os.MkdirAll("/home/runner/.cache", 0700)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = os.WriteFile("/home/runner/.cache/key", []byte(envSshKey), 0600)
