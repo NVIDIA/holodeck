@@ -162,7 +162,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 		return err
 	}
 
-	// Read cache after provisioning the environment
+	// Read cache after creating the environment
 	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
 	if err != nil {
 		return fmt.Errorf("failed to read cache file: %v", err)
