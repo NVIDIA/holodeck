@@ -56,7 +56,10 @@ func lockSShk() {
 	envSshKey := os.Getenv("AWS_SSH_KEY")
 	Expect(envSshKey).NotTo(BeEmpty())
 
-	err := os.WriteFile("/tmp/.cache/key", []byte(envSshKey), 0600)
+	_, err := os.Create("/home/runner/.cache")
+	Expect(err).NotTo(HaveOccurred())
+
+	err = os.WriteFile("/home/runner/.cache/key", []byte(envSshKey), 0600)
 	Expect(err).NotTo(HaveOccurred())
 }
 
@@ -66,4 +69,10 @@ var _ = BeforeSuite(func() {
 	getTestEnv()
 	// Lock ssh key
 	lockSShk()
+})
+
+var _ = AfterSuite(func() {
+	// Cleanup
+	err := os.Remove("/home/runner/.cache/key")
+	Expect(err).NotTo(HaveOccurred())
 })
