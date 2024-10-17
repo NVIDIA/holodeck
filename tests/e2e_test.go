@@ -56,7 +56,7 @@ func lockSShk() {
 	envSshKey := os.Getenv("AWS_SSH_KEY")
 	Expect(envSshKey).NotTo(BeEmpty())
 
-	err := os.WriteFile("/github/workspace/.cache/key", []byte(envSshKey), 0600)
+	err := os.WriteFile("/tmp/.cache/key", []byte(envSshKey), 0600)
 	Expect(err).NotTo(HaveOccurred())
 }
 
