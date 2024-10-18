@@ -29,25 +29,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (p *Provider) Status() (string, error) {
+func (p *Provider) Status() ([]metav1.Condition, error) {
 	// Read the cache file
 	data, err := os.ReadFile(p.cacheFile)
 	if err != nil {
-		return "", err
+		return []metav1.Condition{}, err
 	}
 
 	// Unmarshal the data into a v1alpha1.Environment object
 	var env v1alpha1.Environment
 	err = yaml.Unmarshal(data, &env)
 	if err != nil {
-		return "", err
+		return []metav1.Condition{}, err
 	}
 
 	if len(env.Status.Conditions) == 0 {
-		return "", nil
+		return []metav1.Condition{}, nil
 	}
 
-	return env.Status.Conditions[0].Type, nil
+	return env.Status.Conditions, nil
 }
 
 func (p *Provider) updateStatus(env v1alpha1.Environment, cache *AWS, condition []metav1.Condition) error {
