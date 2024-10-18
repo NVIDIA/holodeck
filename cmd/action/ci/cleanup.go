@@ -23,6 +23,8 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func cleanup(log *logger.FunLogger) error {
@@ -94,9 +96,6 @@ func isTerminated(log *logger.FunLogger) (bool, error) {
 		return false, fmt.Errorf("error reading config file: %s", err)
 	}
 
-	// Set env name
-	setCfgName(&cfg)
-
 	provider, err := newProvider(log, &cfg)
 	if err != nil {
 		return false, fmt.Errorf("failed to create provider: %v", err)
@@ -107,5 +106,11 @@ func isTerminated(log *logger.FunLogger) (bool, error) {
 		return false, fmt.Errorf("failed to get status: %v", err)
 	}
 
-	return status == "Terminated", nil
+	for _, s := range status {
+		if s.Type == v1alpha1.ConditionTerminated {
+			return s.Status == metav1.ConditionTrue, nil
+		}
+	}
+
+	return false, nil
 }

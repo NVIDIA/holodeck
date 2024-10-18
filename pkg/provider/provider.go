@@ -16,6 +16,10 @@
 
 package provider
 
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
 // Provider is the base interface for all other Provider interfaces
 type Provider interface {
 	// Name returns a friendly name for this Provider
@@ -30,7 +34,7 @@ type Provider interface {
 	// DryRun preflight checks
 	DryRun() error
 	// Status returns the status of the resources in the provider
-	Status() (string, error)
+	Status() ([]metav1.Condition, error)
 
 	// Metada methods
 	UpdateResourcesTags(tags map[string]string, resources ...string) error
