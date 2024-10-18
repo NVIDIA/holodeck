@@ -63,6 +63,8 @@ jobs:
     runs-on: linux-amd64-cpu4
     if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
     - name: Set up Holodeck
       uses: ./action.yml
       with:
