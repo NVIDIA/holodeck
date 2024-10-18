@@ -25,7 +25,7 @@ on:
       - release-*
 
 jobs:
-  e2e-tests:
+  e2e-test:
     runs-on: linux-amd64-cpu4
     if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     steps:
@@ -58,3 +58,15 @@ jobs:
         name: e2e-test-logs
         path: ./e2e_logs/
         retention-days: 15
+
+  integration-test:
+    runs-on: linux-amd64-cpu4
+    if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
+    steps:
+    - name: Set up Holodeck
+      uses: ./action.yml
+      with:
+        aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws_ssh_key: ${{ secrets.AWS_SSH_KEY }}
+        holodeck_config: "tests/test_aws.yml"

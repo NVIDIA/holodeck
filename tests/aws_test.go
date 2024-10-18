@@ -28,7 +28,6 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider"
-	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/tests/common"
 )
@@ -104,28 +103,6 @@ var _ = Describe("AWS", func() {
 			It("Creates the requested environment", func() {
 				err = provider.Create()
 				Expect(err).ToNot(HaveOccurred())
-			})
-			It("Provisions the environment", func() {
-				var hostUrl string
-
-				// Read cache after creating the environment
-				cache, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
-				Expect(err).ToNot(HaveOccurred())
-
-				for _, p := range cache.Status.Properties {
-					if p.Name == aws.PublicDnsName {
-						hostUrl = p.Value
-						break
-					}
-				}
-
-				p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Username, hostUrl)
-				Expect(err).ToNot(HaveOccurred())
-
-				err = p.Run(opts.cfg)
-				Expect(err).ToNot(HaveOccurred())
-
-				p.Client.Close()
 			})
 		})
 	})

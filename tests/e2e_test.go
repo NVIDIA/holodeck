@@ -51,28 +51,8 @@ func getTestEnv() {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func lockSShk() {
-	// look for env var set KEY
-	envSshKey := os.Getenv("AWS_SSH_KEY")
-	Expect(envSshKey).NotTo(BeEmpty())
-
-	err := os.MkdirAll("/home/runner/.cache", 0700)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = os.WriteFile("/home/runner/.cache/key", []byte(envSshKey), 0600)
-	Expect(err).NotTo(HaveOccurred())
-}
-
 // BeforeSuite runs before the test suite
 var _ = BeforeSuite(func() {
 	// Init
 	getTestEnv()
-	// Lock ssh key
-	lockSShk()
-})
-
-var _ = AfterSuite(func() {
-	// Cleanup
-	err := os.Remove("/home/runner/.cache/key")
-	Expect(err).NotTo(HaveOccurred())
 })
