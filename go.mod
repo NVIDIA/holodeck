@@ -15,7 +15,6 @@ require (
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
 	github.com/urfave/cli/v2 v2.27.4
-	github.com/vmware/govmomi v0.42.0
 	golang.org/x/crypto v0.27.0
 	k8s.io/apimachinery v0.31.1
 	sigs.k8s.io/controller-runtime v0.19.0
@@ -44,6 +43,7 @@ require (
 	github.com/google/pprof v0.0.0-20240827171923-fa2c70bbbfe5 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect

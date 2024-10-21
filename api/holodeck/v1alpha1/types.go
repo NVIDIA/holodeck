@@ -48,8 +48,6 @@ type Provider string
 const (
 	// ProviderAWS means the infra provider is AWS
 	ProviderAWS Provider = "aws"
-	// ProviderVSphere means the infra provider is VSphere
-	ProviderVSphere Provider = "vsphere"
 	// ProviderSSH means the user already has a running instance
 	// and wants to use it as the infra provider via SSH
 	ProviderSSH Provider = "ssh"

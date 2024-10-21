@@ -24,7 +24,6 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 )
@@ -78,18 +77,6 @@ func entrypoint(log *logger.FunLogger) error {
 		cfg.Spec.Auth.Username = "ubuntu"
 		for _, p := range cache.Status.Properties {
 			if p.Name == aws.PublicDnsName {
-				hostUrl = p.Value
-				break
-			}
-		}
-	} else if cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		if err := getSSHKeyFile(log, "VSPHERE_SSH_KEY"); err != nil {
-			return err
-		}
-		cfg.Spec.Auth.PrivateKey = sshKeyFile
-		cfg.Spec.Auth.Username = "nvidia"
-		for _, p := range cache.Status.Properties {
-			if p.Name == vsphere.IpAddress {
 				hostUrl = p.Value
 				break
 			}

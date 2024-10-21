@@ -26,7 +26,6 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
@@ -140,14 +139,6 @@ func (m command) run(c *cli.Context, opts *options) error {
 		if err != nil {
 			return err
 		}
-	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		if opts.cfg.Spec.Auth.Username == "" {
-			opts.cfg.Spec.Auth.Username = "nvidia"
-		}
-		provider, err = vsphere.New(m.log, opts.cfg, opts.cachefile)
-		if err != nil {
-			return err
-		}
 	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
 		// If username is not provided, use the current user
 		if opts.cfg.Spec.Username == "" {
@@ -186,13 +177,6 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
 		for _, p := range opts.cache.Status.Properties {
 			if p.Name == aws.PublicDnsName {
-				hostUrl = p.Value
-				break
-			}
-		}
-	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		for _, p := range opts.cache.Status.Properties {
-			if p.Name == vsphere.IpAddress {
 				hostUrl = p.Value
 				break
 			}

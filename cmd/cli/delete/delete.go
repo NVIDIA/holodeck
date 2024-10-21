@@ -25,7 +25,6 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 
 	cli "github.com/urfave/cli/v2"
 )
@@ -81,7 +80,7 @@ func (m command) build() *cli.Command {
 				return fmt.Errorf("error reading config file: %s", err)
 			}
 
-			if opts.cfg.Spec.Provider != v1alpha1.ProviderAWS && opts.cfg.Spec.Provider != v1alpha1.ProviderVSphere {
+			if opts.cfg.Spec.Provider != v1alpha1.ProviderAWS {
 				return fmt.Errorf("provider %s not supported", opts.cfg.Spec.Provider)
 			}
 
@@ -122,13 +121,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 			m.log.Error(err)
 			m.log.Exit(1)
 		}
-	} else if cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		if err := deleteVSphere(m.log, cfg, cachefile); err != nil {
-			m.log.Error(err)
-			m.log.Exit(1)
-		}
 	}
-
 	m.log.Info("Successfully deleted environment %s\n", cfg.Name)
 
 	return nil
@@ -136,26 +129,6 @@ func (m command) run(c *cli.Context, opts *options) error {
 
 func deleteAWS(log *logger.FunLogger, cfg v1alpha1.Environment, cachefile string) error {
 	client, err := aws.New(log, cfg, cachefile)
-	if err != nil {
-		return err
-	}
-
-	// check if cache exists
-	if _, err := os.Stat(cachefile); err != nil {
-		fmt.Printf("Error reading cache file: %s\n", err)
-		fmt.Printf("Cache file %s does not exist\n", cachefile)
-		os.Exit(1)
-	}
-
-	if err := client.Delete(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func deleteVSphere(log *logger.FunLogger, cfg v1alpha1.Environment, cachefile string) error {
-	client, err := vsphere.New(log, cfg, cachefile)
 	if err != nil {
 		return err
 	}
