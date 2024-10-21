@@ -33,9 +33,6 @@ GINKGO_FOCUS=${GINKGO_FOCUS:-}
 if [ "$1" == "aws" ]; then
   ENV_FILE=${ROOT_DIR}/tests/test_aws.yml
   GINKGO_FOCUS=${GINKGO_FOCUS:-"AWS"}
-elif [ "$1" == "vsphere" ]; then
-  ENV_FILE=${ROOT_DIR}/tests/test_vsphere.yml
-  GINKGO_FOCUS=${GINKGO_FOCUS:-"VSPHERE"}
 fi
 
 # Set all ENV variables for e2e tests

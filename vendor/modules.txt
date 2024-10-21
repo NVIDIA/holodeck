@@ -160,6 +160,8 @@ github.com/jmespath/go-jmespath
 # github.com/json-iterator/go v1.1.12
 ## explicit; go 1.12
 github.com/json-iterator/go
+# github.com/kr/text v0.2.0
+## explicit
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
@@ -209,32 +211,6 @@ github.com/russross/blackfriday/v2
 # github.com/urfave/cli/v2 v2.27.4
 ## explicit; go 1.18
 github.com/urfave/cli/v2
-# github.com/vmware/govmomi v0.42.0
-## explicit; go 1.21
-github.com/vmware/govmomi
-github.com/vmware/govmomi/find
-github.com/vmware/govmomi/history
-github.com/vmware/govmomi/internal
-github.com/vmware/govmomi/internal/version
-github.com/vmware/govmomi/list
-github.com/vmware/govmomi/nfc
-github.com/vmware/govmomi/object
-github.com/vmware/govmomi/property
-github.com/vmware/govmomi/session
-github.com/vmware/govmomi/session/keepalive
-github.com/vmware/govmomi/task
-github.com/vmware/govmomi/vapi/internal
-github.com/vmware/govmomi/vapi/rest
-github.com/vmware/govmomi/view
-github.com/vmware/govmomi/vim25
-github.com/vmware/govmomi/vim25/debug
-github.com/vmware/govmomi/vim25/json
-github.com/vmware/govmomi/vim25/methods
-github.com/vmware/govmomi/vim25/mo
-github.com/vmware/govmomi/vim25/progress
-github.com/vmware/govmomi/vim25/soap
-github.com/vmware/govmomi/vim25/types
-github.com/vmware/govmomi/vim25/xml
 # github.com/x448/float16 v0.8.4
 ## explicit; go 1.11
 github.com/x448/float16

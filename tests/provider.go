@@ -23,7 +23,6 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 )
 
 func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile string) (provider.Provider, error) {
@@ -33,11 +32,6 @@ func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile stri
 	switch cfg.Spec.Provider {
 	case v1alpha1.ProviderAWS:
 		provider, err = newAwsProvider(log, cfg, cacheFile)
-		if err != nil {
-			return nil, err
-		}
-	case v1alpha1.ProviderVSphere:
-		provider, err = newVsphereProvider(log, cfg, cacheFile)
 		if err != nil {
 			return nil, err
 		}
@@ -55,13 +49,4 @@ func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile s
 	}
 
 	return a, nil
-}
-
-func newVsphereProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile string) (*vsphere.Provider, error) {
-	v, err := vsphere.New(log, cfg, cacheFile)
-	if err != nil {
-		return nil, err
-	}
-
-	return v, nil
 }
