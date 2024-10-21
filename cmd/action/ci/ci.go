@@ -52,8 +52,6 @@ func Run(log *logger.FunLogger) error {
 		return nil
 	}
 
-	log.Info("Cache exists, checking if environment is terminated")
-
 	// Check if cache condition is Terminated
 	if ok, err := isTerminated(log); ok {
 		log.Info("Environment condition is Terminated no need to run Holodeck")
