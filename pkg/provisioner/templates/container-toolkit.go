@@ -46,8 +46,12 @@ type ContainerToolkit struct {
 }
 
 func NewContainerToolkit(env v1alpha1.Environment) *ContainerToolkit {
+	runtime := string(env.Spec.ContainerRuntime.Name)
+	if runtime == "" {
+		runtime = "containerd"
+	}
 	return &ContainerToolkit{
-		ContainerRuntime: string(env.Spec.ContainerRuntime.Name),
+		ContainerRuntime: runtime,
 	}
 }
 
