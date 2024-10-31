@@ -171,11 +171,11 @@ echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 // Default Versions
 const (
 	defaultArch                  = "amd64"
-	defaultKubernetesVersion     = "v1.30.2"
+	defaultKubernetesVersion     = "v1.31.1"
 	defaultKubeletReleaseVersion = "v0.17.1"
-	defaultCNIPluginsVersion     = "v1.5.1"
-	defaultCRIVersion            = "v1.30.0"
-	defaultCalicoVersion         = "v3.28.2"
+	defaultCNIPluginsVersion     = "v1.6.0"
+	defaultCRIVersion            = "v1.31.1"
+	defaultCalicoVersion         = "v3.29.0"
 )
 
 type Kubernetes struct {
