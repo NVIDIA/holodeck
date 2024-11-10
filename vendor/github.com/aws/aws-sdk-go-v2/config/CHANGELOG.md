@@ -1,3 +1,15 @@
+# v1.28.3 (2024-11-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.2 (2024-11-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.1 (2024-10-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.28.0 (2024-10-16)
 
 * **Feature**: Adds the LoadOptions hook `WithBaseEndpoint` for setting global endpoint override in-code.
