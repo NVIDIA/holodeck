@@ -133,7 +133,7 @@ func setCfgName(cfg *v1alpha1.Environment) {
 	// uid is unique for each run
 	uid := generateUID()
 
-	cfg.Name = fmt.Sprintf("ci%s-%s-%s", attempt, sha, uid)
+	cfg.Name = cfg.Name + fmt.Sprintf("ci%s-%s-%s", attempt, sha, uid)
 }
 
 func generateUID() string {
