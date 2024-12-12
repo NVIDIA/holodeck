@@ -145,7 +145,14 @@ func (p *Provider) createInternetGateway(cache *AWS) error {
 	p.log.Wg.Add(1)
 	go p.log.Loading("Creating Internet Gateway")
 
-	gwInput := &ec2.CreateInternetGatewayInput{}
+	gwInput := &ec2.CreateInternetGatewayInput{
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeInternetGateway,
+				Tags:         p.Tags,
+			},
+		},
+	}
 	gwOutput, err := p.ec2.CreateInternetGateway(context.TODO(), gwInput)
 	if err != nil {
 		p.fail()
@@ -357,6 +364,17 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	}
 	cache.PublicDnsName = *instanceRunning.Reservations[0].Instances[0].PublicDnsName
 
+	// tag network interface
+	instance := instanceOut.Instances[0]
+	networkInterfaceId := *instance.NetworkInterfaces[0].NetworkInterfaceId
+	_, err = p.ec2.CreateTags(context.TODO(), &ec2.CreateTagsInput{
+		Resources: []string{networkInterfaceId},
+		Tags:      p.Tags,
+	})
+	if err != nil {
+		p.fail()
+		return fmt.Errorf("Fail to tag network to instance: %v", err)
+	}
 	p.done()
 	return nil
 }
