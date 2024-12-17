@@ -56,7 +56,7 @@ var _ = Describe("AWS", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Set unique name for the environment
-			opts.cfg.Name = opts.cfg.Name + "-" + common.GenerateUID()
+			common.SetCfgName(&opts.cfg)
 			// set cache path
 			opts.cachePath = LogArtifactDir
 			// set cache file

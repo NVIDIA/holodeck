@@ -17,12 +17,14 @@ name: Go
 on:
   push:
     branches: 
-      - main
-      - release-*
+      - main-no
+      - release-no
+      - test-awsresourcecleanup
   pull_request:
     branches:
-      - main
-      - release-*
+      - main-no
+      - release-no
+      - test-awsresourcecleanup
 
 jobs:
   build:

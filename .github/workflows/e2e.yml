@@ -15,14 +15,15 @@
 name: End-to-end Tests
 
 on:
-  workflow_run:
-    workflows: [Go]
+  pull_request:
     types:
-      - completed
+      - opened
+      - synchronize
     branches:
-      - "pull-request/[0-9]+"
-      - main
-      - release-*
+      - test-awsresourcecleanup
+  push:
+    branches:
+      - test-awsresourcecleanup
 
 jobs:
   e2e-test:

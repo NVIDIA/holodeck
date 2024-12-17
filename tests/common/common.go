@@ -16,7 +16,13 @@
 
 package common
 
-import "math/rand"
+import (
+	"fmt"
+	"math/rand"
+	"os"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+)
 
 func GenerateUID() string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -27,4 +33,17 @@ func GenerateUID() string {
 	}
 
 	return string(b)
+}
+
+func SetCfgName(cfg *v1alpha1.Environment) {
+	sha := os.Getenv("GITHUB_SHA")
+	attempt := os.Getenv("GITHUB_RUN_ATTEMPT")
+	// short sha
+	if len(sha) > 8 {
+		sha = sha[:8]
+	}
+	// uid is unique for each run
+	uid := GenerateUID()
+
+	cfg.Name = fmt.Sprintf("ci%s-%s-%s", attempt, sha, uid)
 }

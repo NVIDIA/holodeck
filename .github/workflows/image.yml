@@ -17,14 +17,16 @@ name: Image
 on:
   pull_request:
     branches:
-      - 'main'
-      - 'release-*'
+      - 'main-no'
+      - 'release-no'
+      - test-awsresourcecleanup
   push:
     tags:
       - 'v*.*.*'  
     branches:
-      - 'main'
-      - 'release-*'
+      - 'main-no'
+      - 'release-no'
+      - test-awsresourcecleanup
 
 jobs:
   docker:
