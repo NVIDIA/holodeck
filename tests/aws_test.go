@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -29,8 +30,20 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
-	"github.com/NVIDIA/holodeck/tests/common"
 )
+
+func getName() string {
+	sha := os.Getenv("GITHUB_SHA")
+	attempt := os.Getenv("GITHUB_RUN_ATTEMPT")
+	// short sha
+	if len(sha) > 8 {
+		sha = sha[:8]
+	}
+	// uid is unique for each run
+	uid := common.GenerateUID()
+
+	return fmt.Sprintf("ci%s-%s-%s", attempt, sha, uid)
+}
 
 // Actual test suite
 var _ = Describe("AWS", func() {
@@ -56,7 +69,7 @@ var _ = Describe("AWS", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Set unique name for the environment
-			opts.cfg.Name = opts.cfg.Name + "-" + common.GenerateUID()
+			opts.cfg.Name = getName()
 			// set cache path
 			opts.cachePath = LogArtifactDir
 			// set cache file
