@@ -87,6 +87,19 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Pr
 	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
 		region = envRegion
 	}
+	commitSHA := os.Getenv("GITHUB_SHA")
+	// short sha
+	if len(commitSHA) > 8 {
+		commitSHA = commitSHA[:8]
+	}
+	actor := os.Getenv("GITHUB_ACTOR")
+	branch := os.Getenv("GITHUB_REF_NAME")
+	repoName := os.Getenv("GITHUB_REPOSITORY")
+	gitHubRunId := os.Getenv("GITHUB_RUN_ID")
+	gitHubRunNumber := os.Getenv("GITHUB_RUN_NUMBER")
+	gitHubJob := os.Getenv("GITHUB_JOB")
+	gitHubRunAttempt := os.Getenv("GITHUB_RUN_ATTEMPT")
+
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		return nil, err
@@ -100,6 +113,14 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Pr
 			{Key: aws.String("Name"), Value: aws.String(env.Name)},
 			{Key: aws.String("Project"), Value: aws.String("holodeck")},
 			{Key: aws.String("Environment"), Value: aws.String("cicd")},
+			{Key: aws.String("CommitSHA"), Value: aws.String(commitSHA)},
+			{Key: aws.String("Actor"), Value: aws.String(actor)},
+			{Key: aws.String("Branch"), Value: aws.String(branch)},
+			{Key: aws.String("GitHubRepository"), Value: aws.String(repoName)},
+			{Key: aws.String("GitHubRunId"), Value: aws.String(gitHubRunId)},
+			{Key: aws.String("GitHubRunNumber"), Value: aws.String(gitHubRunNumber)},
+			{Key: aws.String("GitHubJob"), Value: aws.String(gitHubJob)},
+			{Key: aws.String("GitHubRunAttempt"), Value: aws.String(gitHubRunAttempt)},
 		},
 		client,
 		r53,
