@@ -31,7 +31,7 @@ jobs:
         run: |
           # Find vpcs with Project holodeck and cicd Environment
           vpcs=$(aws ec2 describe-vpcs \
-            "Name=tag:Project,Values=holodeck" "Name=tag:Environment,Values=cicd" \
+          --filters "Name=tag:Project,Values=holodeck" "Name=tag:Environment,Values=cicd" \
             --query "Vpcs[].VpcId" \
             --output text | tr -d '\r' | tr '\n' ' ')
           echo "Found VPCs: $vpcs"
