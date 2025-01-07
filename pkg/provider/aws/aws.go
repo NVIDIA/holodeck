@@ -28,7 +28,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go/aws"
 )
 
@@ -74,7 +73,6 @@ type AWS struct {
 type Provider struct {
 	Tags      []types.Tag
 	ec2       *ec2.Client
-	r53       *route53.Client
 	cacheFile string
 
 	*v1alpha1.Environment
@@ -106,7 +104,6 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Pr
 	}
 
 	client := ec2.NewFromConfig(cfg)
-	r53 := route53.NewFromConfig(cfg)
 	p := &Provider{
 		[]types.Tag{
 			{Key: aws.String("Product"), Value: aws.String("Cloud Native")},
@@ -123,7 +120,6 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Pr
 			{Key: aws.String("GitHubRunAttempt"), Value: aws.String(gitHubRunAttempt)},
 		},
 		client,
-		r53,
 		cacheFile,
 		&env,
 		log,
