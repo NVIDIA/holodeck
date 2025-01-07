@@ -20,12 +20,14 @@ on:
       - opened
       - synchronize
     branches:
-      - main
-      - release-*
+      - main-no
+      - release-no
+      - test-awsresourcecleanup
   push:
     branches:
-      - main
-      - release-*
+      - main-no
+      - release-no
+      - test-awsresourcecleanup
   schedule:
     - cron: '31 11 * * 4'
 
