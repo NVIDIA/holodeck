@@ -51,7 +51,13 @@ release:
 	@for os in linux darwin; do \
 		for arch in amd64 arm64; do \
 			echo "Building $$os-$$arch"; \
-			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-$$os-$$arch cmd/main.go; \
+			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-action-$$os-$$arch cmd/action/main.go; \
+		done; \
+	done
+	@for os in linux darwin; do \
+		for arch in amd64 arm64; do \
+			echo "Building $$os-$$arch"; \
+			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-$$os-$$arch cmd/cli/main.go; \
 		done; \
 	done
 

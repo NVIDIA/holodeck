@@ -171,11 +171,11 @@ echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 // Default Versions
 const (
 	defaultArch                  = "amd64"
-	defaultKubernetesVersion     = "v1.31.1"
+	defaultKubernetesVersion     = "v1.32.1"
 	defaultKubeletReleaseVersion = "v0.17.1"
-	defaultCNIPluginsVersion     = "v1.6.0"
+	defaultCNIPluginsVersion     = "v1.6.2"
 	defaultCRIVersion            = "v1.31.1"
-	defaultCalicoVersion         = "v3.29.0"
+	defaultCalicoVersion         = "v3.29.1"
 )
 
 type Kubernetes struct {
@@ -199,7 +199,7 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
 	// if not, set the default version
 	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s" {
-		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.27.9\n", env.Spec.Kubernetes.KubernetesVersion)
+		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.32.1\n", env.Spec.Kubernetes.KubernetesVersion)
 		kubernetes.Version = defaultKubernetesVersion
 	}
 	if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
