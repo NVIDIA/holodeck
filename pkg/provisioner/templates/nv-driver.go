@@ -35,6 +35,8 @@ sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
 install_packages_with_retry cuda-drivers
+
+nvidia-smi -L
 `
 
 type NvDriver struct {
