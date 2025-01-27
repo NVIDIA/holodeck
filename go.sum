@@ -20,8 +20,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.2 h1:D4oz8/C
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.2/go.mod h1:Za3IHqTQ+yNcRHxu1OFucBh0ACZT4j4VQFF0BqpZcLY=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.10 h1:hN4yJBGswmFTOVYqmbz1GBs9ZMtQe8SrYxPwrkrlRv8=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.10/go.mod h1:TsxON4fEZXyrKY+D+3d2gSTyJkGORexIYab9PTf56DA=
-github.com/aws/aws-sdk-go-v2/service/ssm v1.56.4 h1:oXh/PjaKtStu7RkaUtuKX6+h/OxXriMa9WyQQhylKG0=
-github.com/aws/aws-sdk-go-v2/service/ssm v1.56.4/go.mod h1:IiHGbiFg4wVdEKrvFi/zxVZbjfEpgSe21N9RwyQFXCU=
+github.com/aws/aws-sdk-go-v2/service/ssm v1.56.8 h1:MBdLPDbhwvgIpjIVAo2K49b+mJgthRfq3pJ57OMF7Ro=
+github.com/aws/aws-sdk-go-v2/service/ssm v1.56.8/go.mod h1:9XDwaJPbim0IsiHqC/jWwXviigOiQJC+drPPy6ZfIlE=
 github.com/aws/aws-sdk-go-v2/service/sso v1.24.11 h1:kuIyu4fTT38Kj7YCC7ouNbVZSSpqkZ+LzIfhCr6Dg+I=
 github.com/aws/aws-sdk-go-v2/service/sso v1.24.11/go.mod h1:Ro744S4fKiCCuZECXgOi760TiYylUM8ZBf6OGiZzJtY=
 github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.10 h1:l+dgv/64iVlQ3WsBbnn+JSbkj01jIi+SM0wYsj3y/hY=
