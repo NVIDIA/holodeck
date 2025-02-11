@@ -114,3 +114,58 @@ Dryrun environment holodeck 🔍
 ✔      Resolving dependencies 📦
 Dryrun succeeded 🎉
 ```
+
+## Supported Cuda-Drivers
+
+Supported Nvidia drivers are: 
+
+```yaml
+  nvidiaDriver:
+    install: true
+    version: <version>
+```
+Where `<version>` can be a prefix of any package version. The following are example package versions:
+
+- 570.86.15-0ubuntu1
+- 570.86.10-0ubuntu1
+- 565.57.01-0ubuntu1
+- 560.35.05-0ubuntu1
+- 560.35.03-1
+- 560.28.03-1
+- 555.42.06-1
+- 555.42.02-1
+- 550.144.03-0ubuntu1
+- 550.127.08-0ubuntu1
+- 550.127.05-0ubuntu1
+- 550.90.12-0ubuntu1
+- 550.90.07-1
+- 550.54.15-1
+- 550.54.14-1
+- 545.23.08-1
+- 545.23.06-1
+- 535.230.02-0ubuntu1
+- 535.216.03-0ubuntu1
+- 535.216.01-0ubuntu1
+- 535.183.06-1
+- 535.183.01-1
+- 535.161.08-1
+- 535.161.07-1
+- 535.154.05-1
+- 535.129.03-1
+- 535.104.12-1
+- 535.104.05-1
+- 535.86.10-1
+- 535.54.03-1
+- 530.30.02-1
+- 525.147.05-1
+- 525.125.06-1
+- 525.105.17-1
+- 525.85.12-1
+- 525.60.13-1
+- 520.61.05-1
+- 515.105.01-1
+- 515.86.01-1
+- 515.65.07-1
+- 515.65.01-1
+- 515.48.07-1
+- 515.43.04-1

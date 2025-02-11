@@ -38,7 +38,7 @@ install_packages_with_retry() {
         echo "Attempt $i to install packages: ${packages[@]}"
         
         # Attempt to install packages
-        sudo apt-get install -y "${packages[@]}"
+        sudo apt-get install -y --no-install-recommends "${packages[@]}"
 
         # Check if the last command failed and the error is related to unsigned repository
         if [ $? -ne 0 ] && grep -q 'NO_PUBKEY' <<< "$(tail -n 1 /var/lib/dpkg/status 2>/dev/null)"; then

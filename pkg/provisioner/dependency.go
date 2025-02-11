@@ -50,7 +50,7 @@ var (
 type ProvisionFunc func(tpl *bytes.Buffer, env v1alpha1.Environment) error
 
 func nvdriver(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	nvdriver := templates.NewNvDriver()
+	nvdriver := templates.NewNvDriver(env)
 	return nvdriver.Execute(tpl, env)
 }
 
