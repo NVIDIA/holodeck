@@ -180,7 +180,7 @@ func update(env *v1alpha1.Environment, cachePath string) error {
 	}
 
 	// write to file
-	err = os.WriteFile(cachePath, data, 0644)
+	err = os.WriteFile(cachePath, data, 0600)
 	if err != nil {
 		return err
 	}

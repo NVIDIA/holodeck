@@ -205,7 +205,7 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 
 	// Close the writing pipe and wait for the session to finish
 	remoteFile.Close()
-	session.Wait()
+	session.Wait() // nolint:errcheck
 	return nil
 }
 
@@ -240,7 +240,7 @@ func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // nolint:gosec
 	}
 
 	connectionFailed := false

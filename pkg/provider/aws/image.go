@@ -179,5 +179,5 @@ func (p *Provider) checkInstanceTypes() error {
 		}
 	}
 
-	return fmt.Errorf("instance type %s is not supported in the current region %s", string(p.Spec.Instance.Type), p.Spec.Instance.Region)
+	return fmt.Errorf("instance type %s is not supported in the current region %s", p.Spec.Instance.Type, p.Spec.Instance.Region)
 }

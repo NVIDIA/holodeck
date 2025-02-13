@@ -15,14 +15,11 @@
 name: "CodeQL"
 
 on:
+  workflow_call: {}
   pull_request:
     types:
       - opened
       - synchronize
-    branches:
-      - main
-      - release-*
-  push:
     branches:
       - main
       - release-*
@@ -40,14 +37,18 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
+        config-file: ./.github/codeql/codeql-config.yaml
         languages: go
         build-mode: manual
+
     - shell: bash
       run: |
         make build-cli
+
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:

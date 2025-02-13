@@ -23,7 +23,6 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
-	"sigs.k8s.io/yaml"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -165,37 +164,6 @@ func (p *Provider) unmarsalCache() (*AWS, error) {
 	}
 
 	return aws, nil
-}
-
-// dump writes the AWS struct to the cache file
-func (p *Provider) dumpCache(aws *AWS) error {
-	env := p.Environment.DeepCopy()
-	env.Status.Properties = []v1alpha1.Properties{
-		{Name: VpcID, Value: aws.Vpcid},
-		{Name: SubnetID, Value: aws.Subnetid},
-		{Name: InternetGwID, Value: aws.InternetGwid},
-		{Name: InternetGatewayAttachment, Value: aws.InternetGatewayAttachment},
-		{Name: RouteTable, Value: aws.RouteTable},
-		{Name: SecurityGroupID, Value: aws.SecurityGroupid},
-		{Name: InstanceID, Value: aws.Instanceid},
-		{Name: PublicDnsName, Value: aws.PublicDnsName},
-	}
-
-	data, err := yaml.Marshal(env)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(p.cacheFile, data, 0644)
-	if err != nil {
-		return err
-	}
-
-	// Update the environment object with the new properties
-
-	p.Environment = env
-
-	return nil
 }
 
 func (p *Provider) done() {

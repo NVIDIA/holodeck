@@ -15,14 +15,14 @@
 name: End-to-end Tests
 
 on:
-  workflow_run:
-    workflows: [Go]
-    types:
-      - completed
-    branches:
-      - "pull-request/[0-9]+"
-      - main
-      - release-*
+  workflow_call:
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_SSH_KEY:
+        required: true
 
 jobs:
   e2e-test:

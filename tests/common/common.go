@@ -16,15 +16,18 @@
 
 package common
 
-import "math/rand"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"log"
+)
 
+// GenerateUID generates a secure random 8-character UID.
 func GenerateUID() string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-
-	b := make([]byte, 8)
-	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+	b := make([]byte, 4) // 4 bytes = 8 hex characters
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Fatalf("failed to generate secure random UID: %v", err)
 	}
-
-	return string(b)
+	return hex.EncodeToString(b)
 }

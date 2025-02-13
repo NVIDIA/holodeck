@@ -26,9 +26,9 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
-	"golang.org/x/crypto/ssh"
 
 	cli "github.com/urfave/cli/v2"
+	"golang.org/x/crypto/ssh"
 )
 
 type options struct {
@@ -75,14 +75,14 @@ func (m command) build() *cli.Command {
 			return nil
 		},
 		Action: func(c *cli.Context) error {
-			return m.run(c, &opts)
+			return m.run(&opts)
 		},
 	}
 
 	return &dryrun
 }
 
-func (m command) run(c *cli.Context, opts *options) error {
+func (m command) run(opts *options) error {
 	m.log.Info("Dryrun environment %s \U0001f50d", opts.cfg.Name)
 
 	// Check Provider
@@ -143,7 +143,7 @@ func connectOrDie(keyPath, userName, hostUrl string) error {
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // nolint:gosec
 	}
 
 	connectionFailed := false

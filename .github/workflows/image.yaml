@@ -15,16 +15,7 @@
 name: Image
 
 on:
-  pull_request:
-    branches:
-      - 'main'
-      - 'release-*'
-  push:
-    tags:
-      - 'v*.*.*'  
-    branches:
-      - 'main'
-      - 'release-*'
+  workflow_call:
 
 jobs:
   docker:
