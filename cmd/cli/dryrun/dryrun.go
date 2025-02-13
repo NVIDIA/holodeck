@@ -75,14 +75,14 @@ func (m command) build() *cli.Command {
 			return nil
 		},
 		Action: func(c *cli.Context) error {
-			return m.run(c, &opts)
+			return m.run(&opts)
 		},
 	}
 
 	return &dryrun
 }
 
-func (m command) run(c *cli.Context, opts *options) error {
+func (m command) run(opts *options) error {
 	m.log.Info("Dryrun environment %s \U0001f50d", opts.cfg.Name)
 
 	// Check Provider

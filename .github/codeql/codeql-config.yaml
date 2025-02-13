@@ -1,0 +1,8 @@
+paths:
+  - pkg
+  - cmd
+  - internal
+  - test
+paths-ignore:
+  - pkg/provisioner/provisioner.go
+  - cmd/cli/dryrun/dryrun.go
