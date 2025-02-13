@@ -17,8 +17,9 @@
 package ci
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"log"
 	"os"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -57,7 +58,7 @@ func Run(log *logger.FunLogger) error {
 		log.Info("Environment condition is Terminated no need to run Holodeck")
 		return nil
 	} else if err != nil {
-		log.Warning(err.Error())
+		log.Warning("%s", err.Error())
 	}
 	if err := cleanup(log); err != nil {
 		return err
@@ -138,10 +139,15 @@ func setCfgName(cfg *v1alpha1.Environment) {
 
 func generateUID() string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-
 	b := make([]byte, 8)
+
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Fatalf("failed to generate secure random UID: %v", err)
+	}
+
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[int(b[i])%len(charset)]
 	}
 
 	return string(b)

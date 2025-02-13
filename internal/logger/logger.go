@@ -26,13 +26,6 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-var (
-	// outFile is where Out* functions send output to. Set using SetOutFile()
-	outFile fdWriter
-	// errFile is where Err* functions send output to. Set using SetErrFile()
-	errFile fdWriter
-)
-
 // fdWriter is the subset of file.File that implements io.Writer and Fd()
 type fdWriter interface {
 	io.Writer

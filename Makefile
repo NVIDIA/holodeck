@@ -39,7 +39,6 @@ goimports:
 lint:
 	golangci-lint run ./...
 
-
 mod-tidy:
 	@for mod in $$(find . -name go.mod); do \
 	    echo "Tidying $$mod..."; ( \

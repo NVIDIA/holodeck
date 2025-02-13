@@ -21,7 +21,6 @@ on:
       - main
       - release-*
 
-
 jobs:
     code-scanning:
       uses: ./.github/workflows/code_scanning.yaml
