@@ -15,11 +15,11 @@
 name: Go
 
 on:
-  push:
-    branches: 
-      - main
-      - release-*
+  workflow_call: {}
   pull_request:
+    types:
+      - opened
+      - synchronize
     branches:
       - main
       - release-*

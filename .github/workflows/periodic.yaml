@@ -1,4 +1,4 @@
-name: AWS Periodic Cleanup
+name: Periodic actions
 
 on:
   schedule:
