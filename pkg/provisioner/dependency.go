@@ -26,6 +26,7 @@ import (
 const (
 	kubeadmInstaller          = "kubeadm"
 	kindInstaller             = "kind"
+	nvkindInstaller           = "nvkind"
 	microk8sInstaller         = "microk8s"
 	containerdRuntime         = "containerd"
 	crioRuntime               = "crio"
@@ -36,9 +37,10 @@ const (
 
 var (
 	functions = map[string]ProvisionFunc{
-		kubeadmInstaller:          kubeadm,
-		kindInstaller:             kind,
-		microk8sInstaller:         microk8s,
+		kubeadmInstaller:          k8s,
+		kindInstaller:             k8s,
+		nvkindInstaller:           k8s,
+		microk8sInstaller:         k8s,
 		containerdRuntime:         containerd,
 		crioRuntime:               criO,
 		dockerRuntime:             docker,
@@ -74,28 +76,12 @@ func containerToolkit(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	return containerToolkit.Execute(tpl, env)
 }
 
-func kubeadm(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+func k8s(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	kubernetes, err := templates.NewKubernetes(env)
 	if err != nil {
 		return err
 	}
 	return kubernetes.Execute(tpl, env)
-}
-
-func microk8s(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	microk8s, err := templates.NewKubernetes(env)
-	if err != nil {
-		return err
-	}
-	return microk8s.Execute(tpl, env)
-}
-
-func kind(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	kind, err := templates.NewKubernetes(env)
-	if err != nil {
-		return err
-	}
-	return kind.Execute(tpl, env)
 }
 
 // DependencySolver is a struct that holds the dependency list
@@ -120,11 +106,13 @@ func NewDependencies(env v1alpha1.Environment) *DependencyResolver {
 }
 
 func (d *DependencyResolver) withKubernetes() {
-	switch d.env.Spec.Kubernetes.KubernetesInstaller {
+	switch d.env.Spec.Kubernetes.Installer {
 	case kubeadmInstaller:
 		d.Dependencies = append(d.Dependencies, functions[kubeadmInstaller])
 	case kindInstaller:
 		d.Dependencies = append(d.Dependencies, functions[kindInstaller])
+	case nvkindInstaller:
+		d.Dependencies = append(d.Dependencies, functions[nvkindInstaller])
 	case microk8sInstaller:
 		// reset the list to only include microk8s
 		d.Dependencies = nil

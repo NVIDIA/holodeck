@@ -75,13 +75,13 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 
 	// kind-config
 	// Create kind config file if it is provided
-	if env.Spec.Kubernetes.KubernetesInstaller == "kind" && env.Spec.Kubernetes.KindConfig != "" {
+	if (env.Spec.Kubernetes.Installer == "kind" || env.Spec.Kubernetes.Installer == "nvkind") && env.Spec.Kubernetes.KindConfig != "" {
 		if err := p.createKindConfig(env); err != nil {
 			return fmt.Errorf("failed to create kind config file: %v", err)
 		}
 	}
 
-	if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {
+	if env.Spec.Kubernetes.Installer == "kubeadm" {
 		env.Spec.Kubernetes.K8sEndpointHost = p.HostUrl
 	}
 
