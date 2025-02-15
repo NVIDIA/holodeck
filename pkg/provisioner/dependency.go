@@ -26,6 +26,7 @@ import (
 const (
 	kubeadmInstaller          = "kubeadm"
 	kindInstaller             = "kind"
+	nvkindInstaller           = "nvkind"
 	microk8sInstaller         = "microk8s"
 	containerdRuntime         = "containerd"
 	crioRuntime               = "crio"
@@ -38,6 +39,7 @@ var (
 	functions = map[string]ProvisionFunc{
 		kubeadmInstaller:          kubeadm,
 		kindInstaller:             kind,
+		nvkindInstaller:           nvkind,
 		microk8sInstaller:         microk8s,
 		containerdRuntime:         containerd,
 		crioRuntime:               criO,
@@ -98,6 +100,14 @@ func kind(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	return kind.Execute(tpl, env)
 }
 
+func nvkind(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	nvkind, err := templates.NewKubernetes(env)
+	if err != nil {
+		return err
+	}
+	return nvkind.Execute(tpl, env)
+}
+
 // DependencySolver is a struct that holds the dependency list
 type DependencyResolver struct {
 	Dependencies []ProvisionFunc
@@ -125,6 +135,8 @@ func (d *DependencyResolver) withKubernetes() {
 		d.Dependencies = append(d.Dependencies, functions[kubeadmInstaller])
 	case kindInstaller:
 		d.Dependencies = append(d.Dependencies, functions[kindInstaller])
+	case nvkindInstaller:
+		d.Dependencies = append(d.Dependencies, functions[nvkindInstaller])
 	case microk8sInstaller:
 		// reset the list to only include microk8s
 		d.Dependencies = nil
