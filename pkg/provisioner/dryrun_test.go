@@ -11,9 +11,9 @@ func TestDryrun_ValidKubernetesVersion(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Kubernetes: v1alpha1.Kubernetes{
-				Install:             true,
-				KubernetesInstaller: "kubeadm",
-				KubernetesVersion:   "v1.20.0",
+				Install:   true,
+				Installer: "kubeadm",
+				Version:   "v1.20.0",
 			},
 		},
 	}
@@ -28,9 +28,9 @@ func TestDryrun_InvalidKubernetesVersion(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Kubernetes: v1alpha1.Kubernetes{
-				Install:             true,
-				KubernetesInstaller: "kubeadm",
-				KubernetesVersion:   "1.20.0",
+				Install:   true,
+				Installer: "kubeadm",
+				Version:   "1.20.0",
 			},
 		},
 	}

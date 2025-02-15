@@ -67,7 +67,7 @@ func TestNewKubernetes(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion: "v1.30.0",
+						Version: "v1.30.0",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",
@@ -91,7 +91,7 @@ func TestNewKubernetes(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion: "v1.29.0",
+						Version: "v1.29.0",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",
@@ -115,13 +115,12 @@ func TestNewKubernetes(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:     "v1.30.0",
-						KubeletReleaseVersion: "v0.18.0",
-						Arch:                  "arm64",
-						CniPluginsVersion:     "v1.7.0",
-						CalicoVersion:         "v3.30.0",
-						CrictlVersion:         "v1.32.0",
-						K8sFeatureGates:       []string{"Feature1=true", "Feature2=false"},
+						Version:           "v1.30.0",
+						Arch:              "arm64",
+						CniPluginsVersion: "v1.7.0",
+						CalicoVersion:     "v3.30.0",
+						CrictlVersion:     "v1.32.0",
+						K8sFeatureGates:   []string{"Feature1=true", "Feature2=false"},
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "docker",
@@ -146,7 +145,7 @@ func TestNewKubernetes(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion: "v1.30.0",
+						Version: "v1.30.0",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "invalid",
@@ -184,8 +183,8 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.30.0",
-						KubernetesInstaller: "kubeadm",
+						Version:   "v1.30.0",
+						Installer: "kubeadm",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",
@@ -199,9 +198,9 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.29.0",
-						KubernetesInstaller: "kubeadm",
-						K8sEndpointHost:     "test-host",
+						Version:         "v1.29.0",
+						Installer:       "kubeadm",
+						K8sEndpointHost: "test-host",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",
@@ -217,8 +216,8 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.30.0",
-						KubernetesInstaller: "kind",
+						Version:   "v1.30.0",
+						Installer: "kind",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",
@@ -232,8 +231,8 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.30.0",
-						KubernetesInstaller: "microk8s",
+						Version:   "v1.30.0",
+						Installer: "microk8s",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",
@@ -247,8 +246,8 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.30.0",
-						KubernetesInstaller: "invalid",
+						Version:   "v1.30.0",
+						Installer: "invalid",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",

@@ -199,9 +199,14 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	}
 
 	// Download kubeconfig
-	if opts.cfg.Spec.Kubernetes.Install && (opts.cfg.Spec.Kubernetes.KubeConfig != "" || opts.kubeconfig != "") {
-		if opts.cfg.Spec.Kubernetes.KubernetesInstaller == "microk8s" || opts.cfg.Spec.Kubernetes.KubernetesInstaller == "kind" {
-			log.Warning("kubeconfig retrieval is not supported for %s, skipping kubeconfig download", opts.cfg.Spec.Kubernetes.KubernetesInstaller)
+	if opts.cfg.Spec.Kubernetes.Install && (opts.cfg.Spec.Kubernetes.Config != "" || opts.kubeconfig != "") {
+		doesNotSupportKubeconfigRetrieval := map[string]bool{
+			"microk8s": true,
+			"kind":     true,
+			"nvkind":   true,
+		}
+		if doesNotSupportKubeconfigRetrieval[opts.cfg.Spec.Kubernetes.Installer] {
+			log.Warning("kubeconfig retrieval is not supported for %s, skipping kubeconfig download", opts.cfg.Spec.Kubernetes.Installer)
 			return nil
 		}
 

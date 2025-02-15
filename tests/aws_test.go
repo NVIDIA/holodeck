@@ -172,17 +172,17 @@ var _ = Describe("AWS Environment", func() {
 			Describe("Kubernetes Configuration", func() {
 				When("kubernetes is enabled", func() {
 					BeforeEach(func() {
-						if state.opts.cfg.Spec.Kubernetes.KubernetesVersion == "" {
+						if state.opts.cfg.Spec.Kubernetes.Version == "" {
 							Skip("Skipping test: Kubernetes version not specified in environment file")
 						}
 					})
 
 					It("should have valid kubernetes version", func() {
-						Expect(state.opts.cfg.Spec.Kubernetes.KubernetesVersion).NotTo(BeEmpty(), "Kubernetes version should not be empty")
+						Expect(state.opts.cfg.Spec.Kubernetes.Version).NotTo(BeEmpty(), "Kubernetes version should not be empty")
 					})
 
 					It("should have valid kubernetes installer", func() {
-						Expect(state.opts.cfg.Spec.Kubernetes.KubernetesInstaller).NotTo(BeEmpty(), "Kubernetes installer should not be empty")
+						Expect(state.opts.cfg.Spec.Kubernetes.Installer).NotTo(BeEmpty(), "Kubernetes installer should not be empty")
 					})
 				})
 			})
