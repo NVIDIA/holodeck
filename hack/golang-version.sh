@@ -15,7 +15,7 @@
 
 SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/../hack && pwd )"
 
-DOCKERFILE_ROOT=${SCRIPTS_DIR}/../deployments/devel
+DOCKERFILE_ROOT="${SCRIPTS_DIR}/.."
 
 GOLANG_VERSION=$(grep -E "^FROM golang:.*$" ${DOCKERFILE_ROOT}/Dockerfile | grep -oE "[0-9\.]+")
 
