@@ -14,7 +14,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	github.com/urfave/cli/v2 v2.27.5
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.34.0
 	k8s.io/apimachinery v0.32.2
 	sigs.k8s.io/controller-runtime v0.20.2
 	sigs.k8s.io/yaml v1.4.0
