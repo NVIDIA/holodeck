@@ -191,6 +191,9 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	}
 	defer p.Client.Close()
 
+	// Copy cache status into the environment
+	opts.cfg.Status = opts.cache.Status
+
 	if err = p.Run(opts.cfg); err != nil {
 		return fmt.Errorf("failed to run provisioner: %v", err)
 	}
