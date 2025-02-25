@@ -1,0 +1,41 @@
+# Description: This file is a template for the kubeadm configuration file.
+#             It is used to initialize a Kubernetes cluster using kubeadm.
+#             The template is rendered via go templating engine.
+#             The template is rendered with the following variables:
+#             - .CriSocket: The CRI socket path.
+#             - .ClusterName: The name of the cluster.
+#             - .KubernetesVersion: The version of Kubernetes.
+#             - .ControlPlaneEndpoint: The control plane endpoint.
+#             The rendered file is used to initialize the Kubernetes cluster.
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: "{{ .CriSocket }}"
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: "{{ .ClusterName }}"
+kubernetesVersion: "{{ .KubernetesVersion }}"
+controlPlaneEndpoint: "{{ .ControlPlaneEndpoint }}:6443"
+networking:
+  podSubnet: "192.168.0.0/16"
+apiServer:
+  extraArgs:
+    - name: "feature-gates"
+      value: "DynamicResourceAllocation=true"
+    - name: "runtime-config"
+      value: "resource.k8s.io/v1beta1=true"
+controllerManager:
+  extraArgs:
+    - name: "feature-gates"
+      value: "DynamicResourceAllocation=true"
+scheduler:
+  extraArgs:
+    - name: "feature-gates"
+      value: "DynamicResourceAllocation=true"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+featureGates:
+  DynamicResourceAllocation: true

@@ -73,9 +73,6 @@ build-cli:
 	@rm -rf bin
 	$(GO_CMD) build -o bin/$(BINARY_NAME) cmd/cli/main.go
 
-fmt:
-	@$(GO_FMT) -w -l $$(find . -name '*.go')
-
 verify:
 	@out=`$(GO_FMT) -w -l -d $$(find . -name '*.go')`; \
 	if [ -n "$$out" ]; then \
