@@ -1,3 +1,12 @@
+# v1.57.1 (2025-02-28)
+
+* **Documentation**: Systems Manager doc-only updates for Feb. 2025.
+
+# v1.57.0 (2025-02-27)
+
+* **Feature**: Track credential providers via User-Agent Feature ids
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.56.13 (2025-02-18)
 
 * **Bug Fix**: Bump go version to 1.22
