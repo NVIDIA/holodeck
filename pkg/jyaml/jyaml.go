@@ -106,4 +106,4 @@ func UnmarshalFromFile[T any](filename string) (T, error) {
 		return *new(T), fmt.Errorf("error reading file: %w", err)
 	}
 	return Unmarshal[T](data)
-}
+
