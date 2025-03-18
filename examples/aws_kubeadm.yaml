@@ -1,0 +1,27 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: aws_kubeadm_example
+  description: "end-to-end test infrastructure"
+spec:
+  provider: aws
+  auth:
+    keyName: <your key name here>
+    privateKey: <your key path here>
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    ingressIpRanges:
+    - <youip/32>
+    image:
+      architecture: amd64
+  nvidiaDriver:
+    install: true
+  nvidiaContainerToolkit:
+    install: true
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm
