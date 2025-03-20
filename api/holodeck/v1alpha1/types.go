@@ -218,4 +218,8 @@ type NVIDIAContainerToolkit struct {
 	// If not set the latest stable version will be used
 	// +optional
 	Version string `json:"version"`
+	// EnableCDI enables the Container Device Interface (CDI) in the selected
+	// container runtime.
+	// +optional
+	EnableCDI bool `json:"enableCDI"`
 }
