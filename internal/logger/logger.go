@@ -96,7 +96,7 @@ func (l *FunLogger) Info(format string, a ...any) {
 		format += "\n"
 	}
 
-	fmt.Fprintf(l.Out, format, a...)
+	fmt.Fprintf(l.Out, format, a...) // nolint: errcheck
 }
 
 // Info prints an information message with a check emoji.

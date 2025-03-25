@@ -31,40 +31,40 @@ import (
 func (p *Provider) Create() error {
 	cache := new(AWS)
 
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources") //nolint:errcheck
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createVPC(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC") //nolint:errcheck
+		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC") // nolint:errcheck, gosec, staticcheck
 		return fmt.Errorf("error creating VPC: %v", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "VPC created") //nolint:errcheck
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "VPC created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createSubnet(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet") //nolint:errcheck
+		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet") // nolint:errcheck, gosec, staticcheck
 		return fmt.Errorf("error creating subnet: %v", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created") //nolint:errcheck
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createInternetGateway(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway") //nolint:errcheck
+		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway") // nolint:errcheck, gosec, staticcheck
 		return fmt.Errorf("error creating Internet Gateway: %v", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created") //nolint:errcheck
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createRouteTable(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table") //nolint:errcheck
+		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table") // nolint:errcheck, gosec, staticcheck
 		return fmt.Errorf("error creating route table: %v", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created") //nolint:errcheck
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createSecurityGroup(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group") //nolint:errcheck
+		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group") // nolint:errcheck, gosec, staticcheck
 		return fmt.Errorf("error creating security group: %v", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created") //nolint:errcheck
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createEC2Instance(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance") //nolint:errcheck
+		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance") // nolint:errcheck, gosec, staticcheck
 		return fmt.Errorf("error creating EC2 instance: %v", err)
 	}
 
@@ -301,7 +301,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 
 	instanceIn := &ec2.RunInstancesInput{
 		ImageId:      p.Spec.Image.ImageId,
-		InstanceType: types.InstanceType(p.Spec.Instance.Type),
+		InstanceType: types.InstanceType(p.Spec.Type),
 		MaxCount:     &minMaxCount,
 		MinCount:     &minMaxCount,
 		BlockDeviceMappings: []types.BlockDeviceMapping{
@@ -324,7 +324,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 				SubnetId: aws.String(cache.Subnetid),
 			},
 		},
-		KeyName: aws.String(p.Spec.Auth.KeyName),
+		KeyName: aws.String(p.Spec.KeyName),
 		TagSpecifications: []types.TagSpecification{
 			{
 				ResourceType: types.ResourceTypeInstance,
@@ -373,7 +373,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	})
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("Fail to tag network to instance: %v", err)
+		return fmt.Errorf("fail to tag network to instance: %v", err)
 	}
 	p.done()
 	return nil

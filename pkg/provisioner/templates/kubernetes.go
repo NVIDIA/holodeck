@@ -352,7 +352,7 @@ func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
 
 			kubeAdmConfigPath = filepath.Join(cwd, strings.TrimPrefix(env.Spec.Kubernetes.KubeAdmConfig, "./"))
 		}
-		data, err := os.ReadFile(kubeAdmConfigPath)
+		data, err := os.ReadFile(kubeAdmConfigPath) // nolint:gosec
 		if err != nil {
 			return &KubeadmConfig{}, fmt.Errorf("failed to read kubeadm config file: %v", err)
 		}

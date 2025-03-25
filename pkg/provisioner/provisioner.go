@@ -149,13 +149,13 @@ func (p *Provisioner) provision() error {
 	session.Stderr = writer
 
 	go func() {
-		defer writer.Close()
+		defer writer.Close() // nolint:errcheck, gosec
 		_, err := io.Copy(os.Stdout, reader)
 		if err != nil {
 			log.Fatalf("Failed to copy from reader: %v", err)
 		}
 	}()
-	defer session.Close()
+	defer session.Close() // nolint:errcheck, gosec
 
 	script := p.tpl.String()
 
@@ -180,7 +180,7 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	if err != nil {
 		return fmt.Errorf("failed to create session: %v", err)
 	}
-	defer session.Close()
+	defer session.Close() // nolint:errcheck, gosec
 
 	// create remote directory if it does not exist
 	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
@@ -219,7 +219,7 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	}
 
 	// Close the writing pipe and wait for the session to finish
-	remoteFile.Close()
+	remoteFile.Close() // nolint:errcheck, gosec
 	if err := session.Wait(); err != nil {
 		return fmt.Errorf("failed to wait for command to complete: %v", err)
 	}
@@ -237,7 +237,7 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 	tempRemotePath := "/tmp/kubeadm-config.yaml" // Temporary upload path
 
 	// Ensure local directory exists
-	if err := os.MkdirAll(cachePath, 0755); err != nil {
+	if err := os.MkdirAll(cachePath, 0750); err != nil {
 		return fmt.Errorf("failed to create local cache directory: %v", err)
 	}
 
@@ -270,10 +270,10 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 		return fmt.Errorf("failed to create session: %v", err)
 	}
 	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
-		session.Close()
+		session.Close() // nolint:errcheck, gosec
 		return fmt.Errorf("failed to create directory on remote host: %v", err)
 	}
-	session.Close()
+	session.Close() // nolint:errcheck, gosec
 
 	// Move the temporary file to the final destination
 	session, err = p.Client.NewSession()
@@ -281,10 +281,10 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 		return fmt.Errorf("failed to create session: %v", err)
 	}
 	if err := session.Run(fmt.Sprintf("sudo mv %s %s", tempRemotePath, remoteFilePath)); err != nil {
-		session.Close()
+		session.Close() // nolint:errcheck, gosec
 		return fmt.Errorf("failed to move kubeadm config to final destination: %v", err)
 	}
-	session.Close()
+	session.Close() // nolint:errcheck, gosec
 
 	return nil
 }
@@ -296,21 +296,21 @@ func (p *Provisioner) copyFileToRemoteSFTP(localPath, remotePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to start SFTP session: %v", err)
 	}
-	defer client.Close()
+	defer client.Close() // nolint:errcheck, gosec
 
 	// Open local file
-	localFile, err := os.Open(localPath)
+	localFile, err := os.Open(localPath) // nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %v", err)
 	}
-	defer localFile.Close()
+	defer localFile.Close() // nolint:errcheck, gosec
 
 	// Open remote file for writing
 	remoteFile, err := client.Create(remotePath)
 	if err != nil {
 		return fmt.Errorf("failed to create remote file: %v", err)
 	}
-	defer remoteFile.Close()
+	defer remoteFile.Close() // nolint:errcheck, gosec
 
 	// Copy local file to remote file
 	if _, err := remoteFile.ReadFrom(localFile); err != nil {
@@ -338,7 +338,7 @@ func addScriptHeader(tpl *bytes.Buffer) error {
 func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	var client *ssh.Client
 	var err error
-	key, err := os.ReadFile(keyPath)
+	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file: %v", err)
 	}

@@ -97,7 +97,7 @@ func (m command) run(opts *options) error {
 		if opts.cfg.Spec.Username == "" {
 			opts.cfg.Spec.Username = os.Getenv("USER")
 		}
-		if err := connectOrDie(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.Instance.HostUrl); err != nil {
+		if err := connectOrDie(opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.HostUrl); err != nil {
 			return err
 		}
 	default:
@@ -130,7 +130,7 @@ func validateAWS(log *logger.FunLogger, opts *options) error {
 // createSshClient creates a ssh client, and retries if it fails to connect
 func connectOrDie(keyPath, userName, hostUrl string) error {
 	var err error
-	key, err := os.ReadFile(keyPath)
+	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to read key file: %v", err)
 	}
@@ -150,8 +150,8 @@ func connectOrDie(keyPath, userName, hostUrl string) error {
 	for i := 0; i < 20; i++ {
 		client, err := ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
-			client.Close()
-			return nil // Connection succeeded,
+			client.Close() // nolint:errcheck, gosec
+			return nil     // Connection succeeded,
 		}
 		connectionFailed = true
 		// Sleep for a brief moment before retrying.

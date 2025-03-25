@@ -63,7 +63,7 @@ var _ = Describe("AWS", func() {
 			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
 			// Create cachedir directory
 			if _, err := os.Stat(opts.cachePath); os.IsNotExist(err) {
-				err := os.Mkdir(opts.cachePath, 0755)
+				err := os.Mkdir(opts.cachePath, 0750)
 				Expect(err).ToNot(HaveOccurred())
 			}
 

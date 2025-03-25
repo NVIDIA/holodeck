@@ -168,12 +168,12 @@ func update(env *v1alpha1.Environment, cachePath string) error {
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		dir := filepath.Dir(cachePath)
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			err := os.MkdirAll(dir, 0755)
+			err := os.MkdirAll(dir, 0750)
 			if err != nil {
 				return err
 			}
 		}
-		_, err := os.Create(cachePath)
+		_, err := os.Create(cachePath) // nolint:gosec
 		if err != nil {
 			return err
 		}
