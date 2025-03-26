@@ -19,6 +19,8 @@ package templates
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -82,12 +84,7 @@ curl -sSL "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEAS
 sudo systemctl enable --now kubelet
 
 # Start kubernetes
-KUBEADMIN_OPTIONS="--node-name=holodeck --pod-network-cidr=192.168.0.0/16 --ignore-preflight-errors=all --control-plane-endpoint={{.K8sEndpointHost}}:6443"
-# If K8S_FEATURE_GATES is set and not empty, add it to the kubeadm init options
-if [ -n "{{.K8sFeatureGates}}"]; then
-  KUBEADMIN_OPTIONS="${KUBEADMIN_OPTIONS} --feature-gates={{.K8sFeatureGates}}"
-fi
-with_retry 3 10s sudo kubeadm init ${KUBEADMIN_OPTIONS} 
+with_retry 3 10s sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
@@ -108,11 +105,11 @@ kubectl label node --all nvidia.com/holodeck.managed=true
 const KindTemplate = `
 
 : ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
-KIND_CONFIG=""
-if [ -n "{{.KindConfig}}"]; then
-  KIND_CONFIG="--config {{.KindConfig}}"
-fi
 
+KIND_CONFIG=""
+if [ -n "{{.KindConfig}}" ]; then
+  KIND_CONFIG="--config /etc/kubernetes/kind.yaml"
+fi
 
 # Download kind
 [ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
@@ -168,6 +165,45 @@ echo "you can now access the cluster with:"
 echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 `
 
+const kubeadmTemplate = `apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: "{{ .CriSocket }}"
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: "{{ .ClusterName }}"
+kubernetesVersion: "{{.KubernetesVersion}}"
+controlPlaneEndpoint: "{{.ControlPlaneEndpoint}}:6443"
+networking:
+  podSubnet: "{{ .PodSubnet }}"
+{{- if .FeatureGates }}
+apiServer:
+  extraArgs:
+    - name: "feature-gates"
+      value: "{{ .FeatureGates }}"
+    - name: "runtime-config"
+      value: "{{ .RuntimeConfig }}"
+controllerManager:
+  extraArgs:
+    - name: "feature-gates"
+      value: "{{ .FeatureGates }}"
+scheduler:
+  extraArgs:
+    - name: "feature-gates"
+      value: "{{ .FeatureGates }}"
+{{- end }}
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+{{- if .ParsedFeatureGates }}
+featureGates:
+  {{- range $key, $value := .ParsedFeatureGates }}
+  {{ $key }}: {{ $value }}
+  {{- end }}
+{{- end }}
+`
+
 // Default Versions
 const (
 	defaultArch                  = "amd64"
@@ -190,6 +226,23 @@ type Kubernetes struct {
 	K8sFeatureGates       string
 	// Kind exclusive
 	KindConfig string
+}
+
+// KubeadmConfig holds configuration values for kubeadm
+type KubeadmConfig struct {
+	// Template defines the kubeadm configuration
+	// template to use for generating the configuration
+	// if no template is provided, the default template
+	// is used
+	Template string
+
+	CriSocket            string
+	ClusterName          string
+	KubernetesVersion    string
+	ControlPlaneEndpoint string
+	PodSubnet            string
+	FeatureGates         string // Feature gates as comma-separated string
+	RuntimeConfig        string // Runtime config (for feature gates) resource.k8s.io/v1beta1=true
 }
 
 func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
@@ -260,4 +313,110 @@ func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error 
 	}
 
 	return nil
+}
+
+// NewKubeadmConfig initializes a KubeadmConfig from a Kubernetes struct
+func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
+	// Convert feature gates slice into a comma-separated string
+	featureGates := strings.Join(env.Spec.Kubernetes.K8sFeatureGates, ",")
+
+	criSocket, err := GetCRISocket(string(env.Spec.ContainerRuntime.Name))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get CRI socket: %w", err)
+	}
+
+	kConfig := &KubeadmConfig{
+		CriSocket:            criSocket, // Assuming containerd as default
+		ClusterName:          "holodeck-cluster",
+		KubernetesVersion:    env.Spec.Kubernetes.KubernetesVersion, // Uses provided Kubernetes version
+		ControlPlaneEndpoint: env.Spec.Kubernetes.K8sEndpointHost,
+		PodSubnet:            "192.168.0.0/16",               // Default subnet, modify if needed
+		FeatureGates:         featureGates,                   // Convert slice to string for kubeadm
+		RuntimeConfig:        "resource.k8s.io/v1beta1=true", // Example runtime config
+	}
+
+	if env.Spec.Kubernetes.KubernetesVersion == "" {
+		kConfig.KubernetesVersion = defaultKubernetesVersion
+	}
+
+	if env.Spec.Kubernetes.KubeAdmConfig != "" {
+		// open local file for reading
+		// first check if file path is relative or absolute
+		// if relative, then prepend the current working directory
+		kubeAdmConfigPath := env.Spec.Kubernetes.KubeAdmConfig
+		if !filepath.IsAbs(kubeAdmConfigPath) {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return &KubeadmConfig{}, fmt.Errorf("failed to get current working directory: %v", err)
+			}
+
+			kubeAdmConfigPath = filepath.Join(cwd, strings.TrimPrefix(env.Spec.Kubernetes.KubeAdmConfig, "./"))
+		}
+		data, err := os.ReadFile(kubeAdmConfigPath)
+		if err != nil {
+			return &KubeadmConfig{}, fmt.Errorf("failed to read kubeadm config file: %v", err)
+		}
+
+		kConfig.Template = string(data)
+
+	} else {
+		kConfig.Template = kubeadmTemplate
+	}
+
+	return kConfig, nil
+}
+
+// ParseFeatureGates converts "Feature1=true,Feature2=false" to a map of strings for YAML
+func (c *KubeadmConfig) ParseFeatureGates() map[string]string {
+	parsed := make(map[string]string)
+	if c.FeatureGates == "" {
+		return parsed
+	}
+	// Split "FeatureX=true,FeatureY=false" into a map
+	for _, kv := range strings.Split(c.FeatureGates, ",") {
+		parts := strings.Split(kv, "=")
+		if len(parts) == 2 {
+			parsed[parts[0]] = parts[1] // Store values as "true"/"false" strings
+		}
+	}
+	return parsed
+}
+
+// GenerateKubeadmConfig generates the kubeadm YAML configuration
+func (c *KubeadmConfig) GenerateKubeadmConfig() (string, error) {
+	// Parse feature gates into a structured map for YAML formatting
+	data := struct {
+		*KubeadmConfig
+		ParsedFeatureGates map[string]string
+	}{
+		KubeadmConfig:      c,
+		ParsedFeatureGates: c.ParseFeatureGates(),
+	}
+
+	// Parse and execute the template
+	tmpl, err := template.New("kubeadmConfig").Parse(c.Template)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	var output bytes.Buffer
+	if err := tmpl.Execute(&output, data); err != nil {
+		return "", fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return output.String(), nil
+}
+
+// GetCRISocket returns the CRI socket path based on the container runtime
+func GetCRISocket(runtime string) (string, error) {
+	switch runtime {
+	case "docker":
+		return "unix:///run/cri-dockerd.sock", nil
+	case "containerd":
+		return "unix:///run/containerd/containerd.sock", nil
+	case "crio":
+		return "unix:///run/crio/crio.sock", nil
+	default:
+		return "", fmt.Errorf("unsupported container runtime: %s", runtime)
+	}
 }

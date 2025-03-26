@@ -27,6 +27,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -39,6 +40,8 @@ import (
 const Shebang = `#! /usr/bin/env bash
 set -xe
 `
+
+const remoteKindConfig = "/etc/kubernetes/kind.yaml"
 
 type Provisioner struct {
 	Client         *ssh.Client
@@ -73,16 +76,23 @@ func New(log *logger.FunLogger, keyPath, userName, hostUrl string) (*Provisioner
 func (p *Provisioner) Run(env v1alpha1.Environment) error {
 	dependencies := NewDependencies(env)
 
+	// Create kubeadm config file if required installer is kubeadm
+	if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {
+		// Set the k8s endpoint host to the host url
+		env.Spec.Kubernetes.K8sEndpointHost = p.HostUrl
+
+		// Create kubeadm config file
+		if err := p.createKubeAdmConfig(env); err != nil {
+			return fmt.Errorf("failed to create kubeadm config file: %v", err)
+		}
+	}
+
 	// kind-config
 	// Create kind config file if it is provided
 	if env.Spec.Kubernetes.KubernetesInstaller == "kind" && env.Spec.Kubernetes.KindConfig != "" {
 		if err := p.createKindConfig(env); err != nil {
 			return fmt.Errorf("failed to create kind config file: %v", err)
 		}
-	}
-
-	if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {
-		env.Spec.Kubernetes.K8sEndpointHost = p.HostUrl
 	}
 
 	for _, node := range dependencies.Resolve() {
@@ -163,7 +173,7 @@ func (p *Provisioner) provision() error {
 
 func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	// Specify the remote file path
-	remoteFilePath := "$HOME/kind.yaml"
+	remoteFilePath := remoteKindConfig
 
 	// Create a session
 	session, err := p.Client.NewSession()
@@ -171,6 +181,11 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 		return fmt.Errorf("failed to create session: %v", err)
 	}
 	defer session.Close()
+
+	// create remote directory if it does not exist
+	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
+		return fmt.Errorf("failed to create remote directory /etc/kubernetes: %v", err)
+	}
 
 	// Open a remote file for writing
 	remoteFile, err := session.StdinPipe()
@@ -205,7 +220,103 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 
 	// Close the writing pipe and wait for the session to finish
 	remoteFile.Close()
-	session.Wait() // nolint:errcheck
+	if err := session.Wait(); err != nil {
+		return fmt.Errorf("failed to wait for command to complete: %v", err)
+	}
+
+	return nil
+}
+
+// createKubeAdmConfig creates a kubeadm config file on the remote machine
+// at /etc/kubernetes/kubeadm-config.yaml
+func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
+	cachePath := filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
+	// Define local and remote paths
+	localFilePath := fmt.Sprintf("%s/kubeadm-config.yaml", cachePath)
+	remoteFilePath := "/etc/kubernetes/kubeadm-config.yaml"
+	tempRemotePath := "/tmp/kubeadm-config.yaml" // Temporary upload path
+
+	// Ensure local directory exists
+	if err := os.MkdirAll(cachePath, 0755); err != nil {
+		return fmt.Errorf("failed to create local cache directory: %v", err)
+	}
+
+	// Create kubeadm config file locally
+	var kubeadmConfigContent string
+
+	kConfig, err := templates.NewKubeadmConfig(env)
+	if err != nil {
+		return fmt.Errorf("failed to create kubeadm config: %v", err)
+	}
+
+	kubeadmConfigContent, err = kConfig.GenerateKubeadmConfig()
+	if err != nil {
+		return fmt.Errorf("failed to generate kubeadm config: %v", err)
+	}
+
+	// Write kubeadm config to local file
+	if err := os.WriteFile(localFilePath, []byte(kubeadmConfigContent), 0600); err != nil {
+		return fmt.Errorf("failed to write kubeadm config to local file: %v", err)
+	}
+
+	// Copy the local file to the remote machine using SFTP
+	if err := p.copyFileToRemoteSFTP(localFilePath, tempRemotePath); err != nil {
+		return fmt.Errorf("failed to copy kubeadm config to remote host: %v", err)
+	}
+
+	// Move the temporary file to the final destination
+	session, err := p.Client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %v", err)
+	}
+	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
+		session.Close()
+		return fmt.Errorf("failed to create directory on remote host: %v", err)
+	}
+	session.Close()
+
+	// Move the temporary file to the final destination
+	session, err = p.Client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %v", err)
+	}
+	if err := session.Run(fmt.Sprintf("sudo mv %s %s", tempRemotePath, remoteFilePath)); err != nil {
+		session.Close()
+		return fmt.Errorf("failed to move kubeadm config to final destination: %v", err)
+	}
+	session.Close()
+
+	return nil
+}
+
+// copyFileToRemoteSFTP copies a file from local to a remote server using SFTP.
+func (p *Provisioner) copyFileToRemoteSFTP(localPath, remotePath string) error {
+	// Open an SSH session
+	client, err := sftp.NewClient(p.Client)
+	if err != nil {
+		return fmt.Errorf("failed to start SFTP session: %v", err)
+	}
+	defer client.Close()
+
+	// Open local file
+	localFile, err := os.Open(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to open local file: %v", err)
+	}
+	defer localFile.Close()
+
+	// Open remote file for writing
+	remoteFile, err := client.Create(remotePath)
+	if err != nil {
+		return fmt.Errorf("failed to create remote file: %v", err)
+	}
+	defer remoteFile.Close()
+
+	// Copy local file to remote file
+	if _, err := remoteFile.ReadFrom(localFile); err != nil {
+		return fmt.Errorf("failed to copy file content: %v", err)
+	}
+
 	return nil
 }
 

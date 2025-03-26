@@ -204,6 +204,10 @@ type Kubernetes struct {
 	// alpha/experimental features
 	K8sFeatureGates []string `json:"K8sFeatureGates"`
 
+	// KubeAdmConfig is the path to the KubeAdmConfig file on the local machine
+	// +optional
+	KubeAdmConfig string `json:"kubeAdmConfig"`
+
 	// Kind exclusive
 	KindConfig string `json:"kindConfig"`
 }
