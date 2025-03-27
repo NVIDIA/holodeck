@@ -30,11 +30,13 @@ func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 
 	go log.Loading("Resolving dependencies \U0001F4E6\n")
 	// Kubernetes -> Container Toolkit -> Container Runtime -> NVDriver
-	if env.Spec.Kubernetes.Install {
+	if env.Spec.Kubernetes.Install && env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {
 		// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
-		if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" && !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
-			log.Fail <- struct{}{}
-			return fmt.Errorf("kubernetes version %s is not in the format of vX.Y.Z", env.Spec.Kubernetes.KubernetesVersion)
+		if env.Spec.Kubernetes.KubernetesVersion != "" {
+			if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
+				log.Fail <- struct{}{}
+				return fmt.Errorf("kubernetes version %s is not in the format of vX.Y.Z", env.Spec.Kubernetes.KubernetesVersion)
+			}
 		}
 	}
 

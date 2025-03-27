@@ -373,7 +373,7 @@ func (c *KubeadmConfig) ParseFeatureGates() map[string]string {
 		return parsed
 	}
 	// Split "FeatureX=true,FeatureY=false" into a map
-	for _, kv := range strings.Split(c.FeatureGates, ",") {
+	for kv := range strings.SplitSeq(c.FeatureGates, ",") {
 		parts := strings.Split(kv, "=")
 		if len(parts) == 2 {
 			parsed[parts[0]] = parts[1] // Store values as "true"/"false" strings

@@ -355,7 +355,7 @@ func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	}
 
 	connectionFailed := false
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		client, err = ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
 			return client, nil // Connection succeeded, return the client.

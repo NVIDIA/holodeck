@@ -147,7 +147,7 @@ func connectOrDie(keyPath, userName, hostUrl string) error {
 	}
 
 	connectionFailed := false
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		client, err := ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
 			client.Close() // nolint:errcheck, gosec
