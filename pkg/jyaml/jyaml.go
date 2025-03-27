@@ -101,7 +101,7 @@ func UnmarshalStrict[T any](object any) (T, error) {
 }
 
 func UnmarshalFromFile[T any](filename string) (T, error) {
-	data, err := os.ReadFile(filename)
+	data, err := os.ReadFile(filename) // nolint:gosec
 	if err != nil {
 		return *new(T), fmt.Errorf("error reading file: %w", err)
 	}

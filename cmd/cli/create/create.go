@@ -122,9 +122,9 @@ func (m command) run(c *cli.Context, opts *options) error {
 	var provider provider.Provider
 	var err error
 
-	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
-		// If no username is specified, default to ubuntu
-		if opts.cfg.Spec.Auth.Username == "" {
+	switch opts.cfg.Spec.Provider {
+	case v1alpha1.ProviderAWS:
+		if opts.cfg.Spec.Username == "" {
 			// TODO (ArangoGutierrez): This should be based on the OS
 			// Amazon Linux: ec2-user
 			// Ubuntu: ubuntu
@@ -133,14 +133,14 @@ func (m command) run(c *cli.Context, opts *options) error {
 			// RHEL: ec2-user
 			// Fedora: ec2-user
 			// SUSE: ec2-user
-			opts.cfg.Spec.Auth.Username = "ubuntu"
+			opts.cfg.Spec.Username = "ubuntu"
 		}
 		provider, err = aws.New(m.log, opts.cfg, opts.cachefile)
 		if err != nil {
 			return err
 		}
-	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
-		// If username is not provided, use the current user
+
+	case v1alpha1.ProviderSSH:
 		if opts.cfg.Spec.Username == "" {
 			opts.cfg.Spec.Username = os.Getenv("USER")
 		}
@@ -182,14 +182,14 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 			}
 		}
 	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
-		hostUrl = opts.cfg.Spec.Instance.HostUrl
+		hostUrl = opts.cfg.Spec.HostUrl
 	}
 
-	p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Auth.Username, hostUrl)
+	p, err := provisioner.New(log, opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, hostUrl)
 	if err != nil {
 		return err
 	}
-	defer p.Client.Close()
+	defer p.Client.Close() // nolint: errcheck
 
 	// Copy cache status into the environment
 	opts.cfg.Status = opts.cache.Status

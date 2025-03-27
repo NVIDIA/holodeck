@@ -40,7 +40,7 @@ func (a ByCreationDate) Less(i, j int) bool { return a[i].CreationDate < a[j].Cr
 
 func (p *Provider) checkImages() error {
 	// Check if the given image is supported in the region
-	if p.Spec.Instance.Image.ImageId != nil {
+	if p.Spec.Image.ImageId != nil {
 		return p.assertImageIdSupported()
 	}
 
@@ -56,21 +56,21 @@ func (p *Provider) setAMI() error {
 	// Default to the official Ubuntu images in the AWS Marketplace
 	// TODO: Add support for other image OS types
 	awsOwner := []string{"099720109477", "679593333241"}
-	if p.Spec.Instance.Image.OwnerId != nil {
-		awsOwner = []string{*p.Spec.Instance.Image.OwnerId}
+	if p.Spec.Image.OwnerId != nil {
+		awsOwner = []string{*p.Spec.Image.OwnerId}
 	}
 
 	var filterNameValue []string
 	var filterArchitectureValue []string
 
-	if p.Spec.Instance.Image.Architecture != "" {
-		switch p.Spec.Instance.Image.Architecture {
+	if p.Spec.Image.Architecture != "" {
+		switch p.Spec.Image.Architecture {
 		case "x86_64", "amd64":
 			filterArchitectureValue = []string{"x86_64", "amd64"}
 		case "arm64", "aarch64":
 			filterArchitectureValue = []string{"arm64"}
 		default:
-			return fmt.Errorf("invalid architecture %s", p.Spec.Instance.Image.Architecture)
+			return fmt.Errorf("invalid architecture %s", p.Spec.Image.Architecture)
 		}
 	}
 
@@ -113,13 +113,13 @@ func (p *Provider) assertImageIdSupported() error {
 	images, err := p.describeImages([]types.Filter{})
 	if err == nil {
 		for _, image := range images {
-			if image.ImageID == *p.Spec.Instance.Image.ImageId {
+			if image.ImageID == *p.Spec.Image.ImageId {
 				return nil
 			}
 		}
 	}
 
-	return errors.Join(err, fmt.Errorf("image %s is not supported in the current region %s", *p.Spec.Instance.Image.ImageId, p.Spec.Instance.Region))
+	return errors.Join(err, fmt.Errorf("image %s is not supported in the current region %s", *p.Spec.Image.ImageId, p.Spec.Region))
 }
 
 func (p *Provider) describeImages(filter []types.Filter) ([]ImageInfo, error) {
@@ -167,7 +167,7 @@ func (p *Provider) checkInstanceTypes() error {
 		}
 
 		for _, it := range resp.InstanceTypes {
-			if it.InstanceType == types.InstanceType(p.Spec.Instance.Type) {
+			if it.InstanceType == types.InstanceType(p.Spec.Type) {
 				return nil
 			}
 		}
@@ -179,5 +179,5 @@ func (p *Provider) checkInstanceTypes() error {
 		}
 	}
 
-	return fmt.Errorf("instance type %s is not supported in the current region %s", p.Spec.Instance.Type, p.Spec.Instance.Region)
+	return fmt.Errorf("instance type %s is not supported in the current region %s", p.Spec.Type, p.Spec.Region)
 }

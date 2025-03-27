@@ -73,8 +73,8 @@ func entrypoint(log *logger.FunLogger) error {
 		if err := getSSHKeyFile(log, "AWS_SSH_KEY"); err != nil {
 			return err
 		}
-		cfg.Spec.Auth.PrivateKey = sshKeyFile
-		cfg.Spec.Auth.Username = "ubuntu"
+		cfg.Spec.PrivateKey = sshKeyFile
+		cfg.Spec.Username = "ubuntu"
 		for _, p := range cache.Status.Properties {
 			if p.Name == aws.PublicDnsName {
 				hostUrl = p.Value
@@ -84,11 +84,11 @@ func entrypoint(log *logger.FunLogger) error {
 	}
 
 	// Run the provisioner
-	p, err := provisioner.New(log, sshKeyFile, cfg.Spec.Auth.Username, hostUrl)
+	p, err := provisioner.New(log, sshKeyFile, cfg.Spec.Username, hostUrl)
 	if err != nil {
 		return err
 	}
-	defer p.Client.Close()
+	defer p.Client.Close() // nolint: errcheck
 
 	log.Info("Provisioning \u2699")
 	if err = p.Run(cfg); err != nil {

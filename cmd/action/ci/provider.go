@@ -46,7 +46,7 @@ func newProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (provider.Pro
 func newAwsProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*aws.Provider, error) {
 	// Create cachedir directory
 	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
-		err := os.Mkdir(cachedir, 0755)
+		err := os.Mkdir(cachedir, 0750)
 		if err != nil {
 			log.Error(fmt.Errorf("error creating cache directory: %s", err))
 			return nil, err
