@@ -48,7 +48,7 @@ func (p *Provider) delete(cache *AWS) error {
 		p.log.Warning("No instance found to delete")
 	} else {
 		// call deleteEC2 3 times to ensure the instance is deleted or until it returns nil
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			err = p.deleteEC2(cache)
 			if err == nil {
 				break
@@ -63,7 +63,7 @@ func (p *Provider) delete(cache *AWS) error {
 
 	// Delete the VPC
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting VPC resources") // nolint:errcheck, gosec, staticcheck
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		err = p.deleteVPC(cache)
 		if err == nil {
 			break

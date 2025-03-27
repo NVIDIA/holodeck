@@ -29,9 +29,6 @@ type EnvironmentSpec struct {
 	// Instance is required for AWS provider
 	// +optional
 	Instance `json:"instance"`
-	// VsphereVirtualMachine is required for VSphere provider
-	// +optional
-	VsphereVirtualMachine `json:"VsphereVirtualMachine"`
 
 	// +optional
 	NVIDIADriver NVIDIADriver `json:"nvidiaDriver"`
@@ -69,18 +66,6 @@ type Instance struct {
 	IngresIpRanges []string `json:"ingressIpRanges"`
 	// +optional
 	HostUrl string `json:"hostUrl"`
-}
-
-// VsphereVirtualMachine defines a VSphere VM
-type VsphereVirtualMachine struct {
-	VCenterURL    string `json:"vCenterURL"`
-	Datacenter    string `json:"datacenter"`
-	DataStore     string `json:"dataStore"`
-	Cluster       string `json:"cluster"`
-	Network       string `json:"network"`
-	VMFolder      string `json:"vmFolder"`
-	ResoursePool  string `json:"resoursePool"`
-	TemplateImage string `json:"templateImage"`
 }
 
 // Describes an image or vm template.
@@ -123,10 +108,10 @@ type EnvironmentStatus struct {
 // Environment is the Schema for the Holodeck Environment API
 type Environment struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
-	Spec   EnvironmentSpec   `json:"spec,omitempty"`
-	Status EnvironmentStatus `json:"status,omitempty"`
+	Spec   EnvironmentSpec   `json:"spec"`
+	Status EnvironmentStatus `json:"status"`
 }
 
 //+kubebuilder:object:root=true
@@ -134,7 +119,7 @@ type Environment struct {
 // EnvironmentList contains a list of Holodeck
 type EnvironmentList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata"`
 	Items           []Environment `json:"items"`
 }
 
