@@ -1,6 +1,7 @@
 module github.com/NVIDIA/holodeck
 
 go 1.24.1
+
 require (
 	github.com/aws/aws-sdk-go v1.55.6
 	github.com/aws/aws-sdk-go-v2 v1.36.3
