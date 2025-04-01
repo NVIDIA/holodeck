@@ -45,7 +45,7 @@ func main() {
 	c := cli.NewApp()
 	c.Name = ProgramName
 	c.Usage = "Create and manage test environments"
-	c.Version = "0.1.0"
+	c.Version = "0.2.7"
 
 	// Setup the flags for this command
 	c.Flags = []cli.Flag{
