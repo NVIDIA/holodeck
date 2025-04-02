@@ -7,6 +7,9 @@ on:
 jobs:
   cleanup:
     runs-on: linux-amd64-cpu4
+    strategy:
+      matrix:
+        aws-region: [us-west-1, us-east-1]
 
     steps:
       - name: Checkout repository
@@ -17,12 +20,12 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          aws-region: ${{ matrix.aws-region }}
 
       - name: Identify resources for deletion
         id: identify-resources
         run: |
-          # Find vpcs with Project holodeck and cicd Environment
+          # Find VPCs with tags Project=holodeck and Environment=cicd
           vpcs=$(aws ec2 describe-vpcs \
             --filters "Name=tag:Project,Values=holodeck" "Name=tag:Environment,Values=cicd" \
             --query "Vpcs[].VpcId" \
