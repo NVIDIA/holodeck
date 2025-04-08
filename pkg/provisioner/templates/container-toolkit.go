@@ -34,7 +34,7 @@ curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dear
   && \
     sudo apt-get update
 
-sudo apt-get install -y nvidia-container-toolkit
+install_packages_with_retry nvidia-container-toolkit
 
 # Configure container runtime
 sudo nvidia-ctk runtime configure --runtime={{.ContainerRuntime}} --set-as-default --enable-cdi={{.EnableCDI}}
