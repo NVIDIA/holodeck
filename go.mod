@@ -13,7 +13,7 @@ require (
 	github.com/onsi/gomega v1.37.0
 	github.com/pkg/sftp v1.13.9
 	github.com/urfave/cli/v2 v2.27.6
-	golang.org/x/crypto v0.36.0
+	golang.org/x/crypto v0.37.0
 	k8s.io/apimachinery v0.32.3
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/yaml v1.4.0
@@ -51,7 +51,7 @@ require (
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	golang.org/x/net v0.37.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/tools v0.31.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
