@@ -11,41 +11,23 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Modifies the permissions for your VPC endpoint service. You can add or remove
-// permissions for service consumers (Amazon Web Services accounts, users, and IAM
-// roles) to connect to your endpoint service. Principal ARNs with path components
-// aren't supported.
-//
-// If you grant permissions to all principals, the service is public. Any users
-// who know the name of a public service can send a request to attach an endpoint.
-// If the service does not require manual approval, attachments are automatically
-// approved.
-func (c *Client) ModifyVpcEndpointServicePermissions(ctx context.Context, params *ModifyVpcEndpointServicePermissionsInput, optFns ...func(*Options)) (*ModifyVpcEndpointServicePermissionsOutput, error) {
+// Describes the Outposts link aggregation groups (LAGs).
+func (c *Client) DescribeOutpostLags(ctx context.Context, params *DescribeOutpostLagsInput, optFns ...func(*Options)) (*DescribeOutpostLagsOutput, error) {
 	if params == nil {
-		params = &ModifyVpcEndpointServicePermissionsInput{}
+		params = &DescribeOutpostLagsInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "ModifyVpcEndpointServicePermissions", params, optFns, c.addOperationModifyVpcEndpointServicePermissionsMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "DescribeOutpostLags", params, optFns, c.addOperationDescribeOutpostLagsMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*ModifyVpcEndpointServicePermissionsOutput)
+	out := result.(*DescribeOutpostLagsOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type ModifyVpcEndpointServicePermissionsInput struct {
-
-	// The ID of the service.
-	//
-	// This member is required.
-	ServiceId *string
-
-	// The Amazon Resource Names (ARN) of the principals. Permissions are granted to
-	// the principals in this list. To grant permissions to all principals, specify an
-	// asterisk (*).
-	AddAllowedPrincipals []string
+type DescribeOutpostLagsInput struct {
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -53,20 +35,57 @@ type ModifyVpcEndpointServicePermissionsInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
-	// The Amazon Resource Names (ARN) of the principals. Permissions are revoked for
-	// principals in this list.
-	RemoveAllowedPrincipals []string
+	// The filters to use for narrowing down the request. The following filters are
+	// supported:
+	//
+	//   - service-link-virtual-interface-id - The ID of the service link virtual
+	//   interface.
+	//
+	//   - service-link-virtual-interface-arn - The ARN of the service link virtual
+	//   interface.
+	//
+	//   - outpost-id - The Outpost ID.
+	//
+	//   - outpost-arn - The Outpost ARN.
+	//
+	//   - owner-id - The ID of the Amazon Web Services account that owns the service
+	//   link virtual interface.
+	//
+	//   - vlan - The ID of the address pool.
+	//
+	//   - local-address - The local address.
+	//
+	//   - peer-address - The peer address.
+	//
+	//   - peer-bgp-asn - The peer BGP ASN.
+	//
+	//   - outpost-lag-id - The Outpost LAG ID.
+	//
+	//   - configuration-state - The configuration state of the service link virtual
+	//   interface.
+	Filters []types.Filter
+
+	// The maximum number of results to return with a single call. To retrieve the
+	// remaining results, make another call with the returned nextToken value.
+	MaxResults *int32
+
+	// The token for the next page of results.
+	NextToken *string
+
+	// The IDs of the Outpost LAGs.
+	OutpostLagIds []string
 
 	noSmithyDocumentSerde
 }
 
-type ModifyVpcEndpointServicePermissionsOutput struct {
+type DescribeOutpostLagsOutput struct {
 
-	// Information about the added principals.
-	AddedPrincipals []types.AddedPrincipal
+	// The token to use to retrieve the next page of results. This value is null when
+	// there are no more results to return.
+	NextToken *string
 
-	// Returns true if the request succeeds; otherwise, it returns an error.
-	ReturnValue *bool
+	// The Outpost LAGs.
+	OutpostLags []types.OutpostLag
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -74,19 +93,19 @@ type ModifyVpcEndpointServicePermissionsOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+func (c *Client) addOperationDescribeOutpostLagsMiddlewares(stack *middleware.Stack, options Options) (err error) {
 	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsEc2query_serializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Serialize.Add(&awsEc2query_serializeOpDescribeOutpostLags{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsEc2query_deserializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Deserialize.Add(&awsEc2query_deserializeOpDescribeOutpostLags{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ModifyVpcEndpointServicePermissions"); err != nil {
+	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeOutpostLags"); err != nil {
 		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
@@ -141,10 +160,7 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = addOpModifyVpcEndpointServicePermissionsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(options.Region), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeOutpostLags(options.Region), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRecursionDetection(stack); err != nil {
@@ -177,10 +193,10 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	return nil
 }
 
-func newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(region string) *awsmiddleware.RegisterServiceMetadata {
+func newServiceMetadataMiddleware_opDescribeOutpostLags(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		OperationName: "ModifyVpcEndpointServicePermissions",
+		OperationName: "DescribeOutpostLags",
 	}
 }

@@ -11,41 +11,52 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Modifies the permissions for your VPC endpoint service. You can add or remove
-// permissions for service consumers (Amazon Web Services accounts, users, and IAM
-// roles) to connect to your endpoint service. Principal ARNs with path components
-// aren't supported.
-//
-// If you grant permissions to all principals, the service is public. Any users
-// who know the name of a public service can send a request to attach an endpoint.
-// If the service does not require manual approval, attachments are automatically
-// approved.
-func (c *Client) ModifyVpcEndpointServicePermissions(ctx context.Context, params *ModifyVpcEndpointServicePermissionsInput, optFns ...func(*Options)) (*ModifyVpcEndpointServicePermissionsOutput, error) {
+// Create a virtual interface for a local gateway.
+func (c *Client) CreateLocalGatewayVirtualInterface(ctx context.Context, params *CreateLocalGatewayVirtualInterfaceInput, optFns ...func(*Options)) (*CreateLocalGatewayVirtualInterfaceOutput, error) {
 	if params == nil {
-		params = &ModifyVpcEndpointServicePermissionsInput{}
+		params = &CreateLocalGatewayVirtualInterfaceInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "ModifyVpcEndpointServicePermissions", params, optFns, c.addOperationModifyVpcEndpointServicePermissionsMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "CreateLocalGatewayVirtualInterface", params, optFns, c.addOperationCreateLocalGatewayVirtualInterfaceMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*ModifyVpcEndpointServicePermissionsOutput)
+	out := result.(*CreateLocalGatewayVirtualInterfaceOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type ModifyVpcEndpointServicePermissionsInput struct {
+type CreateLocalGatewayVirtualInterfaceInput struct {
 
-	// The ID of the service.
+	// The IP address assigned to the local gateway virtual interface on the Outpost
+	// side. Only IPv4 is supported.
 	//
 	// This member is required.
-	ServiceId *string
+	LocalAddress *string
 
-	// The Amazon Resource Names (ARN) of the principals. Permissions are granted to
-	// the principals in this list. To grant permissions to all principals, specify an
-	// asterisk (*).
-	AddAllowedPrincipals []string
+	// The ID of the local gateway virtual interface group.
+	//
+	// This member is required.
+	LocalGatewayVirtualInterfaceGroupId *string
+
+	// References the Link Aggregation Group (LAG) that connects the Outpost to
+	// on-premises network devices.
+	//
+	// This member is required.
+	OutpostLagId *string
+
+	// The peer IP address for the local gateway virtual interface. Only IPv4 is
+	// supported.
+	//
+	// This member is required.
+	PeerAddress *string
+
+	// The virtual local area network (VLAN) used for the local gateway virtual
+	// interface.
+	//
+	// This member is required.
+	Vlan *int32
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -53,20 +64,23 @@ type ModifyVpcEndpointServicePermissionsInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
-	// The Amazon Resource Names (ARN) of the principals. Permissions are revoked for
-	// principals in this list.
-	RemoveAllowedPrincipals []string
+	// The Autonomous System Number (ASN) of the Border Gateway Protocol (BGP) peer.
+	PeerBgpAsn *int32
+
+	// The extended 32-bit ASN of the BGP peer for use with larger ASN values.
+	PeerBgpAsnExtended *int64
+
+	// The tags to apply to a resource when the local gateway virtual interface is
+	// being created.
+	TagSpecifications []types.TagSpecification
 
 	noSmithyDocumentSerde
 }
 
-type ModifyVpcEndpointServicePermissionsOutput struct {
+type CreateLocalGatewayVirtualInterfaceOutput struct {
 
-	// Information about the added principals.
-	AddedPrincipals []types.AddedPrincipal
-
-	// Returns true if the request succeeds; otherwise, it returns an error.
-	ReturnValue *bool
+	// Information about the local gateway virtual interface.
+	LocalGatewayVirtualInterface *types.LocalGatewayVirtualInterface
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -74,19 +88,19 @@ type ModifyVpcEndpointServicePermissionsOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+func (c *Client) addOperationCreateLocalGatewayVirtualInterfaceMiddlewares(stack *middleware.Stack, options Options) (err error) {
 	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsEc2query_serializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Serialize.Add(&awsEc2query_serializeOpCreateLocalGatewayVirtualInterface{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsEc2query_deserializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Deserialize.Add(&awsEc2query_deserializeOpCreateLocalGatewayVirtualInterface{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ModifyVpcEndpointServicePermissions"); err != nil {
+	if err := addProtocolFinalizerMiddlewares(stack, options, "CreateLocalGatewayVirtualInterface"); err != nil {
 		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
@@ -141,10 +155,10 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = addOpModifyVpcEndpointServicePermissionsValidationMiddleware(stack); err != nil {
+	if err = addOpCreateLocalGatewayVirtualInterfaceValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(options.Region), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateLocalGatewayVirtualInterface(options.Region), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRecursionDetection(stack); err != nil {
@@ -177,10 +191,10 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	return nil
 }
 
-func newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(region string) *awsmiddleware.RegisterServiceMetadata {
+func newServiceMetadataMiddleware_opCreateLocalGatewayVirtualInterface(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		OperationName: "ModifyVpcEndpointServicePermissions",
+		OperationName: "CreateLocalGatewayVirtualInterface",
 	}
 }

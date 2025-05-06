@@ -2130,6 +2130,42 @@ type ClientLoginBannerResponseOptions struct {
 	noSmithyDocumentSerde
 }
 
+// Client Route Enforcement is a feature of Client VPN that helps enforce
+// administrator defined routes on devices connected through the VPN. This feature
+// helps improve your security posture by ensuring that network traffic originating
+// from a connected client is not inadvertently sent outside the VPN tunnel.
+//
+// Client Route Enforcement works by monitoring the route table of a connected
+// device for routing policy changes to the VPN connection. If the feature detects
+// any VPN routing policy modifications, it will automatically force an update to
+// the route table, reverting it back to the expected route configurations.
+type ClientRouteEnforcementOptions struct {
+
+	// Enable or disable Client Route Enforcement. The state can either be true
+	// (enabled) or false (disabled). The default is false .
+	//
+	// Valid values: true | false
+	//
+	// Default value: false
+	Enforced *bool
+
+	noSmithyDocumentSerde
+}
+
+// The current status of Client Route Enforcement.
+type ClientRouteEnforcementResponseOptions struct {
+
+	// Status of the client route enforcement feature, indicating whether Client Route
+	// Enforcement is true (enabled) or false (disabled).
+	//
+	// Valid values: true | false
+	//
+	// Default value: false
+	Enforced *bool
+
+	noSmithyDocumentSerde
+}
+
 // Describes the authentication methods used by a Client VPN endpoint. For more
 // information, see [Authentication]in the Client VPN Administrator Guide.
 //
@@ -2274,6 +2310,18 @@ type ClientVpnEndpoint struct {
 	// Options for enabling a customizable text banner that will be displayed on
 	// Amazon Web Services provided clients when a VPN session is established.
 	ClientLoginBannerOptions *ClientLoginBannerResponseOptions
+
+	// Client route enforcement is a feature of the Client VPN service that helps
+	// enforce administrator defined routes on devices connected through the VPN. T his
+	// feature helps improve your security posture by ensuring that network traffic
+	// originating from a connected client is not inadvertently sent outside the VPN
+	// tunnel.
+	//
+	// Client route enforcement works by monitoring the route table of a connected
+	// device for routing policy changes to the VPN connection. If the feature detects
+	// any VPN routing policy modifications, it will automatically force an update to
+	// the route table, reverting it back to the expected route configurations.
+	ClientRouteEnforcementOptions *ClientRouteEnforcementResponseOptions
 
 	// The ID of the Client VPN endpoint.
 	ClientVpnEndpointId *string
@@ -5337,10 +5385,10 @@ type FleetEbsBlockDeviceRequest struct {
 	// Encrypted volumes can only be attached to instances that support Amazon EBS
 	// encryption. For more information, see [Supported instance types].
 	//
-	// This parameter is not returned by .
+	// This parameter is not returned by [DescribeImageAttribute].
 	//
-	// For and , whether you can include this parameter, and the allowed values differ
-	// depending on the type of block device mapping you are creating.
+	// For [CreateImage] and [RegisterImage], whether you can include this parameter, and the allowed values
+	// differ depending on the type of block device mapping you are creating.
 	//
 	//   - If you are creating a block device mapping for a new (empty) volume, you
 	//   can include this parameter, and specify either true for an encrypted volume,
@@ -5363,7 +5411,10 @@ type FleetEbsBlockDeviceRequest struct {
 	//   parameter.
 	//
 	// [Amazon EBS encryption]: https://docs.aws.amazon.com/ebs/latest/userguide/ebs-encryption.html
+	// [DescribeImageAttribute]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeImageAttribute
+	// [RegisterImage]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RegisterImage
 	// [Supported instance types]: https://docs.aws.amazon.com/ebs/latest/userguide/ebs-encryption-requirements.html#ebs-encryption_supported_instances
+	// [CreateImage]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage
 	Encrypted *bool
 
 	// The number of I/O operations per second (IOPS). For gp3 , io1 , and io2
@@ -8282,6 +8333,8 @@ type InstanceRequirements struct {
 	//
 	//   - For instance types with GPU accelerators, specify gpu .
 	//
+	//   - For instance types with Inference accelerators, specify inference .
+	//
 	// Default: Any accelerator type
 	AcceleratorTypes []AcceleratorType
 
@@ -8650,6 +8703,8 @@ type InstanceRequirementsRequest struct {
 	//   - For instance types with FPGA accelerators, specify fpga .
 	//
 	//   - For instance types with GPU accelerators, specify gpu .
+	//
+	//   - For instance types with Inference accelerators, specify inference .
 	//
 	// Default: Any accelerator type
 	AcceleratorTypes []AcceleratorType
@@ -9369,6 +9424,21 @@ type Ipam struct {
 
 	// The Amazon Web Services Region of the IPAM.
 	IpamRegion *string
+
+	// A metered account is an Amazon Web Services account that is charged for active
+	// IP addresses managed in IPAM. For more information, see [Enable cost distribution]in the Amazon VPC IPAM
+	// User Guide.
+	//
+	// Possible values:
+	//
+	//   - ipam-owner (default): The Amazon Web Services account which owns the IPAM is
+	//   charged for all active IP addresses managed in IPAM.
+	//
+	//   - resource-owner : The Amazon Web Services account that owns the IP address is
+	//   charged for the active IP address.
+	//
+	// [Enable cost distribution]: https://docs.aws.amazon.com/vpc/latest/ipam/ipam-enable-cost-distro.html
+	MeteredAccount IpamMeteredAccount
 
 	// The operating Regions for an IPAM. Operating Regions are Amazon Web Services
 	// Regions where the IPAM is allowed to manage IP address CIDRs. IPAM only
@@ -12122,6 +12192,9 @@ type LocalGatewayRouteTableVpcAssociation struct {
 // Describes a local gateway virtual interface.
 type LocalGatewayVirtualInterface struct {
 
+	// The current state of the local gateway virtual interface.
+	ConfigurationState LocalGatewayVirtualInterfaceConfigurationState
+
 	// The local address.
 	LocalAddress *string
 
@@ -12132,8 +12205,17 @@ type LocalGatewayVirtualInterface struct {
 	// The ID of the local gateway.
 	LocalGatewayId *string
 
+	// The Amazon Resource Number (ARN) of the local gateway virtual interface.
+	LocalGatewayVirtualInterfaceArn *string
+
+	// The ID of the local gateway virtual interface group.
+	LocalGatewayVirtualInterfaceGroupId *string
+
 	// The ID of the virtual interface.
 	LocalGatewayVirtualInterfaceId *string
+
+	// The Outpost LAG ID.
+	OutpostLagId *string
 
 	// The ID of the Amazon Web Services account that owns the local gateway virtual
 	// interface.
@@ -12144,6 +12226,9 @@ type LocalGatewayVirtualInterface struct {
 
 	// The peer BGP ASN.
 	PeerBgpAsn *int32
+
+	// The extended 32-bit ASN of the BGP peer for use with larger ASN values.
+	PeerBgpAsnExtended *int64
 
 	// The tags assigned to the virtual interface.
 	Tags []Tag
@@ -12157,8 +12242,20 @@ type LocalGatewayVirtualInterface struct {
 // Describes a local gateway virtual interface group.
 type LocalGatewayVirtualInterfaceGroup struct {
 
+	// The current state of the local gateway virtual interface group.
+	ConfigurationState LocalGatewayVirtualInterfaceGroupConfigurationState
+
+	// The Autonomous System Number(ASN) for the local Border Gateway Protocol (BGP).
+	LocalBgpAsn *int32
+
+	// The extended 32-bit ASN for the local BGP configuration.
+	LocalBgpAsnExtended *int64
+
 	// The ID of the local gateway.
 	LocalGatewayId *string
+
+	// The Amazon Resource Number (ARN) of the local gateway virtual interface group.
+	LocalGatewayVirtualInterfaceGroupArn *string
 
 	// The ID of the virtual interface group.
 	LocalGatewayVirtualInterfaceGroupId *string
@@ -13878,6 +13975,33 @@ type OperatorResponse struct {
 	noSmithyDocumentSerde
 }
 
+// Describes an Outpost link aggregation group (LAG).
+type OutpostLag struct {
+
+	// The IDs of the local gateway virtual interfaces associated with the Outpost LAG.
+	LocalGatewayVirtualInterfaceIds []string
+
+	// The Amazon Resource Number (ARN) of the Outpost LAG.
+	OutpostArn *string
+
+	// The ID of the Outpost LAG.
+	OutpostLagId *string
+
+	// The ID of the Outpost LAG owner.
+	OwnerId *string
+
+	// The service link virtual interface IDs associated with the Outpost LAG.
+	ServiceLinkVirtualInterfaceIds []string
+
+	// The current state of the Outpost LAG.
+	State *string
+
+	// The tags associated with the Outpost LAG.
+	Tags []Tag
+
+	noSmithyDocumentSerde
+}
+
 // Describes a packet header statement.
 type PacketHeaderStatement struct {
 
@@ -14179,10 +14303,15 @@ type PerformanceFactorReference struct {
 	// families.
 	//
 	// If you specify an unsupported instance family as a value for baseline
-	// performance, the API returns an empty response for and an exception for , , ,
-	// and .
+	// performance, the API returns an empty response for [GetInstanceTypesFromInstanceRequirements]and an exception for [CreateFleet], [RequestSpotFleet], [ModifyFleet],
+	// and [ModifySpotFleetRequest].
 	//
+	// [GetInstanceTypesFromInstanceRequirements]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetInstanceTypesFromInstanceRequirements
+	// [ModifySpotFleetRequest]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ModifySpotFleetRequest
+	// [CreateFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateFleet
 	// [Amazon EC2 instance type naming conventions]: https://docs.aws.amazon.com/ec2/latest/instancetypes/instance-type-names.html
+	// [RequestSpotFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RequestSpotFleet
+	// [ModifyFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ModifyFleet
 	InstanceFamily *string
 
 	noSmithyDocumentSerde
@@ -14227,10 +14356,15 @@ type PerformanceFactorReferenceRequest struct {
 	// families.
 	//
 	// If you specify an unsupported instance family as a value for baseline
-	// performance, the API returns an empty response for and an exception for , , ,
-	// and .
+	// performance, the API returns an empty response for [GetInstanceTypesFromInstanceRequirements]and an exception for [CreateFleet], [RequestSpotFleet], [ModifyFleet],
+	// and [ModifySpotFleetRequest].
 	//
+	// [GetInstanceTypesFromInstanceRequirements]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetInstanceTypesFromInstanceRequirements
+	// [ModifySpotFleetRequest]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ModifySpotFleetRequest
+	// [CreateFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateFleet
 	// [Amazon EC2 instance type naming conventions]: https://docs.aws.amazon.com/ec2/latest/instancetypes/instance-type-names.html
+	// [RequestSpotFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RequestSpotFleet
+	// [ModifyFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ModifyFleet
 	InstanceFamily *string
 
 	noSmithyDocumentSerde
@@ -17358,6 +17492,52 @@ type ServiceDetail struct {
 	noSmithyDocumentSerde
 }
 
+// Describes the service link virtual interfaces that establish connectivity
+// between Amazon Web Services Outpost and on-premises networks.
+type ServiceLinkVirtualInterface struct {
+
+	// The current state of the service link virtual interface.
+	ConfigurationState ServiceLinkVirtualInterfaceConfigurationState
+
+	// The IPv4 address assigned to the local gateway virtual interface on the Outpost
+	// side.
+	LocalAddress *string
+
+	// The Outpost Amazon Resource Number (ARN) for the service link virtual interface.
+	OutpostArn *string
+
+	// The Outpost ID for the service link virtual interface.
+	OutpostId *string
+
+	// The link aggregation group (LAG) ID for the service link virtual interface.
+	OutpostLagId *string
+
+	// The ID of the Amazon Web Services account that owns the service link virtual
+	// interface..
+	OwnerId *string
+
+	// The IPv4 peer address for the service link virtual interface.
+	PeerAddress *string
+
+	// The ASN for the Border Gateway Protocol (BGP) associated with the service link
+	// virtual interface.
+	PeerBgpAsn *int64
+
+	// The Amazon Resource Number (ARN) for the service link virtual interface.
+	ServiceLinkVirtualInterfaceArn *string
+
+	// The ID of the service link virtual interface.
+	ServiceLinkVirtualInterfaceId *string
+
+	// The tags associated with the service link virtual interface.
+	Tags []Tag
+
+	// The virtual local area network for the service link virtual interface.
+	Vlan *int32
+
+	noSmithyDocumentSerde
+}
+
 // Describes the type of service for a VPC endpoint.
 type ServiceTypeDetail struct {
 
@@ -19979,11 +20159,15 @@ type TransitGatewayOptions struct {
 	AutoAcceptSharedAttachments AutoAcceptSharedAttachmentsValue
 
 	// Indicates whether resource attachments are automatically associated with the
-	// default association route table.
+	// default association route table. Enabled by default. If
+	// defaultRouteTableAssociation is set to enable , Amazon Web Services Transit
+	// Gateway will create the default transit gateway route table.
 	DefaultRouteTableAssociation DefaultRouteTableAssociationValue
 
 	// Indicates whether resource attachments automatically propagate routes to the
-	// default propagation route table.
+	// default propagation route table. Enabled by default. If
+	// defaultRouteTablePropagation is set to enable , Amazon Web Services Transit
+	// Gateway will create the default transit gateway route table.
 	DefaultRouteTablePropagation DefaultRouteTablePropagationValue
 
 	// Indicates whether DNS support is enabled.

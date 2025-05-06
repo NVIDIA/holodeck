@@ -11,41 +11,28 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Modifies the permissions for your VPC endpoint service. You can add or remove
-// permissions for service consumers (Amazon Web Services accounts, users, and IAM
-// roles) to connect to your endpoint service. Principal ARNs with path components
-// aren't supported.
-//
-// If you grant permissions to all principals, the service is public. Any users
-// who know the name of a public service can send a request to attach an endpoint.
-// If the service does not require manual approval, attachments are automatically
-// approved.
-func (c *Client) ModifyVpcEndpointServicePermissions(ctx context.Context, params *ModifyVpcEndpointServicePermissionsInput, optFns ...func(*Options)) (*ModifyVpcEndpointServicePermissionsOutput, error) {
+// Deletes the specified local gateway virtual interface.
+func (c *Client) DeleteLocalGatewayVirtualInterface(ctx context.Context, params *DeleteLocalGatewayVirtualInterfaceInput, optFns ...func(*Options)) (*DeleteLocalGatewayVirtualInterfaceOutput, error) {
 	if params == nil {
-		params = &ModifyVpcEndpointServicePermissionsInput{}
+		params = &DeleteLocalGatewayVirtualInterfaceInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "ModifyVpcEndpointServicePermissions", params, optFns, c.addOperationModifyVpcEndpointServicePermissionsMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "DeleteLocalGatewayVirtualInterface", params, optFns, c.addOperationDeleteLocalGatewayVirtualInterfaceMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*ModifyVpcEndpointServicePermissionsOutput)
+	out := result.(*DeleteLocalGatewayVirtualInterfaceOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type ModifyVpcEndpointServicePermissionsInput struct {
+type DeleteLocalGatewayVirtualInterfaceInput struct {
 
-	// The ID of the service.
+	// The ID of the local virtual interface to delete.
 	//
 	// This member is required.
-	ServiceId *string
-
-	// The Amazon Resource Names (ARN) of the principals. Permissions are granted to
-	// the principals in this list. To grant permissions to all principals, specify an
-	// asterisk (*).
-	AddAllowedPrincipals []string
+	LocalGatewayVirtualInterfaceId *string
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -53,20 +40,13 @@ type ModifyVpcEndpointServicePermissionsInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
-	// The Amazon Resource Names (ARN) of the principals. Permissions are revoked for
-	// principals in this list.
-	RemoveAllowedPrincipals []string
-
 	noSmithyDocumentSerde
 }
 
-type ModifyVpcEndpointServicePermissionsOutput struct {
+type DeleteLocalGatewayVirtualInterfaceOutput struct {
 
-	// Information about the added principals.
-	AddedPrincipals []types.AddedPrincipal
-
-	// Returns true if the request succeeds; otherwise, it returns an error.
-	ReturnValue *bool
+	// Information about the deleted local gateway virtual interface.
+	LocalGatewayVirtualInterface *types.LocalGatewayVirtualInterface
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -74,19 +54,19 @@ type ModifyVpcEndpointServicePermissionsOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+func (c *Client) addOperationDeleteLocalGatewayVirtualInterfaceMiddlewares(stack *middleware.Stack, options Options) (err error) {
 	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsEc2query_serializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Serialize.Add(&awsEc2query_serializeOpDeleteLocalGatewayVirtualInterface{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsEc2query_deserializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Deserialize.Add(&awsEc2query_deserializeOpDeleteLocalGatewayVirtualInterface{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ModifyVpcEndpointServicePermissions"); err != nil {
+	if err := addProtocolFinalizerMiddlewares(stack, options, "DeleteLocalGatewayVirtualInterface"); err != nil {
 		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
@@ -141,10 +121,10 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = addOpModifyVpcEndpointServicePermissionsValidationMiddleware(stack); err != nil {
+	if err = addOpDeleteLocalGatewayVirtualInterfaceValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(options.Region), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDeleteLocalGatewayVirtualInterface(options.Region), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRecursionDetection(stack); err != nil {
@@ -177,10 +157,10 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	return nil
 }
 
-func newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(region string) *awsmiddleware.RegisterServiceMetadata {
+func newServiceMetadataMiddleware_opDeleteLocalGatewayVirtualInterface(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		OperationName: "ModifyVpcEndpointServicePermissions",
+		OperationName: "DeleteLocalGatewayVirtualInterface",
 	}
 }
