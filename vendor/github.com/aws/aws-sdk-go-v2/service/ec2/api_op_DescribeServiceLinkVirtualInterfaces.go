@@ -11,41 +11,23 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Modifies the permissions for your VPC endpoint service. You can add or remove
-// permissions for service consumers (Amazon Web Services accounts, users, and IAM
-// roles) to connect to your endpoint service. Principal ARNs with path components
-// aren't supported.
-//
-// If you grant permissions to all principals, the service is public. Any users
-// who know the name of a public service can send a request to attach an endpoint.
-// If the service does not require manual approval, attachments are automatically
-// approved.
-func (c *Client) ModifyVpcEndpointServicePermissions(ctx context.Context, params *ModifyVpcEndpointServicePermissionsInput, optFns ...func(*Options)) (*ModifyVpcEndpointServicePermissionsOutput, error) {
+// Describes the Outpost service link virtual interfaces.
+func (c *Client) DescribeServiceLinkVirtualInterfaces(ctx context.Context, params *DescribeServiceLinkVirtualInterfacesInput, optFns ...func(*Options)) (*DescribeServiceLinkVirtualInterfacesOutput, error) {
 	if params == nil {
-		params = &ModifyVpcEndpointServicePermissionsInput{}
+		params = &DescribeServiceLinkVirtualInterfacesInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "ModifyVpcEndpointServicePermissions", params, optFns, c.addOperationModifyVpcEndpointServicePermissionsMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "DescribeServiceLinkVirtualInterfaces", params, optFns, c.addOperationDescribeServiceLinkVirtualInterfacesMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*ModifyVpcEndpointServicePermissionsOutput)
+	out := result.(*DescribeServiceLinkVirtualInterfacesOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type ModifyVpcEndpointServicePermissionsInput struct {
-
-	// The ID of the service.
-	//
-	// This member is required.
-	ServiceId *string
-
-	// The Amazon Resource Names (ARN) of the principals. Permissions are granted to
-	// the principals in this list. To grant permissions to all principals, specify an
-	// asterisk (*).
-	AddAllowedPrincipals []string
+type DescribeServiceLinkVirtualInterfacesInput struct {
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -53,20 +35,48 @@ type ModifyVpcEndpointServicePermissionsInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
-	// The Amazon Resource Names (ARN) of the principals. Permissions are revoked for
-	// principals in this list.
-	RemoveAllowedPrincipals []string
+	// The filters to use for narrowing down the request. The following filters are
+	// supported:
+	//
+	//   - outpost-lag-id - The ID of the Outpost LAG.
+	//
+	//   - outpost-arn - The Outpost ARN.
+	//
+	//   - owner-id - The ID of the Amazon Web Services account that owns the service
+	//   link virtual interface.
+	//
+	//   - state - The state of the Outpost LAG.
+	//
+	//   - vlan - The ID of the address pool.
+	//
+	//   - service-link-virtual-interface-id - The ID of the service link virtual
+	//   interface.
+	//
+	//   - local-gateway-virtual-interface-id - The ID of the local gateway virtual
+	//   interface.
+	Filters []types.Filter
+
+	// The maximum number of results to return with a single call. To retrieve the
+	// remaining results, make another call with the returned nextToken value.
+	MaxResults *int32
+
+	// The token for the next page of results.
+	NextToken *string
+
+	// The IDs of the service link virtual interfaces.
+	ServiceLinkVirtualInterfaceIds []string
 
 	noSmithyDocumentSerde
 }
 
-type ModifyVpcEndpointServicePermissionsOutput struct {
+type DescribeServiceLinkVirtualInterfacesOutput struct {
 
-	// Information about the added principals.
-	AddedPrincipals []types.AddedPrincipal
+	// The token to use to retrieve the next page of results. This value is null when
+	// there are no more results to return.
+	NextToken *string
 
-	// Returns true if the request succeeds; otherwise, it returns an error.
-	ReturnValue *bool
+	// Describes the service link virtual interfaces.
+	ServiceLinkVirtualInterfaces []types.ServiceLinkVirtualInterface
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -74,19 +84,19 @@ type ModifyVpcEndpointServicePermissionsOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+func (c *Client) addOperationDescribeServiceLinkVirtualInterfacesMiddlewares(stack *middleware.Stack, options Options) (err error) {
 	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsEc2query_serializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Serialize.Add(&awsEc2query_serializeOpDescribeServiceLinkVirtualInterfaces{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsEc2query_deserializeOpModifyVpcEndpointServicePermissions{}, middleware.After)
+	err = stack.Deserialize.Add(&awsEc2query_deserializeOpDescribeServiceLinkVirtualInterfaces{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ModifyVpcEndpointServicePermissions"); err != nil {
+	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeServiceLinkVirtualInterfaces"); err != nil {
 		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
@@ -141,10 +151,7 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = addOpModifyVpcEndpointServicePermissionsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(options.Region), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeServiceLinkVirtualInterfaces(options.Region), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRecursionDetection(stack); err != nil {
@@ -177,10 +184,10 @@ func (c *Client) addOperationModifyVpcEndpointServicePermissionsMiddlewares(stac
 	return nil
 }
 
-func newServiceMetadataMiddleware_opModifyVpcEndpointServicePermissions(region string) *awsmiddleware.RegisterServiceMetadata {
+func newServiceMetadataMiddleware_opDescribeServiceLinkVirtualInterfaces(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		OperationName: "ModifyVpcEndpointServicePermissions",
+		OperationName: "DescribeServiceLinkVirtualInterfaces",
 	}
 }
