@@ -49517,6 +49517,11 @@ func awsEc2query_serializeDocumentEbsBlockDevice(v *types.EbsBlockDevice, value 
 		objectKey.Integer(*v.Throughput)
 	}
 
+	if v.VolumeInitializationRate != nil {
+		objectKey := object.Key("VolumeInitializationRate")
+		objectKey.Integer(*v.VolumeInitializationRate)
+	}
+
 	if v.VolumeSize != nil {
 		objectKey := object.Key("VolumeSize")
 		objectKey.Integer(*v.VolumeSize)
@@ -51085,6 +51090,11 @@ func awsEc2query_serializeDocumentInstanceNetworkInterfaceSpecification(v *types
 		objectKey.Integer(*v.DeviceIndex)
 	}
 
+	if v.EnaQueueCount != nil {
+		objectKey := object.Key("EnaQueueCount")
+		objectKey.Integer(*v.EnaQueueCount)
+	}
+
 	if v.EnaSrdSpecification != nil {
 		objectKey := object.Key("EnaSrdSpecification")
 		if err := awsEc2query_serializeDocumentEnaSrdSpecificationRequest(v.EnaSrdSpecification, objectKey); err != nil {
@@ -52225,6 +52235,11 @@ func awsEc2query_serializeDocumentLaunchTemplateEbsBlockDeviceRequest(v *types.L
 		objectKey.Integer(*v.Throughput)
 	}
 
+	if v.VolumeInitializationRate != nil {
+		objectKey := object.Key("VolumeInitializationRate")
+		objectKey.Integer(*v.VolumeInitializationRate)
+	}
+
 	if v.VolumeSize != nil {
 		objectKey := object.Key("VolumeSize")
 		objectKey.Integer(*v.VolumeSize)
@@ -52421,6 +52436,11 @@ func awsEc2query_serializeDocumentLaunchTemplateInstanceNetworkInterfaceSpecific
 	if v.DeviceIndex != nil {
 		objectKey := object.Key("DeviceIndex")
 		objectKey.Integer(*v.DeviceIndex)
+	}
+
+	if v.EnaQueueCount != nil {
+		objectKey := object.Key("EnaQueueCount")
+		objectKey.Integer(*v.EnaQueueCount)
 	}
 
 	if v.EnaSrdSpecification != nil {
@@ -53784,9 +53804,19 @@ func awsEc2query_serializeDocumentNetworkInterfaceAttachmentChanges(v *types.Net
 		objectKey.String(*v.AttachmentId)
 	}
 
+	if v.DefaultEnaQueueCount != nil {
+		objectKey := object.Key("DefaultEnaQueueCount")
+		objectKey.Boolean(*v.DefaultEnaQueueCount)
+	}
+
 	if v.DeleteOnTermination != nil {
 		objectKey := object.Key("DeleteOnTermination")
 		objectKey.Boolean(*v.DeleteOnTermination)
+	}
+
+	if v.EnaQueueCount != nil {
+		objectKey := object.Key("EnaQueueCount")
+		objectKey.Integer(*v.EnaQueueCount)
 	}
 
 	return nil
@@ -59432,6 +59462,11 @@ func awsEc2query_serializeOpDocumentAttachNetworkInterfaceInput(v *AttachNetwork
 		objectKey.Boolean(*v.DryRun)
 	}
 
+	if v.EnaQueueCount != nil {
+		objectKey := object.Key("EnaQueueCount")
+		objectKey.Integer(*v.EnaQueueCount)
+	}
+
 	if v.EnaSrdSpecification != nil {
 		objectKey := object.Key("EnaSrdSpecification")
 		if err := awsEc2query_serializeDocumentEnaSrdSpecification(v.EnaSrdSpecification, objectKey); err != nil {
@@ -62234,6 +62269,11 @@ func awsEc2query_serializeOpDocumentCreateReplaceRootVolumeTaskInput(v *CreateRe
 		}
 	}
 
+	if v.VolumeInitializationRate != nil {
+		objectKey := object.Key("VolumeInitializationRate")
+		objectKey.Long(*v.VolumeInitializationRate)
+	}
+
 	return nil
 }
 
@@ -63759,6 +63799,11 @@ func awsEc2query_serializeOpDocumentCreateVolumeInput(v *CreateVolumeInput, valu
 	if v.Throughput != nil {
 		objectKey := object.Key("Throughput")
 		objectKey.Integer(*v.Throughput)
+	}
+
+	if v.VolumeInitializationRate != nil {
+		objectKey := object.Key("VolumeInitializationRate")
+		objectKey.Integer(*v.VolumeInitializationRate)
 	}
 
 	if len(v.VolumeType) > 0 {
@@ -79807,6 +79852,13 @@ func awsEc2query_serializeOpDocumentStartNetworkInsightsAnalysisInput(v *StartNe
 	if v.FilterInArns != nil {
 		objectKey := object.FlatKey("FilterInArn")
 		if err := awsEc2query_serializeDocumentArnList(v.FilterInArns, objectKey); err != nil {
+			return err
+		}
+	}
+
+	if v.FilterOutArns != nil {
+		objectKey := object.FlatKey("FilterOutArn")
+		if err := awsEc2query_serializeDocumentArnList(v.FilterOutArns, objectKey); err != nil {
 			return err
 		}
 	}
