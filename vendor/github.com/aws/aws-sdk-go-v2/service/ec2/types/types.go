@@ -476,6 +476,9 @@ type AnalysisLoadBalancerTarget struct {
 	// The Availability Zone.
 	AvailabilityZone *string
 
+	// The ID of the Availability Zone.
+	AvailabilityZoneId *string
+
 	// Information about the instance.
 	Instance *AnalysisComponent
 
@@ -1755,6 +1758,9 @@ type CapacityReservationInfo struct {
 	// The Availability Zone for the Capacity Reservation.
 	AvailabilityZone *string
 
+	// The ID of the Availability Zone.
+	AvailabilityZoneId *string
+
 	// The instance type for the Capacity Reservation.
 	InstanceType *string
 
@@ -2342,7 +2348,7 @@ type ClientVpnEndpoint struct {
 	// Indicates whether the client VPN session is disconnected after the maximum
 	// sessionTimeoutHours is reached. If true , users are prompted to reconnect client
 	// VPN. If false , client VPN attempts to reconnect automatically. The default
-	// value is false .
+	// value is true .
 	DisconnectOnSessionTimeout *bool
 
 	// The DNS name to be used by clients when connecting to the Client VPN endpoint.
@@ -3984,6 +3990,35 @@ type EbsBlockDevice struct {
 	// Valid Range: Minimum value of 125. Maximum value of 1000.
 	Throughput *int32
 
+	// Specifies the Amazon EBS Provisioned Rate for Volume Initialization (volume
+	// initialization rate), in MiB/s, at which to download the snapshot blocks from
+	// Amazon S3 to the volume. This is also known as volume initialization. Specifying
+	// a volume initialization rate ensures that the volume is initialized at a
+	// predictable and consistent rate after creation.
+	//
+	// This parameter is supported only for volumes created from snapshots. Omit this
+	// parameter if:
+	//
+	//   - You want to create the volume using fast snapshot restore. You must specify
+	//   a snapshot that is enabled for fast snapshot restore. In this case, the volume
+	//   is fully initialized at creation.
+	//
+	// If you specify a snapshot that is enabled for fast snapshot restore and a
+	//   volume initialization rate, the volume will be initialized at the specified rate
+	//   instead of fast snapshot restore.
+	//
+	//   - You want to create a volume that is initialized at the default rate.
+	//
+	// For more information, see [Initialize Amazon EBS volumes] in the Amazon EC2 User Guide.
+	//
+	// This parameter is not supported when using [CreateImage].
+	//
+	// Valid range: 100 - 300 MiB/s
+	//
+	// [Initialize Amazon EBS volumes]: https://docs.aws.amazon.com/ebs/latest/userguide/initalize-volume.html
+	// [CreateImage]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html
+	VolumeInitializationRate *int32
+
 	// The size of the volume, in GiBs. You must specify either a snapshot ID or a
 	// volume size. If you specify a snapshot, the default is the snapshot size. You
 	// can specify a volume size that is equal to or larger than the snapshot size.
@@ -4670,6 +4705,9 @@ type Explanation struct {
 
 	// The resource to which the component is attached.
 	AttachedTo *AnalysisComponent
+
+	// The IDs of the Availability Zones.
+	AvailabilityZoneIds []string
 
 	// The Availability Zones.
 	AvailabilityZones []string
@@ -8020,6 +8058,9 @@ type InstanceNetworkInterfaceAttachment struct {
 	// The index of the device on the instance for the network interface attachment.
 	DeviceIndex *int32
 
+	// The number of ENA queues created with the instance.
+	EnaQueueCount *int32
+
 	// Contains the ENA Express settings for the network interface that's attached to
 	// the instance.
 	EnaSrdSpecification *InstanceAttachmentEnaSrdSpecification
@@ -8080,6 +8121,9 @@ type InstanceNetworkInterfaceSpecification struct {
 	// If you specify a network interface when launching an instance, you must specify
 	// the device index.
 	DeviceIndex *int32
+
+	// The number of ENA queues to be created with the instance.
+	EnaQueueCount *int32
 
 	// Specifies the ENA Express settings for the network interface that's attached to
 	// the instance.
@@ -10952,6 +10996,11 @@ type LaunchTemplateEbsBlockDevice struct {
 	// The throughput that the volume supports, in MiB/s.
 	Throughput *int32
 
+	// The Amazon EBS Provisioned Rate for Volume Initialization (volume
+	// initialization rate) specified for the volume, in MiB/s. If no volume
+	// initialization rate was specified, the value is null .
+	VolumeInitializationRate *int32
+
 	// The size of the volume, in GiB.
 	VolumeSize *int32
 
@@ -11004,6 +11053,32 @@ type LaunchTemplateEbsBlockDeviceRequest struct {
 	//
 	// Valid Range: Minimum value of 125. Maximum value of 1000.
 	Throughput *int32
+
+	// Specifies the Amazon EBS Provisioned Rate for Volume Initialization (volume
+	// initialization rate), in MiB/s, at which to download the snapshot blocks from
+	// Amazon S3 to the volume. This is also known as volume initialization. Specifying
+	// a volume initialization rate ensures that the volume is initialized at a
+	// predictable and consistent rate after creation.
+	//
+	// This parameter is supported only for volumes created from snapshots. Omit this
+	// parameter if:
+	//
+	//   - You want to create the volume using fast snapshot restore. You must specify
+	//   a snapshot that is enabled for fast snapshot restore. In this case, the volume
+	//   is fully initialized at creation.
+	//
+	// If you specify a snapshot that is enabled for fast snapshot restore and a
+	//   volume initialization rate, the volume will be initialized at the specified rate
+	//   instead of fast snapshot restore.
+	//
+	//   - You want to create a volume that is initialized at the default rate.
+	//
+	// For more information, see [Initialize Amazon EBS volumes] in the Amazon EC2 User Guide.
+	//
+	// Valid range: 100 - 300 MiB/s
+	//
+	// [Initialize Amazon EBS volumes]: https://docs.aws.amazon.com/ebs/latest/userguide/initalize-volume.html
+	VolumeInitializationRate *int32
 
 	// The size of the volume, in GiBs. You must specify either a snapshot ID or a
 	// volume size. The following are the supported volumes sizes for each volume type:
@@ -11375,6 +11450,9 @@ type LaunchTemplateInstanceNetworkInterfaceSpecification struct {
 	// The device index for the network interface attachment.
 	DeviceIndex *int32
 
+	// The number of ENA queues created with the instance.
+	EnaQueueCount *int32
+
 	// Contains the ENA Express settings for instances launched from your launch
 	// template.
 	EnaSrdSpecification *LaunchTemplateEnaSrdSpecification
@@ -11476,6 +11554,9 @@ type LaunchTemplateInstanceNetworkInterfaceSpecificationRequest struct {
 	// add a primary network interface as a launch parameter when you launch an
 	// instance from the template.
 	DeviceIndex *int32
+
+	// The number of ENA queues to be created with the instance.
+	EnaQueueCount *int32
 
 	// Configure ENA Express settings for your launch template.
 	EnaSrdSpecification *EnaSrdSpecificationRequest
@@ -13207,6 +13288,15 @@ type NetworkCardInfo struct {
 	// The baseline network performance of the network card, in Gbps.
 	BaselineBandwidthInGbps *float64
 
+	// The default number of the ENA queues for each interface.
+	DefaultEnaQueueCountPerInterface *int32
+
+	// The maximum number of the ENA queues.
+	MaximumEnaQueueCount *int32
+
+	// The maximum number of the ENA queues for each interface.
+	MaximumEnaQueueCountPerInterface *int32
+
 	// The maximum number of network interfaces for the network card.
 	MaximumNetworkInterfaces *int32
 
@@ -13250,6 +13340,9 @@ type NetworkInfo struct {
 	// Indicates whether the instance type automatically encrypts in-transit traffic
 	// between instances.
 	EncryptionInTransitSupported *bool
+
+	// Indicates whether changing the number of ENA queues is supported.
+	FlexibleEnaQueuesSupport FlexibleEnaQueuesSupport
 
 	// The maximum number of IPv4 addresses per network interface.
 	Ipv4AddressesPerInterface *int32
@@ -13367,6 +13460,9 @@ type NetworkInsightsAnalysis struct {
 
 	// The Amazon Resource Names (ARN) of the resources that the path must traverse.
 	FilterInArns []string
+
+	// The Amazon Resource Names (ARN) of the resources that the path must ignore.
+	FilterOutArns []string
 
 	// The components in the path from source to destination.
 	ForwardPathComponents []PathComponent
@@ -13604,6 +13700,9 @@ type NetworkInterfaceAttachment struct {
 	// The device index of the network interface attachment on the instance.
 	DeviceIndex *int32
 
+	// The number of ENA queues created with the instance.
+	EnaQueueCount *int32
+
 	// Configures ENA Express for the network interface that this action attaches to
 	// the instance.
 	EnaSrdSpecification *AttachmentEnaSrdSpecification
@@ -13629,9 +13728,15 @@ type NetworkInterfaceAttachmentChanges struct {
 	// The ID of the network interface attachment.
 	AttachmentId *string
 
+	// The default number of the ENA queues.
+	DefaultEnaQueueCount *bool
+
 	// Indicates whether the network interface is deleted when the instance is
 	// terminated.
 	DeleteOnTermination *bool
+
+	// The number of ENA queues to be created with the instance.
+	EnaQueueCount *int32
 
 	noSmithyDocumentSerde
 }
@@ -15704,6 +15809,9 @@ type ReservedInstances struct {
 	// The Availability Zone in which the Reserved Instance can be used.
 	AvailabilityZone *string
 
+	// The ID of the Availability Zone.
+	AvailabilityZoneId *string
+
 	// The currency of the Reserved Instance. It's specified using ISO 4217 standard
 	// currency codes. At this time, the only supported currency is USD .
 	CurrencyCode CurrencyCodeValues
@@ -15764,6 +15872,9 @@ type ReservedInstancesConfiguration struct {
 
 	// The Availability Zone for the modified Reserved Instances.
 	AvailabilityZone *string
+
+	// The ID of the Availability Zone.
+	AvailabilityZoneId *string
 
 	// The number of modified Reserved Instances.
 	//
@@ -15888,6 +15999,9 @@ type ReservedInstancesOffering struct {
 
 	// The Availability Zone in which the Reserved Instance can be used.
 	AvailabilityZone *string
+
+	// The ID of the Availability Zone.
+	AvailabilityZoneId *string
 
 	// The currency of the Reserved Instance offering you are purchasing. It's
 	// specified using ISO 4217 standard currency codes. At this time, the only
@@ -21688,6 +21802,11 @@ type Volume struct {
 	// The ID of the volume.
 	VolumeId *string
 
+	// The Amazon EBS Provisioned Rate for Volume Initialization (volume
+	// initialization rate) specified for the volume during creation, in MiB/s. If no
+	// volume initialization rate was specified, the value is null .
+	VolumeInitializationRate *int32
+
 	// The volume type.
 	VolumeType VolumeType
 
@@ -21885,6 +22004,9 @@ type VolumeStatusItem struct {
 
 	// The Availability Zone of the volume.
 	AvailabilityZone *string
+
+	// The ID of the Availability Zone.
+	AvailabilityZoneId *string
 
 	// A list of events associated with the volume.
 	Events []VolumeStatusEvent
