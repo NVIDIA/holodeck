@@ -80,6 +80,14 @@ verify:
 	    exit 1; \
 	fi
 
+COVERAGE_FILE := coverage.out
+test:
+	go test -coverprofile=$(COVERAGE_FILE) ./pkg/...
+
+coverage: test
+	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
+	go tool cover -func=$(COVERAGE_FILE).no-mocks
+
 release:
 	@rm -rf bin
 	@mkdir -p bin

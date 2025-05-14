@@ -34,20 +34,15 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry cuda-drivers{{if .Version}}={{.Version}}{{end}}
+install_packages_with_retry cuda-drivers{{if .Version}}={{.Version}}{{else if .Branch}}-{{.Branch}}{{end}}
 
 nvidia-smi
 `
 
-type NvDriver struct {
-	// Version -- if specified -- indicates the version of the `cuda-drivers` package to install.
-	Version string
-}
+type NvDriver v1alpha1.NVIDIADriver
 
 func NewNvDriver(env v1alpha1.Environment) *NvDriver {
-	return &NvDriver{
-		Version: env.Spec.NVIDIADriver.Version,
-	}
+	return (*NvDriver)(&env.Spec.NVIDIADriver)
 }
 
 func (t *NvDriver) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
