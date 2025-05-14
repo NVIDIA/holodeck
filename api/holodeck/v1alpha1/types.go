@@ -145,6 +145,10 @@ type Auth struct {
 
 type NVIDIADriver struct {
 	Install bool `json:"install"`
+	// Branch specifies the driver branch.
+	// If a version is specified, this takes precedence.
+	// +optional
+	Branch string `json:"branch"`
 	// If not set the latest stable version will be used
 	// +optional
 	Version string `json:"version"`
