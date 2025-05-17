@@ -1,0 +1,25 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: ctk_e2e_devel
+  description: "end-to-end test infrastructure"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /Users/eduardoa/.ssh/cnt-ci.pem
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    ingressIpRanges:
+    - 57.133.151.69/32
+    image:
+      architecture: amd64
+  containerRuntime:
+    install: true
+    name: docker
+  nvidiaContainerToolkit:
+    install: false
+  nvidiaDriver:
+    install: true
+
