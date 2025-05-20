@@ -19,9 +19,9 @@ package create
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider"
@@ -37,8 +37,6 @@ type options struct {
 	cachePath  string
 	envFile    string
 	kubeconfig string
-
-	cachefile string
 
 	cfg   v1alpha1.Environment
 	cache v1alpha1.Environment
@@ -97,12 +95,6 @@ func (m command) build() *cli.Command {
 				return fmt.Errorf("error reading config file: %s", err)
 			}
 
-			// set cache path
-			if opts.cachePath == "" {
-				opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
-			}
-			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
-
 			// if no containerruntime is specified, default to none
 			if opts.cfg.Spec.ContainerRuntime.Name == "" {
 				opts.cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
@@ -122,6 +114,18 @@ func (m command) run(c *cli.Context, opts *options) error {
 	var provider provider.Provider
 	var err error
 
+	// Create instance manager and generate unique ID
+	manager := instances.NewManager(m.log, opts.cachePath)
+	instanceID := manager.GenerateInstanceID()
+	opts.cachePath = manager.GetInstanceCacheFile(instanceID)
+
+	// Add instance ID to environment metadata
+	if opts.cfg.Labels == nil {
+		opts.cfg.Labels = make(map[string]string)
+	}
+	opts.cfg.Labels[instances.InstanceLabelKey] = instanceID
+	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "false"
+
 	switch opts.cfg.Spec.Provider {
 	case v1alpha1.ProviderAWS:
 		if opts.cfg.Spec.Username == "" {
@@ -135,7 +139,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 			// SUSE: ec2-user
 			opts.cfg.Spec.Username = "ubuntu"
 		}
-		provider, err = aws.New(m.log, opts.cfg, opts.cachefile)
+		provider, err = aws.New(m.log, opts.cfg, opts.cachePath)
 		if err != nil {
 			return err
 		}
@@ -154,7 +158,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 	}
 
 	// Read cache after creating the environment
-	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
+	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachePath)
 	if err != nil {
 		return fmt.Errorf("failed to read cache file: %v", err)
 	}
@@ -166,6 +170,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 		}
 	}
 
+	m.log.Info("Created instance %s", instanceID)
 	return nil
 }
 
@@ -196,6 +201,16 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 
 	if err = p.Run(opts.cfg); err != nil {
 		return fmt.Errorf("failed to run provisioner: %v", err)
+	}
+
+	// Set provisioning status to true after successful provisioning
+	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "true"
+	data, err := jyaml.MarshalYAML(opts.cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal environment: %v", err)
+	}
+	if err := os.WriteFile(opts.cachePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
 	}
 
 	// Download kubeconfig
