@@ -31,6 +31,8 @@ type EnvironmentSpec struct {
 	Instance `json:"instance"`
 
 	// +optional
+	Kernel Kernel `json:"kernel"`
+	// +optional
 	NVIDIADriver NVIDIADriver `json:"nvidiaDriver"`
 	// +optional
 	ContainerRuntime ContainerRuntime `json:"containerRuntime"`
@@ -215,4 +217,12 @@ type NVIDIAContainerToolkit struct {
 	// container runtime.
 	// +optional
 	EnableCDI bool `json:"enableCDI"`
+}
+
+// Kernel defines the kernel configuration
+type Kernel struct {
+	// Version specifies the kernel version to install
+	// If not set, no kernel changes will be made
+	// +optional
+	Version string `json:"version,omitempty"`
 }

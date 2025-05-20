@@ -73,6 +73,49 @@ func New(log *logger.FunLogger, keyPath, userName, hostUrl string) (*Provisioner
 	return p, nil
 }
 
+// waitForNodeReboot waits for the node to reboot and come back online after a kernel version change
+func (p *Provisioner) waitForNodeReboot() error {
+	p.log.Info("Kernel version change detected, waiting for node to reboot...")
+
+	// Check if the connection is still active before closing
+	if p.Client != nil {
+		// Try to create a new session to check if connection is alive
+		session, err := p.Client.NewSession()
+		if err == nil {
+			session.Close() // nolint:errcheck, gosec
+			// Connection is alive, close it
+			if err := p.Client.Close(); err != nil {
+				return fmt.Errorf("failed to close ssh client: %w", err)
+			}
+		}
+		// If we get here, either the connection was already closed or we couldn't create a session
+		p.Client = nil
+	}
+
+	// Wait for the node to come back up
+	maxRetries := 30
+	retryInterval := 10 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		p.log.Info("Waiting for node to come back online...")
+		time.Sleep(retryInterval)
+
+		// Try to establish a new connection
+		client, err := connectOrDie(p.KeyPath, p.UserName, p.HostUrl)
+		if err == nil {
+			p.Client = client
+			p.log.Info("Node is back online, continuing with provisioning...")
+			return nil
+		}
+
+		if i == maxRetries-1 {
+			return fmt.Errorf("node did not come back online after %d attempts", maxRetries)
+		}
+	}
+
+	return nil
+}
+
 func (p *Provisioner) Run(env v1alpha1.Environment) error {
 	dependencies := NewDependencies(env)
 
@@ -108,11 +151,20 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		if err := p.provision(); err != nil {
 			return fmt.Errorf("failed to provision: %v", err)
 		}
-		// Reset the connection, this step is needed to make sure some configuration changes take effect
-		// e.g after installing docker, the user needs to be added to the docker group
-		if err := p.resetConnection(); err != nil {
-			return fmt.Errorf("failed to reset connection: %v", err)
+
+		// If kernel version is specified, wait for the node to reboot
+		if env.Spec.Kernel.Version != "" {
+			if err := p.waitForNodeReboot(); err != nil {
+				return err
+			}
+		} else {
+			// Reset the connection, this step is needed to make sure some configuration changes take effect
+			// e.g after installing docker, the user needs to be added to the docker group
+			if err := p.resetConnection(); err != nil {
+				return fmt.Errorf("failed to reset connection: %w", err)
+			}
 		}
+
 		// Clear the template buffer
 		p.tpl.Reset()
 	}
