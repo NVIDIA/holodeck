@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -84,7 +85,18 @@ curl -sSL "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEAS
 sudo systemctl enable --now kubelet
 
 # Start kubernetes
+{{- if .UseLegacyInit }}
+# Using legacy kubeadm init for older Kubernetes versions
+with_retry 3 10s sudo kubeadm init \
+  --kubernetes-version=${K8S_VERSION} \
+  --pod-network-cidr=192.168.0.0/16 \
+  --control-plane-endpoint={{.K8sEndpointHost}}:6443 \
+  --ignore-preflight-errors=all
+{{- else }}
+# Using kubeadm config file for newer Kubernetes versions
 with_retry 3 10s sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml
+{{- end }}
+
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
@@ -224,6 +236,8 @@ type Kubernetes struct {
 	CrictlVersion         string
 	K8sEndpointHost       string
 	K8sFeatureGates       string
+	UseLegacyInit         bool
+	CriSocket             string
 	// Kind exclusive
 	KindConfig string
 }
@@ -289,6 +303,16 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	if env.Spec.Kubernetes.KindConfig != "" {
 		kubernetes.KindConfig = env.Spec.Kubernetes.KindConfig
 	}
+
+	// Check if we need to use legacy mode
+	kubernetes.UseLegacyInit = isLegacyKubernetesVersion(kubernetes.Version)
+
+	// Get CRI socket path
+	criSocket, err := GetCRISocket(string(env.Spec.ContainerRuntime.Name))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get CRI socket: %w", err)
+	}
+	kubernetes.CriSocket = criSocket
 
 	return kubernetes, nil
 }
@@ -419,4 +443,24 @@ func GetCRISocket(runtime string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported container runtime: %s", runtime)
 	}
+}
+
+// isLegacyKubernetesVersion checks if the Kubernetes version is older than v1.30.0
+// which requires using legacy kubeadm init flags instead of config file
+func isLegacyKubernetesVersion(version string) bool {
+	// Remove 'v' prefix if present
+	version = strings.TrimPrefix(version, "v")
+
+	// Split version into components
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return false
+	}
+
+	// Parse major and minor versions
+	major, _ := strconv.Atoi(parts[0])
+	minor, _ := strconv.Atoi(parts[1])
+
+	// Return true if version is older than v1.30.0
+	return major < 1 || (major == 1 && minor < 30)
 }

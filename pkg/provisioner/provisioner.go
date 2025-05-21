@@ -119,14 +119,22 @@ func (p *Provisioner) waitForNodeReboot() error {
 func (p *Provisioner) Run(env v1alpha1.Environment) error {
 	dependencies := NewDependencies(env)
 
-	// Create kubeadm config file if required installer is kubeadm
+	// Create kubeadm config file if required installer is kubeadm and not using legacy mode
 	if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {
 		// Set the k8s endpoint host to the host url
 		env.Spec.Kubernetes.K8sEndpointHost = p.HostUrl
 
-		// Create kubeadm config file
-		if err := p.createKubeAdmConfig(env); err != nil {
-			return fmt.Errorf("failed to create kubeadm config file: %v", err)
+		// Check if we need to use legacy mode
+		kubernetes, err := templates.NewKubernetes(env)
+		if err != nil {
+			return fmt.Errorf("failed to create kubernetes template: %v", err)
+		}
+
+		// Only create kubeadm config file if not using legacy mode
+		if !kubernetes.UseLegacyInit {
+			if err := p.createKubeAdmConfig(env); err != nil {
+				return fmt.Errorf("failed to create kubeadm config file: %v", err)
+			}
 		}
 	}
 
