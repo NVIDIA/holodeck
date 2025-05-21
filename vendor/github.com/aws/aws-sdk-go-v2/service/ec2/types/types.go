@@ -7767,6 +7767,22 @@ type InstanceMaintenanceOptions struct {
 	// instance.
 	AutoRecovery InstanceAutoRecoveryState
 
+	// Specifies whether to attempt reboot migration during a user-initiated reboot of
+	// an instance that has a scheduled system-reboot event:
+	//
+	//   - default - Amazon EC2 attempts to migrate the instance to new hardware
+	//   (reboot migration). If successful, the system-reboot event is cleared. If
+	//   unsuccessful, an in-place reboot occurs and the event remains scheduled.
+	//
+	//   - disabled - Amazon EC2 keeps the instance on the same hardware (in-place
+	//   reboot). The system-reboot event remains scheduled.
+	//
+	// This setting only applies to supported instances that have a scheduled reboot
+	// event. For more information, see [Enable or disable reboot migration]in the Amazon EC2 User Guide.
+	//
+	// [Enable or disable reboot migration]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/schedevents_actions_reboot.html#reboot-migration
+	RebootMigration InstanceRebootMigrationState
+
 	noSmithyDocumentSerde
 }
 
@@ -9332,6 +9348,13 @@ type InstanceTypeInfo struct {
 
 	// Describes the processor.
 	ProcessorInfo *ProcessorInfo
+
+	// Indicates whether reboot migration during a user-initiated reboot is supported
+	// for instances that have a scheduled system-reboot event. For more information,
+	// see [Enable or disable reboot migration]in the Amazon EC2 User Guide.
+	//
+	// [Enable or disable reboot migration]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/schedevents_actions_reboot.html#reboot-migration
+	RebootMigrationSupport RebootMigrationSupport
 
 	// The supported boot modes. For more information, see [Boot modes] in the Amazon EC2 User
 	// Guide.
@@ -12419,6 +12442,94 @@ type MacHost struct {
 	//  The latest macOS versions that the EC2 Mac Dedicated Host can launch without
 	// being upgraded.
 	MacOSLatestSupportedVersions []string
+
+	noSmithyDocumentSerde
+}
+
+// Information about a System Integrity Protection (SIP) modification task or
+// volume ownership delegation task for an Amazon EC2 Mac instance.
+type MacModificationTask struct {
+
+	// The ID of the Amazon EC2 Mac instance.
+	InstanceId *string
+
+	// The ID of task.
+	MacModificationTaskId *string
+
+	// [SIP modification tasks only] Information about the SIP configuration.
+	MacSystemIntegrityProtectionConfig *MacSystemIntegrityProtectionConfiguration
+
+	// The date and time the task was created, in the UTC timezone (
+	// YYYY-MM-DDThh:mm:ss.sssZ ).
+	StartTime *time.Time
+
+	// The tags assigned to the task.
+	Tags []Tag
+
+	// The state of the task.
+	TaskState MacModificationTaskState
+
+	// The type of task.
+	TaskType MacModificationTaskType
+
+	noSmithyDocumentSerde
+}
+
+// Describes the configuration for a System Integrity Protection (SIP)
+// modification task.
+type MacSystemIntegrityProtectionConfiguration struct {
+
+	// Indicates whether Apple Internal was enabled or disabled by the task.
+	AppleInternal MacSystemIntegrityProtectionSettingStatus
+
+	// Indicates whether Base System was enabled or disabled by the task.
+	BaseSystem MacSystemIntegrityProtectionSettingStatus
+
+	// Indicates whether Dtrace Restrictions was enabled or disabled by the task.
+	DTraceRestrictions MacSystemIntegrityProtectionSettingStatus
+
+	// Indicates whether Debugging Restrictions was enabled or disabled by the task.
+	DebuggingRestrictions MacSystemIntegrityProtectionSettingStatus
+
+	// Indicates whether Filesystem Protections was enabled or disabled by the task.
+	FilesystemProtections MacSystemIntegrityProtectionSettingStatus
+
+	// Indicates whether Kext Signing was enabled or disabled by the task.
+	KextSigning MacSystemIntegrityProtectionSettingStatus
+
+	// Indicates whether NVRAM Protections was enabled or disabled by the task.
+	NvramProtections MacSystemIntegrityProtectionSettingStatus
+
+	// Indicates SIP was enabled or disabled by the task.
+	Status MacSystemIntegrityProtectionSettingStatus
+
+	noSmithyDocumentSerde
+}
+
+// Describes a custom configuration for a System Integrity Protection (SIP)
+// modification task.
+type MacSystemIntegrityProtectionConfigurationRequest struct {
+
+	// Enables or disables Apple Internal.
+	AppleInternal MacSystemIntegrityProtectionSettingStatus
+
+	// Enables or disables Base System.
+	BaseSystem MacSystemIntegrityProtectionSettingStatus
+
+	// Enables or disables Dtrace Restrictions.
+	DTraceRestrictions MacSystemIntegrityProtectionSettingStatus
+
+	// Enables or disables Debugging Restrictions.
+	DebuggingRestrictions MacSystemIntegrityProtectionSettingStatus
+
+	// Enables or disables Filesystem Protections.
+	FilesystemProtections MacSystemIntegrityProtectionSettingStatus
+
+	// Enables or disables Kext Signing.
+	KextSigning MacSystemIntegrityProtectionSettingStatus
+
+	// Enables or disables Nvram Protections.
+	NvramProtections MacSystemIntegrityProtectionSettingStatus
 
 	noSmithyDocumentSerde
 }
