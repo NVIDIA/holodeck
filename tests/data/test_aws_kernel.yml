@@ -1,8 +1,8 @@
 apiVersion: holodeck.nvidia.com/v1alpha1
 kind: Environment
 metadata:
-  name: holodeck-aws-e2e-test
-  description: "end-to-end test infrastructure"
+  name: holodeck-aws-e2e-test-kernel
+  description: "end-to-end test infrastructure with kernel features"
 spec:
   provider: aws
   auth:
@@ -20,9 +20,5 @@ spec:
     - 54.201.61.24/32
     image:
       architecture: amd64
-  containerRuntime:
-    install: true
-    name: containerd
-  kubernetes:
-    install: true
-    installer: kubeadm
+  kernel:
+    version: 6.8.0-1020-aws

@@ -1,0 +1,31 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-aws-e2e-test-dra
+  description: "end-to-end test infrastructure with DRA enabled"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /home/runner/.cache/key
+  instance:
+    type: m4.xlarge
+    region: us-west-1
+    ingressIpRanges:
+    - 18.190.12.32/32
+    - 3.143.46.93/32
+    - 52.15.119.136/32
+    - 35.155.108.162/32
+    - 35.162.190.51/32
+    - 54.201.61.24/32
+    image:
+      architecture: amd64
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm
+    kubernetesVersion: v1.32.1
+    k8sFeatureGates:
+    - DynamicResourceAllocation=true
