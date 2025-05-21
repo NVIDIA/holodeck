@@ -32,78 +32,160 @@ import (
 	"github.com/NVIDIA/holodeck/tests/common"
 )
 
-// Actual test suite
-var _ = Describe("AWS", func() {
-	type options struct {
-		cachePath string
-		cachefile string
-
-		cfg v1alpha1.Environment
+var _ = Describe("AWS Environment", func() {
+	// Test configuration structure
+	type testConfig struct {
+		name        string
+		filePath    string
+		description string
 	}
-	opts := options{}
 
-	// Create a logger
-	log := logger.NewLogger()
+	// Test state structure
+	type testState struct {
+		opts struct {
+			cachePath string
+			cachefile string
+			cfg       v1alpha1.Environment
+		}
+		provider provider.Provider
+		log      *logger.FunLogger
+		ctx      context.Context
+	}
 
-	Context("When testing an AWS environment", Ordered, func() {
-		var provider provider.Provider
-		var err error
+	// Define test configurations
+	testConfigs := []testConfig{
+		{
+			name:        "Default AWS Test",
+			filePath:    filepath.Join(packagePath, "data", "test_aws.yml"),
+			description: "Tests basic AWS environment setup with default configuration",
+		},
+		{
+			name:        "Legacy Kubernetes Test",
+			filePath:    filepath.Join(packagePath, "data", "test_aws_legacy.yml"),
+			description: "Tests AWS environment with legacy Kubernetes version",
+		},
+		{
+			name:        "DRA Enabled Test",
+			filePath:    filepath.Join(packagePath, "data", "test_aws_dra.yml"),
+			description: "Tests AWS environment with Dynamic Resource Allocation enabled",
+		},
+		{
+			name:        "Kernel Features Test",
+			filePath:    filepath.Join(packagePath, "data", "test_aws_kernel.yml"),
+			description: "Tests AWS environment with kernel features enabled",
+		},
+	}
 
-		BeforeAll(func(ctx context.Context) {
-			// Read the config file
-			var err error
-			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](EnvFile)
-			Expect(err).ToNot(HaveOccurred())
+	// Shared setup function
+	setupTest := func(config testConfig) testState {
+		state := testState{
+			ctx: context.Background(),
+			log: logger.NewLogger(),
+		}
 
-			// Set unique name for the environment
-			opts.cfg.Name = opts.cfg.Name + "-" + common.GenerateUID()
-			// set cache path
-			opts.cachePath = LogArtifactDir
-			// set cache file
-			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
-			// Create cachedir directory
-			if _, err := os.Stat(opts.cachePath); os.IsNotExist(err) {
-				err := os.Mkdir(opts.cachePath, 0750)
-				Expect(err).ToNot(HaveOccurred())
-			}
+		// Read and validate the config file
+		cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](config.filePath)
+		Expect(err).NotTo(HaveOccurred(), "Failed to read config file: %s", config.filePath)
 
-			provider, err = newProvider(log, opts.cfg, opts.cachefile)
-			Expect(err).ToNot(HaveOccurred())
-		})
+		// Set unique name for the environment
+		cfg.Name = cfg.Name + "-" + common.GenerateUID()
 
-		AfterAll(func(ctx context.Context) {
-			// remove the cache file if the test is successful
-			if !CurrentSpecReport().Failed() {
-				err := os.Remove(opts.cachefile)
-				Expect(err).ToNot(HaveOccurred())
-			}
-		})
+		// Setup cache directory and file
+		state.opts.cachePath = LogArtifactDir
+		state.opts.cachefile = filepath.Join(state.opts.cachePath, cfg.Name+".yaml")
 
-		Context("and calling dryrun to validate the file", func() {
-			It("validates the provider", func() {
-				err = provider.DryRun()
-				Expect(err).ToNot(HaveOccurred())
+		// Create cache directory if it doesn't exist
+		Expect(os.MkdirAll(state.opts.cachePath, 0750)).To(Succeed(), "Failed to create cache directory")
+
+		// Initialize provider
+		state.provider, err = newProvider(state.log, cfg, state.opts.cachefile)
+		Expect(err).NotTo(HaveOccurred(), "Failed to initialize provider")
+
+		state.opts.cfg = cfg
+		return state
+	}
+
+	// Shared cleanup function
+	cleanupTest := func(state testState) {
+		if !CurrentSpecReport().Failed() {
+			Expect(os.Remove(state.opts.cachefile)).To(Succeed(), "Failed to remove cache file")
+		}
+	}
+
+	// Run each test configuration sequentially
+	for _, config := range testConfigs {
+		config := config // Create a new variable to avoid closure issues
+		When("testing "+config.name, Ordered, func() {
+			var state testState
+
+			BeforeAll(func() {
+				state = setupTest(config)
 			})
 
-			It("validates the provisioner", func() {
-				err := provisioner.Dryrun(log, opts.cfg)
-				Expect(err).ToNot(HaveOccurred())
+			AfterAll(func() {
+				cleanupTest(state)
 			})
-		})
 
-		Context("and calling provider to create the environment", func() {
-			AfterAll(func(ctx context.Context) {
-				// Delete the environment
-				// We delete using AfterAll so that the environment is deleted even if the test fails
-				// This is to avoid leaving resources behind, if deletion fails, the test will fail
-				// and will report the error
-				err = provider.Delete()
-				Expect(err).ToNot(HaveOccurred())
+			Describe("Configuration Validation", func() {
+				When("validating the provider configuration", func() {
+					It("should validate the provider configuration", func() {
+						Expect(state.provider.DryRun()).To(Succeed(), "Provider validation failed")
+					})
+
+					It("should validate the provisioner configuration", func() {
+						Expect(provisioner.Dryrun(state.log, state.opts.cfg)).To(Succeed(), "Provisioner validation failed")
+					})
+				})
+
+				When("validating the environment configuration", func() {
+					It("should have valid instance type", func() {
+						Expect(state.opts.cfg.Spec.Instance.Type).NotTo(BeEmpty(), "Instance type should not be empty")
+					})
+
+					It("should have valid region", func() {
+						Expect(state.opts.cfg.Spec.Instance.Region).NotTo(BeEmpty(), "Region should not be empty")
+					})
+
+					It("should have valid ingress IP ranges", func() {
+						Expect(state.opts.cfg.Spec.Instance.IngresIpRanges).NotTo(BeEmpty(), "Ingress IP ranges should not be empty")
+					})
+				})
 			})
-			It("Creates the requested environment", func() {
-				err = provider.Create()
-				Expect(err).ToNot(HaveOccurred())
+
+			Describe("Environment Management", func() {
+				When("creating the environment", func() {
+					AfterAll(func() {
+						// Ensure environment cleanup even if test fails
+						Expect(state.provider.Delete()).To(Succeed(), "Failed to delete environment")
+					})
+
+					It("should create the environment successfully", func() {
+						Expect(state.provider.Create()).To(Succeed(), "Failed to create environment")
+					})
+
+					It("should have valid environment name", func() {
+						Expect(state.opts.cfg.Name).NotTo(BeEmpty(), "Environment name should not be empty")
+					})
+				})
+			})
+
+			Describe("Kubernetes Configuration", func() {
+				When("kubernetes is enabled", func() {
+					BeforeEach(func() {
+						if state.opts.cfg.Spec.Kubernetes.KubernetesVersion == "" {
+							Skip("Skipping test: Kubernetes version not specified in environment file")
+						}
+					})
+
+					It("should have valid kubernetes version", func() {
+						Expect(state.opts.cfg.Spec.Kubernetes.KubernetesVersion).NotTo(BeEmpty(), "Kubernetes version should not be empty")
+					})
+
+					It("should have valid kubernetes installer", func() {
+						Expect(state.opts.cfg.Spec.Kubernetes.KubernetesInstaller).NotTo(BeEmpty(), "Kubernetes installer should not be empty")
+					})
+				})
 			})
 		})
-	})
+	}
 })

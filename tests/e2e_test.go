@@ -18,6 +18,8 @@ package e2e
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -26,8 +28,8 @@ import (
 
 var (
 	LogArtifactDir string
-	EnvFile        string
 	cwd            string
+	packagePath    string
 )
 
 func TestMain(t *testing.T) {
@@ -44,7 +46,6 @@ func getTestEnv() {
 	var err error
 
 	LogArtifactDir = os.Getenv("LOG_ARTIFACT_DIR")
-	EnvFile = os.Getenv("ENV_FILE")
 
 	// Get current working directory
 	cwd, err = os.Getwd()
@@ -55,4 +56,7 @@ func getTestEnv() {
 var _ = BeforeSuite(func() {
 	// Init
 	getTestEnv()
+
+	_, thisFile, _, _ := runtime.Caller(0)
+	packagePath = filepath.Dir(thisFile)
 })

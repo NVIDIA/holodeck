@@ -44,19 +44,19 @@ jobs:
         sudo apt-get install -y make
         make ginkgo
 
-    - name: Run e2e-aws tests
+    - name: Run e2e tests
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
-      run: ./hack/e2e_tests.sh aws
+        LOG_ARTIFACT_DIR: e2e_logs
+      run:  make -f tests/Makefile test
 
-    - name: Archive test logs
-      if: ${{ failure() }}
+    - name: Archive Ginkgo logs
       uses: actions/upload-artifact@v4
       with:
-        name: e2e-test-logs
-        path: ./e2e_logs/
+        name: ginkgo-logs
+        path: ginkgo.json
         retention-days: 15
 
   integration-test:
@@ -71,4 +71,4 @@ jobs:
         aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws_ssh_key: ${{ secrets.AWS_SSH_KEY }}
-        holodeck_config: "tests/test_aws.yml"
+        holodeck_config: "tests/data/test_aws.yml"
