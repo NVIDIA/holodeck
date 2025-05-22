@@ -3313,6 +3313,26 @@ func (InstanceMetadataTagsState) Values() []InstanceMetadataTagsState {
 	}
 }
 
+type InstanceRebootMigrationState string
+
+// Enum values for InstanceRebootMigrationState
+const (
+	InstanceRebootMigrationStateDisabled InstanceRebootMigrationState = "disabled"
+	InstanceRebootMigrationStateDefault  InstanceRebootMigrationState = "default"
+)
+
+// Values returns all known values for InstanceRebootMigrationState. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (InstanceRebootMigrationState) Values() []InstanceRebootMigrationState {
+	return []InstanceRebootMigrationState{
+		"disabled",
+		"default",
+	}
+}
+
 type InstanceStateName string
 
 // Enum values for InstanceStateName
@@ -6489,6 +6509,68 @@ func (LogDestinationType) Values() []LogDestinationType {
 	}
 }
 
+type MacModificationTaskState string
+
+// Enum values for MacModificationTaskState
+const (
+	MacModificationTaskStateSuccessful MacModificationTaskState = "successful"
+	MacModificationTaskStateFailed     MacModificationTaskState = "failed"
+	MacModificationTaskStateInprogress MacModificationTaskState = "in-progress"
+	MacModificationTaskStatePending    MacModificationTaskState = "pending"
+)
+
+// Values returns all known values for MacModificationTaskState. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (MacModificationTaskState) Values() []MacModificationTaskState {
+	return []MacModificationTaskState{
+		"successful",
+		"failed",
+		"in-progress",
+		"pending",
+	}
+}
+
+type MacModificationTaskType string
+
+// Enum values for MacModificationTaskType
+const (
+	MacModificationTaskTypeSIPModification           MacModificationTaskType = "sip-modification"
+	MacModificationTaskTypeVolumeOwnershipDelegation MacModificationTaskType = "volume-ownership-delegation"
+)
+
+// Values returns all known values for MacModificationTaskType. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (MacModificationTaskType) Values() []MacModificationTaskType {
+	return []MacModificationTaskType{
+		"sip-modification",
+		"volume-ownership-delegation",
+	}
+}
+
+type MacSystemIntegrityProtectionSettingStatus string
+
+// Enum values for MacSystemIntegrityProtectionSettingStatus
+const (
+	MacSystemIntegrityProtectionSettingStatusEnabled  MacSystemIntegrityProtectionSettingStatus = "enabled"
+	MacSystemIntegrityProtectionSettingStatusDisabled MacSystemIntegrityProtectionSettingStatus = "disabled"
+)
+
+// Values returns all known values for MacSystemIntegrityProtectionSettingStatus.
+// Note that this can be expanded in the future, and so it is only as up to date as
+// the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (MacSystemIntegrityProtectionSettingStatus) Values() []MacSystemIntegrityProtectionSettingStatus {
+	return []MacSystemIntegrityProtectionSettingStatus{
+		"enabled",
+		"disabled",
+	}
+}
+
 type ManagedBy string
 
 // Enum values for ManagedBy
@@ -7316,6 +7398,46 @@ func (ProtocolValue) Values() []ProtocolValue {
 	}
 }
 
+type PublicIpDnsOption string
+
+// Enum values for PublicIpDnsOption
+const (
+	PublicIpDnsOptionPublicDualStackDnsName PublicIpDnsOption = "public-dual-stack-dns-name"
+	PublicIpDnsOptionPublicIpv4DnsName      PublicIpDnsOption = "public-ipv4-dns-name"
+	PublicIpDnsOptionPublicIpv6DnsName      PublicIpDnsOption = "public-ipv6-dns-name"
+)
+
+// Values returns all known values for PublicIpDnsOption. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (PublicIpDnsOption) Values() []PublicIpDnsOption {
+	return []PublicIpDnsOption{
+		"public-dual-stack-dns-name",
+		"public-ipv4-dns-name",
+		"public-ipv6-dns-name",
+	}
+}
+
+type RebootMigrationSupport string
+
+// Enum values for RebootMigrationSupport
+const (
+	RebootMigrationSupportUnsupported RebootMigrationSupport = "unsupported"
+	RebootMigrationSupportSupported   RebootMigrationSupport = "supported"
+)
+
+// Values returns all known values for RebootMigrationSupport. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (RebootMigrationSupport) Values() []RebootMigrationSupport {
+	return []RebootMigrationSupport{
+		"unsupported",
+		"supported",
+	}
+}
+
 type RecurringChargeFrequency string
 
 // Enum values for RecurringChargeFrequency
@@ -7636,6 +7758,7 @@ const (
 	ResourceTypeInstanceConnectEndpoint                                ResourceType = "instance-connect-endpoint"
 	ResourceTypeVerifiedAccessEndpointTarget                           ResourceType = "verified-access-endpoint-target"
 	ResourceTypeIpamExternalResourceVerificationToken                  ResourceType = "ipam-external-resource-verification-token"
+	ResourceTypeMacModificationTask                                    ResourceType = "mac-modification-task"
 )
 
 // Values returns all known values for ResourceType. Note that this can be
@@ -7738,6 +7861,7 @@ func (ResourceType) Values() []ResourceType {
 		"instance-connect-endpoint",
 		"verified-access-endpoint-target",
 		"ipam-external-resource-verification-token",
+		"mac-modification-task",
 	}
 }
 
