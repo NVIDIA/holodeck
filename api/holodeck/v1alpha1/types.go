@@ -181,16 +181,16 @@ const (
 type Kubernetes struct {
 	Install bool `json:"install"`
 	// KubeConfig is the path to the kubeconfig file on the local machine
-	KubeConfig            string   `json:"kubeConfig"`
-	KubernetesFeatures    []string `json:"Features"`
-	KubernetesVersion     string   `json:"Version"`
-	KubernetesInstaller   string   `json:"Installer"`
-	KubeletReleaseVersion string   `json:"KubeletReleaseVersion"`
-	Arch                  string   `json:"Arch"`
-	CniPluginsVersion     string   `json:"CniPluginsVersion"`
-	CalicoVersion         string   `json:"CalicoVersion"`
-	CrictlVersion         string   `json:"CrictlVersion"`
-	K8sEndpointHost       string   `json:"K8sEndpointHost"`
+	Config            string   `json:"kubeConfig"`
+	Features          []string `json:"Features"`
+	Version           string   `json:"Version"`
+	KindVersion       string   `json:"KindVersion"`
+	Installer         string   `json:"Installer"`
+	Arch              string   `json:"Arch"`
+	CniPluginsVersion string   `json:"CniPluginsVersion"`
+	CalicoVersion     string   `json:"CalicoVersion"`
+	CrictlVersion     string   `json:"CrictlVersion"`
+	K8sEndpointHost   string   `json:"K8sEndpointHost"`
 	// A set of key=value pairs that describe feature gates for
 	// alpha/experimental features
 	K8sFeatureGates []string `json:"K8sFeatureGates"`

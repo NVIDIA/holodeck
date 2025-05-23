@@ -30,7 +30,7 @@ const dockerTemplate = `
 : ${DOCKER_VERSION:={{.Version}}}
 
 # Add Docker's official GPG key:
-sudo apt-get update
+with_retry 3 10s sudo apt-get update
 install_packages_with_retry ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -41,7 +41,7 @@ echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
+with_retry 3 10s sudo apt-get update
 
 # if DOCKER_VERSION is latest, then install latest version, else install specific version
 if [ "$DOCKER_VERSION" = "latest" ]; then

@@ -21,7 +21,7 @@ func TestDependencyResolver_WithKubernetes(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Kubernetes: v1alpha1.Kubernetes{
-				KubernetesInstaller: "kubeadm",
+				Installer: "kubeadm",
 			},
 		},
 	}
@@ -78,8 +78,8 @@ func TestDependencyResolver_Resolve(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Kubernetes: v1alpha1.Kubernetes{
-				Install:             true,
-				KubernetesInstaller: "kubeadm",
+				Install:   true,
+				Installer: "kubeadm",
 			},
 			ContainerRuntime: v1alpha1.ContainerRuntime{
 				Install: true,

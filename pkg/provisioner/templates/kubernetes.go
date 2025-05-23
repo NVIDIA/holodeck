@@ -114,18 +114,24 @@ kubectl label node --all node-role.kubernetes.io/worker=
 kubectl label node --all nvidia.com/holodeck.managed=true
 `
 
-const KindTemplate = `
+const KindBaseTemplate = `
 
+: ${KIND_VERSION:={{.KindVersion}}}
 : ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
 
 KIND_CONFIG=""
 if [ -n "{{.KindConfig}}" ]; then
   KIND_CONFIG="--config /etc/kubernetes/kind.yaml"
+ARCH=$(uname -m)
+if [ "$ARCH" == "x86_64" ]; then
+  ARCH="amd64"
+fi
+if [ "$ARCH" == "aarch64" ]; then
+  ARCH="arm64"
 fi
 
 # Download kind
-[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-arm64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}
 chmod +x ./kind
 sudo install ./kind /usr/local/bin/kind
 
@@ -144,6 +150,9 @@ cd $HOME
 sudo nvidia-ctk runtime configure --set-as-default
 sudo systemctl restart docker
 sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts --in-place
+`
+
+const KindTemplate = `
 
 # Create a cluster with the config file
 export KUBECONFIG="${HOME}/.kube/config:/var/run/kubernetes/admin.kubeconfig"
@@ -156,12 +165,57 @@ echo "you can now access the cluster with:"
 echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 `
 
+const NVKindTemplate = `
+
+# Go
+# Set GO version
+GO_VERSION="1.24.0"
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi
+if [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi
+wget https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz -O /tmp/go${GO_VERSION}.linux-${ARCH}.tar.gz
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf /tmp/go${GO_VERSION}.linux-${ARCH}.tar.gz
+
+# Add Go to PATH
+if ! grep -q 'export PATH="/usr/local/go/bin:$PATH"' ~/.bashrc; then
+  echo 'export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"' >> ~/.bashrc
+fi
+export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
+
+# Make
+install_packages_with_retry make
+
+# install nvkind
+go install github.com/NVIDIA/nvkind/cmd/nvkind@latest
+
+# Load basic Kind config file
+cat <<EOF > kind-cluster-config.yml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+featureGates:
+  DynamicResourceAllocation: true
+containerdConfigPatches:
+# Enable CDI as described in
+# https://tags.cncf.io/container-device-interface#containerd-configuration
+- |-
+  [plugins."io.containerd.grpc.v1.cri"]
+    enable_cdi = true
+EOF
+
+nvkind cluster create --config-values kind-cluster-config.yml
+
+echo "NVKIND installed successfully"
+echo "you can now access the cluster with:"
+echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
+`
+
 const microk8sTemplate = `
 
 : ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
 
 # Install microk8s
-sudo apt-get update
+with_retry 3 10s sudo apt-get update
 
 sudo snap install microk8s --classic --channel={{.Version}}
 sudo microk8s enable gpu dashboard dns registry
@@ -228,6 +282,7 @@ const (
 
 type Kubernetes struct {
 	Version               string
+	KindVersion           string
 	Installer             string
 	KubeletReleaseVersion string
 	Arch                  string
@@ -261,16 +316,28 @@ type KubeadmConfig struct {
 
 func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	kubernetes := &Kubernetes{
-		Version: env.Spec.Kubernetes.KubernetesVersion,
+		Version: env.Spec.Kubernetes.Version,
 	}
 	// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
 	// if not, set the default version
-	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s" {
-		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.32.1\n", env.Spec.Kubernetes.KubernetesVersion)
+	if !strings.HasPrefix(env.Spec.Kubernetes.Version, "v") && env.Spec.Kubernetes.Installer != "microk8s" {
+		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.32.1\n", env.Spec.Kubernetes.Version)
 		kubernetes.Version = defaultKubernetesVersion
 	}
-	if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
-		kubernetes.KubeletReleaseVersion = env.Spec.Kubernetes.KubeletReleaseVersion
+	if env.Spec.Kubernetes.Installer == "kind" || env.Spec.Kubernetes.Installer == "nvkind" {
+		if env.Spec.Kubernetes.KindVersion != "" {
+			kubernetes.KindVersion = env.Spec.Kubernetes.KindVersion
+		} else {
+			kubernetes.KindVersion = defaultKubernetesVersion
+		}
+	}
+	if env.Spec.Kubernetes.Version != "" {
+		// For custom values, use v0.18.0, otherwise use default
+		if env.Spec.Kubernetes.Arch != "" || env.Spec.Kubernetes.CniPluginsVersion != "" || env.Spec.Kubernetes.CalicoVersion != "" || env.Spec.Kubernetes.CrictlVersion != "" {
+			kubernetes.KubeletReleaseVersion = "v0.18.0"
+		} else {
+			kubernetes.KubeletReleaseVersion = defaultKubeletReleaseVersion
+		}
 	} else {
 		kubernetes.KubeletReleaseVersion = defaultKubeletReleaseVersion
 	}
@@ -320,15 +387,25 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	kubernetesTemplate := new(template.Template)
 
-	switch env.Spec.Kubernetes.KubernetesInstaller {
+	switch env.Spec.Kubernetes.Installer {
 	case "kubeadm":
 		kubernetesTemplate = template.Must(template.New("kubeadm").Parse(KubeadmTemplate))
 	case "kind":
+		kindBase := template.Must(template.New("common-functions").Parse(KindBaseTemplate))
+		if err := kindBase.Execute(tpl, k); err != nil {
+			return fmt.Errorf("failed to execute kind base template: %v", err)
+		}
 		kubernetesTemplate = template.Must(template.New("kind").Parse(KindTemplate))
+	case "nvkind":
+		kindBase := template.Must(template.New("common-functions").Parse(KindBaseTemplate))
+		if err := kindBase.Execute(tpl, k); err != nil {
+			return fmt.Errorf("failed to execute kind base template: %v", err)
+		}
+		kubernetesTemplate = template.Must(template.New("nvkind").Parse(NVKindTemplate))
 	case "microk8s":
 		kubernetesTemplate = template.Must(template.New("microk8s").Parse(microk8sTemplate))
 	default:
-		return fmt.Errorf("unknown kubernetes installer %s", env.Spec.Kubernetes.KubernetesInstaller)
+		return fmt.Errorf("unknown kubernetes installer %s", env.Spec.Kubernetes.Installer)
 	}
 
 	err := kubernetesTemplate.Execute(tpl, k)
@@ -352,14 +429,14 @@ func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
 	kConfig := &KubeadmConfig{
 		CriSocket:            criSocket, // Assuming containerd as default
 		ClusterName:          "holodeck-cluster",
-		KubernetesVersion:    env.Spec.Kubernetes.KubernetesVersion, // Uses provided Kubernetes version
+		KubernetesVersion:    env.Spec.Kubernetes.Version, // Uses provided Kubernetes version
 		ControlPlaneEndpoint: env.Spec.Kubernetes.K8sEndpointHost,
 		PodSubnet:            "192.168.0.0/16",               // Default subnet, modify if needed
 		FeatureGates:         featureGates,                   // Convert slice to string for kubeadm
 		RuntimeConfig:        "resource.k8s.io/v1beta1=true", // Example runtime config
 	}
 
-	if env.Spec.Kubernetes.KubernetesVersion == "" {
+	if env.Spec.Kubernetes.Version == "" {
 		kConfig.KubernetesVersion = defaultKubernetesVersion
 	}
 
