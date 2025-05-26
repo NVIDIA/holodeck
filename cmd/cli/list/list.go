@@ -82,7 +82,6 @@ func (m command) run(c *cli.Context) error {
 	for _, instance := range instances {
 		// Skip instances without an ID (old cache files)
 		if instance.ID == "" {
-			m.log.Warning("Found old cache file without instance ID, skipping: %s", instance.CacheFile)
 			continue
 		}
 

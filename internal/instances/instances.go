@@ -111,7 +111,11 @@ func (m *Manager) getProviderStatus(env v1alpha1.Environment, cacheFile string) 
 				}
 			case v1alpha1.ConditionDegraded:
 				if condition.Status == metav1.ConditionTrue {
-					status = "degraded"
+					if condition.Reason != "" {
+						status = fmt.Sprintf("degraded (%s)", condition.Reason)
+					} else {
+						status = "degraded"
+					}
 					statusFound = true
 				}
 			case v1alpha1.ConditionProgressing:
@@ -173,7 +177,6 @@ func (m *Manager) ListInstances() ([]Instance, error) {
 				env.Labels[InstanceLabelKey] = instanceID
 			} else {
 				// Skip files that don't have an instance ID and aren't UUIDs
-				m.log.Warning("Found old cache file without instance ID, skipping: %s", cacheFile)
 				continue
 			}
 		}

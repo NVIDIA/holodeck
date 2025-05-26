@@ -16,23 +16,23 @@ func TestIsLegacyKubernetesVersion(t *testing.T) {
 		want    bool
 	}{
 		{
-			name:    "legacy version v1.29.0",
-			version: "v1.29.0",
+			name:    "legacy version v1.31.0",
+			version: "v1.31.0",
 			want:    true,
 		},
 		{
-			name:    "legacy version v1.28.0",
-			version: "v1.28.0",
-			want:    true,
-		},
-		{
-			name:    "supported version v1.30.0",
+			name:    "legacy version v1.30.0",
 			version: "v1.30.0",
+			want:    true,
+		},
+		{
+			name:    "supported version v1.32.0",
+			version: "v1.32.0",
 			want:    false,
 		},
 		{
-			name:    "supported version v1.31.0",
-			version: "v1.31.0",
+			name:    "supported version v1.32.1",
+			version: "v1.32.1",
 			want:    false,
 		},
 		{
@@ -81,7 +81,7 @@ func TestNewKubernetes(t *testing.T) {
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
-				UseLegacyInit:         false,
+				UseLegacyInit:         true,
 				CriSocket:             "unix:///run/containerd/containerd.sock",
 			},
 			wantErr: false,
@@ -91,7 +91,7 @@ func TestNewKubernetes(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion: "v1.29.0",
+						KubernetesVersion: "v1.31.0",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
 						Name: "containerd",
@@ -99,7 +99,7 @@ func TestNewKubernetes(t *testing.T) {
 				},
 			},
 			want: &Kubernetes{
-				Version:               "v1.29.0",
+				Version:               "v1.31.0",
 				KubeletReleaseVersion: defaultKubeletReleaseVersion,
 				Arch:                  defaultArch,
 				CniPluginsVersion:     defaultCNIPluginsVersion,
@@ -136,7 +136,7 @@ func TestNewKubernetes(t *testing.T) {
 				CalicoVersion:         "v3.30.0",
 				CrictlVersion:         "v1.32.0",
 				K8sFeatureGates:       "Feature1=true,Feature2=false",
-				UseLegacyInit:         false,
+				UseLegacyInit:         true,
 				CriSocket:             "unix:///run/cri-dockerd.sock",
 			},
 			wantErr: false,
@@ -199,7 +199,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.29.0",
+						KubernetesVersion:   "v1.31.0",
 						KubernetesInstaller: "kubeadm",
 						K8sEndpointHost:     "test-host",
 					},
@@ -217,7 +217,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.30.0",
+						KubernetesVersion:   "v1.32.1",
 						KubernetesInstaller: "kind",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
@@ -232,7 +232,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.30.0",
+						KubernetesVersion:   "v1.32.1",
 						KubernetesInstaller: "microk8s",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{
@@ -247,7 +247,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion:   "v1.30.0",
+						KubernetesVersion:   "v1.32.1",
 						KubernetesInstaller: "invalid",
 					},
 					ContainerRuntime: v1alpha1.ContainerRuntime{

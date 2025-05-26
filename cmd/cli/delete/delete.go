@@ -21,10 +21,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
-	"github.com/NVIDIA/holodeck/pkg/jyaml"
 
 	cli "github.com/urfave/cli/v2"
 )
@@ -32,8 +30,6 @@ import (
 type command struct {
 	log       *logger.FunLogger
 	cachePath string
-	envFile   string
-	cfg       v1alpha1.Environment
 }
 
 // NewCommand constructs the delete command with the specified logger
@@ -58,49 +54,13 @@ func (m command) build() *cli.Command {
 				Value:       filepath.Join(os.Getenv("HOME"), ".cache", "holodeck"),
 			},
 			&cli.StringFlag{
-				Name:        "envFile",
-				Aliases:     []string{"f"},
-				Usage:       "Path to the Environment file",
-				Destination: &m.envFile,
-			},
-			&cli.StringFlag{
 				Name:    "instance-id",
 				Aliases: []string{"i"},
 				Usage:   "Instance ID to delete",
 			},
 		},
-		Before: func(c *cli.Context) error {
-			// Check that either envFile or instance-id is provided, but not both
-			hasEnvFile := c.IsSet("envFile")
-			hasInstanceID := c.IsSet("instance-id")
 
-			if hasEnvFile && hasInstanceID {
-				return fmt.Errorf("cannot specify both --envFile and --instance-id")
-			}
-			if !hasEnvFile && !hasInstanceID {
-				return fmt.Errorf("must specify either --envFile or --instance-id")
-			}
-
-			// Read the config file if provided
-			if hasEnvFile {
-				var err error
-				m.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](m.envFile)
-				if err != nil {
-					return fmt.Errorf("error reading config file: %s", err)
-				}
-			}
-			return nil
-		},
 		Action: func(c *cli.Context) error {
-			if c.IsSet("envFile") {
-				// Delete using environment file
-				instanceID := m.cfg.Labels[instances.InstanceLabelKey]
-				if instanceID == "" {
-					return fmt.Errorf("environment file does not contain an instance ID")
-				}
-				return m.run(c, instanceID)
-			}
-
 			// Delete using instance ID
 			instanceID := c.String("instance-id")
 			return m.run(c, instanceID)
