@@ -43,34 +43,34 @@ func (p *Provider) delete(cache *AWS) error {
 	var err error
 
 	// Delete the EC2 instance
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting EC2 instance")
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting EC2 instance") // nolint:errcheck, gosec, staticcheck
 	if cache.Instanceid == "" {
 		p.log.Warning("No instance found to delete")
 	} else {
 		// call deleteEC2 3 times to ensure the instance is deleted or until it returns nil
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			err = p.deleteEC2(cache)
 			if err == nil {
 				break
 			}
 
 			if i == 2 {
-				p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting EC2 instance")
+				p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting EC2 instance") // nolint:errcheck, gosec, staticcheck
 				return fmt.Errorf("error deleting EC2 instance: %v", err)
 			}
 		}
 	}
 
 	// Delete the VPC
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting VPC resources")
-	for i := 0; i < 3; i++ {
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting VPC resources") // nolint:errcheck, gosec, staticcheck
+	for i := range 3 {
 		err = p.deleteVPC(cache)
 		if err == nil {
 			break
 		}
 
 		if i == 2 {
-			p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting VPC resources")
+			p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting VPC resources") // nolint:errcheck, gosec, staticcheck
 			return fmt.Errorf("error deleting VPC resources: %v", err)
 		}
 	}
@@ -124,7 +124,7 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 	// Delete the VPC
 	p.log.Wg.Add(1)
 	go p.log.Loading("Deleting VPC resources")
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting VPC resources")
+	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting VPC resources") // nolint:errcheck, gosec, staticcheck
 	// Delete the subnet
 	if cache.Subnetid == "" {
 		p.log.Warning("No subnet found to delete")

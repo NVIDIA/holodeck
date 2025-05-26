@@ -23,7 +23,7 @@ import (
 func (p *Provider) DryRun() error {
 	// Check if the desired instance type is supported in the region
 	p.log.Wg.Add(1)
-	go p.log.Loading("Checking if instance type %s is supported in region %s", string(p.Spec.Instance.Type), p.Spec.Instance.Region)
+	go p.log.Loading("Checking if instance type %s is supported in region %s", p.Spec.Type, p.Spec.Region)
 	err := p.checkInstanceTypes()
 	if err != nil {
 		p.fail()

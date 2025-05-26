@@ -37,6 +37,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	log.Check("Holodeck completed successfully")
+
 	// Exit with success
 	// https://docs.github.com/en/actions/creating-actions/setting-exit-codes-for-actions
 	os.Exit(0)

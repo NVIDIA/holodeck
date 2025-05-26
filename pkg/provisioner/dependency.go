@@ -32,6 +32,7 @@ const (
 	dockerRuntime             = "docker"
 	nvdriverInstaller         = "nvdriver"
 	containerToolkitInstaller = "containerToolkit"
+	kernelInstaller           = "kernel"
 )
 
 var (
@@ -44,13 +45,14 @@ var (
 		dockerRuntime:             docker,
 		nvdriverInstaller:         nvdriver,
 		containerToolkitInstaller: containerToolkit,
+		kernelInstaller:           kernel,
 	}
 )
 
 type ProvisionFunc func(tpl *bytes.Buffer, env v1alpha1.Environment) error
 
 func nvdriver(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	nvdriver := templates.NewNvDriver()
+	nvdriver := templates.NewNvDriver(env)
 	return nvdriver.Execute(tpl, env)
 }
 
@@ -98,6 +100,15 @@ func kind(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	return kind.Execute(tpl, env)
 }
 
+func kernel(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	kernel, err := templates.NewKernelTemplate(env)
+	if err != nil {
+		return err
+	}
+	_, err = tpl.Write(kernel.Bytes())
+	return err
+}
+
 // DependencySolver is a struct that holds the dependency list
 type DependencyResolver struct {
 	Dependencies []ProvisionFunc
@@ -106,16 +117,18 @@ type DependencyResolver struct {
 
 // DependencyConfigurator defines methods for configuring dependencies
 type DependencyConfigurator interface {
-	withKubernetes() *DependencyResolver
-	withContainerRuntime() *DependencyResolver
-	withContainerToolkit() *DependencyResolver
-	withNVDriver() *DependencyResolver
+	withKubernetes()
+	withContainerRuntime()
+	withContainerToolkit()
+	withNVDriver()
+	withKernel()
 	Resolve() []ProvisionFunc
 }
 
 func NewDependencies(env v1alpha1.Environment) *DependencyResolver {
 	return &DependencyResolver{
-		env: env,
+		Dependencies: []ProvisionFunc{},
+		env:          env,
 	}
 }
 
@@ -157,8 +170,17 @@ func (d *DependencyResolver) withNVDriver() {
 	d.Dependencies = append(d.Dependencies, functions[nvdriverInstaller])
 }
 
+func (d *DependencyResolver) withKernel() {
+	d.Dependencies = append(d.Dependencies, functions[kernelInstaller])
+}
+
 // Resolve returns the dependency list in the correct order
 func (d *DependencyResolver) Resolve() []ProvisionFunc {
+	// Add Kernel to the list first since it's a system-level dependency
+	if d.env.Spec.Kernel.Version != "" {
+		d.withKernel()
+	}
+
 	// Add NVDriver to the list
 	if d.env.Spec.NVIDIADriver.Install {
 		d.withNVDriver()

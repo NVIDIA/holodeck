@@ -19,18 +19,18 @@ package create
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	cli "github.com/urfave/cli/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type options struct {
@@ -38,8 +38,6 @@ type options struct {
 	cachePath  string
 	envFile    string
 	kubeconfig string
-
-	cachefile string
 
 	cfg   v1alpha1.Environment
 	cache v1alpha1.Environment
@@ -98,12 +96,6 @@ func (m command) build() *cli.Command {
 				return fmt.Errorf("error reading config file: %s", err)
 			}
 
-			// set cache path
-			if opts.cachePath == "" {
-				opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
-			}
-			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
-
 			// if no containerruntime is specified, default to none
 			if opts.cfg.Spec.ContainerRuntime.Name == "" {
 				opts.cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
@@ -123,9 +115,21 @@ func (m command) run(c *cli.Context, opts *options) error {
 	var provider provider.Provider
 	var err error
 
-	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
-		// If no username is specified, default to ubuntu
-		if opts.cfg.Spec.Auth.Username == "" {
+	// Create instance manager and generate unique ID
+	manager := instances.NewManager(m.log, opts.cachePath)
+	instanceID := manager.GenerateInstanceID()
+	opts.cachePath = manager.GetInstanceCacheFile(instanceID)
+
+	// Add instance ID to environment metadata
+	if opts.cfg.Labels == nil {
+		opts.cfg.Labels = make(map[string]string)
+	}
+	opts.cfg.Labels[instances.InstanceLabelKey] = instanceID
+	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "false"
+
+	switch opts.cfg.Spec.Provider {
+	case v1alpha1.ProviderAWS:
+		if opts.cfg.Spec.Username == "" {
 			// TODO (ArangoGutierrez): This should be based on the OS
 			// Amazon Linux: ec2-user
 			// Ubuntu: ubuntu
@@ -134,22 +138,14 @@ func (m command) run(c *cli.Context, opts *options) error {
 			// RHEL: ec2-user
 			// Fedora: ec2-user
 			// SUSE: ec2-user
-			opts.cfg.Spec.Auth.Username = "ubuntu"
+			opts.cfg.Spec.Username = "ubuntu"
 		}
-		provider, err = aws.New(m.log, opts.cfg, opts.cachefile)
+		provider, err = aws.New(m.log, opts.cfg, opts.cachePath)
 		if err != nil {
 			return err
 		}
-	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		if opts.cfg.Spec.Auth.Username == "" {
-			opts.cfg.Spec.Auth.Username = "nvidia"
-		}
-		provider, err = vsphere.New(m.log, opts.cfg, opts.cachefile)
-		if err != nil {
-			return err
-		}
-	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
-		// If username is not provided, use the current user
+
+	case v1alpha1.ProviderSSH:
 		if opts.cfg.Spec.Username == "" {
 			opts.cfg.Spec.Username = os.Getenv("USER")
 		}
@@ -162,8 +158,8 @@ func (m command) run(c *cli.Context, opts *options) error {
 		return err
 	}
 
-	// Read cache after provisioning the environment
-	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
+	// Read cache after creating the environment
+	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachePath)
 	if err != nil {
 		return fmt.Errorf("failed to read cache file: %v", err)
 	}
@@ -175,6 +171,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 		}
 	}
 
+	m.log.Info("Created instance %s", instanceID)
 	return nil
 }
 
@@ -190,25 +187,48 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 				break
 			}
 		}
-	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		for _, p := range opts.cache.Status.Properties {
-			if p.Name == vsphere.IpAddress {
-				hostUrl = p.Value
-				break
-			}
-		}
 	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
-		hostUrl = opts.cfg.Spec.Instance.HostUrl
+		hostUrl = opts.cfg.Spec.HostUrl
 	}
 
-	p, err := provisioner.New(log, opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Auth.Username, hostUrl)
+	p, err := provisioner.New(log, opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, hostUrl)
 	if err != nil {
 		return err
 	}
-	defer p.Client.Close()
+	defer p.Client.Close() // nolint: errcheck
+
+	// Copy cache status into the environment
+	opts.cfg.Status = opts.cache.Status
 
 	if err = p.Run(opts.cfg); err != nil {
+		// Set degraded condition when provisioning fails
+		opts.cfg.Status.Conditions = []metav1.Condition{
+			{
+				Type:               v1alpha1.ConditionDegraded,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "ProvisioningFailed",
+				Message:            fmt.Sprintf("Failed to provision environment: %v", err),
+			},
+		}
+		data, err := jyaml.MarshalYAML(opts.cfg)
+		if err != nil {
+			return fmt.Errorf("failed to marshal environment: %v", err)
+		}
+		if err := os.WriteFile(opts.cachePath, data, 0600); err != nil {
+			return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+		}
 		return fmt.Errorf("failed to run provisioner: %v", err)
+	}
+
+	// Set provisioning status to true after successful provisioning
+	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "true"
+	data, err := jyaml.MarshalYAML(opts.cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal environment: %v", err)
+	}
+	if err := os.WriteFile(opts.cachePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
 	}
 
 	// Download kubeconfig

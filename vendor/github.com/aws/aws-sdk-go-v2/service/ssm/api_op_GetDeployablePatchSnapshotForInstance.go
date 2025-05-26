@@ -18,9 +18,9 @@ import (
 // If you run the command locally, such as with the Command Line Interface (CLI),
 // the system attempts to use your local Amazon Web Services credentials and the
 // operation fails. To avoid this, you can run the command in the Amazon Web
-// Services Systems Manager console. Use Run Command, a capability of Amazon Web
-// Services Systems Manager, with an SSM document that enables you to target a
-// managed node with a script or command. For example, run the command using the
+// Services Systems Manager console. Use Run Command, a tool in Amazon Web Services
+// Systems Manager, with an SSM document that enables you to target a managed node
+// with a script or command. For example, run the command using the
 // AWS-RunShellScript document or the AWS-RunPowerShellScript document.
 func (c *Client) GetDeployablePatchSnapshotForInstance(ctx context.Context, params *GetDeployablePatchSnapshotForInstanceInput, optFns ...func(*Options)) (*GetDeployablePatchSnapshotForInstanceOutput, error) {
 	if params == nil {
@@ -121,6 +121,9 @@ func (c *Client) addOperationGetDeployablePatchSnapshotForInstanceMiddlewares(st
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -137,6 +140,9 @@ func (c *Client) addOperationGetDeployablePatchSnapshotForInstanceMiddlewares(st
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetDeployablePatchSnapshotForInstanceValidationMiddleware(stack); err != nil {
@@ -158,6 +164,18 @@ func (c *Client) addOperationGetDeployablePatchSnapshotForInstanceMiddlewares(st
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil

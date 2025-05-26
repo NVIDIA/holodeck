@@ -49,21 +49,21 @@ func MarshalYAML(v any) ([]byte, error) {
 }
 
 func Unmarshal[T any](object any) (T, error) {
-	var err error
 	var data []byte
 
-	switch any(object).(type) {
-	case T:
-		return object.(T), nil
-	case []byte:
-		data = object.([]byte)
+	switch v := object.(type) {
 	case string:
-		data = []byte(object.(string))
+		data = []byte(v)
+	case []byte:
+		data = v
+	case T:
+		return v, nil
 	default:
-		data, err = yaml.Marshal(object)
+		marshaled, err := yaml.Marshal(object)
 		if err != nil {
 			return *new(T), err
 		}
+		data = marshaled
 	}
 
 	var result T
@@ -75,21 +75,21 @@ func Unmarshal[T any](object any) (T, error) {
 }
 
 func UnmarshalStrict[T any](object any) (T, error) {
-	var err error
 	var data []byte
 
-	switch any(object).(type) {
-	case T:
-		return object.(T), nil
-	case []byte:
-		data = object.([]byte)
+	switch v := object.(type) {
 	case string:
-		data = []byte(object.(string))
+		data = []byte(v)
+	case []byte:
+		data = v
+	case T:
+		return v, nil
 	default:
-		data, err = yaml.Marshal(object)
+		marshaled, err := yaml.Marshal(object)
 		if err != nil {
 			return *new(T), err
 		}
+		data = marshaled
 	}
 
 	var result T
@@ -101,7 +101,7 @@ func UnmarshalStrict[T any](object any) (T, error) {
 }
 
 func UnmarshalFromFile[T any](filename string) (T, error) {
-	data, err := os.ReadFile(filename)
+	data, err := os.ReadFile(filename) // nolint:gosec
 	if err != nil {
 		return *new(T), fmt.Errorf("error reading file: %w", err)
 	}

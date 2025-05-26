@@ -12,7 +12,7 @@ import (
 )
 
 // Lists all related-item resources associated with a Systems Manager OpsCenter
-// OpsItem. OpsCenter is a capability of Amazon Web Services Systems Manager.
+// OpsItem. OpsCenter is a tool in Amazon Web Services Systems Manager.
 func (c *Client) ListOpsItemRelatedItems(ctx context.Context, params *ListOpsItemRelatedItemsInput, optFns ...func(*Options)) (*ListOpsItemRelatedItemsOutput, error) {
 	if params == nil {
 		params = &ListOpsItemRelatedItemsInput{}
@@ -106,6 +106,9 @@ func (c *Client) addOperationListOpsItemRelatedItemsMiddlewares(stack *middlewar
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -122,6 +125,9 @@ func (c *Client) addOperationListOpsItemRelatedItemsMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListOpsItemRelatedItemsValidationMiddleware(stack); err != nil {
@@ -143,6 +149,18 @@ func (c *Client) addOperationListOpsItemRelatedItemsMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil

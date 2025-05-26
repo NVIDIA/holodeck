@@ -24,7 +24,6 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 )
 
 func newProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (provider.Provider, error) {
@@ -34,11 +33,6 @@ func newProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (provider.Pro
 	switch cfg.Spec.Provider {
 	case v1alpha1.ProviderAWS:
 		provider, err = newAwsProvider(log, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case v1alpha1.ProviderVSphere:
-		provider, err = newVsphereProvider(log, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +46,7 @@ func newProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (provider.Pro
 func newAwsProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*aws.Provider, error) {
 	// Create cachedir directory
 	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
-		err := os.Mkdir(cachedir, 0755)
+		err := os.Mkdir(cachedir, 0750)
 		if err != nil {
 			log.Error(fmt.Errorf("error creating cache directory: %s", err))
 			return nil, err
@@ -68,27 +62,6 @@ func newAwsProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*aws.Prov
 	}
 
 	return a, nil
-}
-
-func newVsphereProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*vsphere.Provider, error) {
-	// Create cachedir directory
-	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
-		err := os.Mkdir(cachedir, 0755)
-		if err != nil {
-			log.Error(fmt.Errorf("error creating cache directory: %s", err))
-			return nil, err
-		}
-	}
-
-	// Set env name
-	setCfgName(cfg)
-
-	v, err := vsphere.New(log, *cfg, cacheFile)
-	if err != nil {
-		return nil, err
-	}
-
-	return v, nil
 }
 
 // look for file holodeck_ssh_key in GITHUB_WORKSPACE/holodeck_ssh_key

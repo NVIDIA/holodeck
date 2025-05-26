@@ -34,21 +34,33 @@ curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dear
   && \
     sudo apt-get update
 
-sudo apt-get install -y nvidia-container-toolkit
+install_packages_with_retry nvidia-container-toolkit
 
 # Configure container runtime
-sudo nvidia-ctk runtime configure --runtime={{.ContainerRuntime}} --set-as-default
+sudo nvidia-ctk runtime configure --runtime={{.ContainerRuntime}} --set-as-default --enable-cdi={{.EnableCDI}}
 sudo systemctl restart {{.ContainerRuntime}}
+
+# safely close the ssh connection
+exit 0 
 `
 
 type ContainerToolkit struct {
 	ContainerRuntime string
+	EnableCDI        bool
 }
 
 func NewContainerToolkit(env v1alpha1.Environment) *ContainerToolkit {
-	return &ContainerToolkit{
-		ContainerRuntime: string(env.Spec.ContainerRuntime.Name),
+	runtime := string(env.Spec.ContainerRuntime.Name)
+	if runtime == "" {
+		runtime = "containerd"
 	}
+
+	ctk := &ContainerToolkit{
+		ContainerRuntime: runtime,
+		EnableCDI:        env.Spec.NVIDIAContainerToolkit.EnableCDI,
+	}
+
+	return ctk
 }
 
 func (t *ContainerToolkit) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {

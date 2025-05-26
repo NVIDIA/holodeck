@@ -8,7 +8,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-.PHONY: build fmt verify release
+.PHONY: build fmt verify release lint vendor mod-tidy mod-vendor mod-verify check-vendor
 
 GO_CMD ?= go
 GO_FMT ?= gofmt
@@ -27,6 +27,44 @@ IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 
+# Apply go fmt to the codebase
+fmt:
+	go list -f '{{.Dir}}' $(MODULE)/... \
+		| xargs gofmt -s -l -w
+
+goimports:
+	go list -f {{.Dir}} $(MODULE)/... \
+		| xargs goimports -local $(MODULE) -w
+
+lint:
+	golangci-lint run ./...
+
+mod-tidy:
+	@for mod in $$(find . -name go.mod); do \
+	    echo "Tidying $$mod..."; ( \
+	        cd $$(dirname $$mod) && go mod tidy \
+            ) || exit 1; \
+	done
+
+mod-verify:
+	@for mod in $$(find . -name go.mod); do \
+	    echo "Verifying $$mod..."; ( \
+	        cd $$(dirname $$mod) && go mod verify | sed 's/^/  /g' \
+	    ) || exit 1; \
+	done
+
+mod-vendor: mod-tidy
+	@for mod in $$(find . -name go.mod -not -path "./deployments/*"); do \
+	    echo "Vendoring $$mod..."; ( \
+	        cd $$(dirname $$mod) && go mod vendor \
+	    ) || exit 1; \
+	done
+
+vendor: mod-vendor
+
+check-modules: | mod-tidy mod-verify mod-vendor
+	git diff --quiet HEAD -- $$(find . -name go.mod -o -name go.sum -o -name vendor)
+
 build-action:
 	@rm -rf bin
 	GOOS=linux $(GO_CMD) build -o /go/bin/$(BINARY_NAME) cmd/action/main.go
@@ -35,9 +73,6 @@ build-cli:
 	@rm -rf bin
 	$(GO_CMD) build -o bin/$(BINARY_NAME) cmd/cli/main.go
 
-fmt:
-	@$(GO_FMT) -w -l $$(find . -name '*.go')
-
 verify:
 	@out=`$(GO_FMT) -w -l -d $$(find . -name '*.go')`; \
 	if [ -n "$$out" ]; then \
@@ -45,13 +80,27 @@ verify:
 	    exit 1; \
 	fi
 
+COVERAGE_FILE := coverage.out
+test:
+	go test -coverprofile=$(COVERAGE_FILE) ./pkg/...
+
+coverage: test
+	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
+	go tool cover -func=$(COVERAGE_FILE).no-mocks
+
 release:
 	@rm -rf bin
 	@mkdir -p bin
 	@for os in linux darwin; do \
 		for arch in amd64 arm64; do \
 			echo "Building $$os-$$arch"; \
-			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-$$os-$$arch cmd/main.go; \
+			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-action-$$os-$$arch cmd/action/main.go; \
+		done; \
+	done
+	@for os in linux darwin; do \
+		for arch in amd64 arm64; do \
+			echo "Building $$os-$$arch"; \
+			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-$$os-$$arch cmd/cli/main.go; \
 		done; \
 	done
 

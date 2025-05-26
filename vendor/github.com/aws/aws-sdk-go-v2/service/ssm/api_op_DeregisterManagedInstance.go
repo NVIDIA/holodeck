@@ -10,9 +10,15 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Removes the server or virtual machine from the list of registered servers. You
-// can reregister the node again at any time. If you don't plan to use Run Command
-// on the server, we suggest uninstalling SSM Agent first.
+// Removes the server or virtual machine from the list of registered servers.
+//
+// If you want to reregister an on-premises server, edge device, or VM, you must
+// use a different Activation Code and Activation ID than used to register the
+// machine previously. The Activation Code and Activation ID must not have already
+// been used on the maximum number of activations specified when they were created.
+// For more information, see [Deregistering managed nodes in a hybrid and multicloud environment]in the Amazon Web Services Systems Manager User Guide.
+//
+// [Deregistering managed nodes in a hybrid and multicloud environment]: https://docs.aws.amazon.com/systems-manager/latest/userguide/fleet-manager-deregister-hybrid-nodes.html
 func (c *Client) DeregisterManagedInstance(ctx context.Context, params *DeregisterManagedInstanceInput, optFns ...func(*Options)) (*DeregisterManagedInstanceOutput, error) {
 	if params == nil {
 		params = &DeregisterManagedInstanceInput{}
@@ -89,6 +95,9 @@ func (c *Client) addOperationDeregisterManagedInstanceMiddlewares(stack *middlew
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -105,6 +114,9 @@ func (c *Client) addOperationDeregisterManagedInstanceMiddlewares(stack *middlew
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDeregisterManagedInstanceValidationMiddleware(stack); err != nil {
@@ -126,6 +138,18 @@ func (c *Client) addOperationDeregisterManagedInstanceMiddlewares(stack *middlew
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil

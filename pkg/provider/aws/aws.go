@@ -23,12 +23,10 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
-	"sigs.k8s.io/yaml"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go/aws"
 )
 
@@ -74,7 +72,6 @@ type AWS struct {
 type Provider struct {
 	Tags      []types.Tag
 	ec2       *ec2.Client
-	r53       *route53.Client
 	cacheFile string
 
 	*v1alpha1.Environment
@@ -87,22 +84,41 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Pr
 	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
 		region = envRegion
 	}
+	commitSHA := os.Getenv("GITHUB_SHA")
+	// short sha
+	if len(commitSHA) > 8 {
+		commitSHA = commitSHA[:8]
+	}
+	actor := os.Getenv("GITHUB_ACTOR")
+	branch := os.Getenv("GITHUB_REF_NAME")
+	repoName := os.Getenv("GITHUB_REPOSITORY")
+	gitHubRunId := os.Getenv("GITHUB_RUN_ID")
+	gitHubRunNumber := os.Getenv("GITHUB_RUN_NUMBER")
+	gitHubJob := os.Getenv("GITHUB_JOB")
+	gitHubRunAttempt := os.Getenv("GITHUB_RUN_ATTEMPT")
+
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
 
 	client := ec2.NewFromConfig(cfg)
-	r53 := route53.NewFromConfig(cfg)
 	p := &Provider{
 		[]types.Tag{
 			{Key: aws.String("Product"), Value: aws.String("Cloud Native")},
 			{Key: aws.String("Name"), Value: aws.String(env.Name)},
 			{Key: aws.String("Project"), Value: aws.String("holodeck")},
 			{Key: aws.String("Environment"), Value: aws.String("cicd")},
+			{Key: aws.String("CommitSHA"), Value: aws.String(commitSHA)},
+			{Key: aws.String("Actor"), Value: aws.String(actor)},
+			{Key: aws.String("Branch"), Value: aws.String(branch)},
+			{Key: aws.String("GitHubRepository"), Value: aws.String(repoName)},
+			{Key: aws.String("GitHubRunId"), Value: aws.String(gitHubRunId)},
+			{Key: aws.String("GitHubRunNumber"), Value: aws.String(gitHubRunNumber)},
+			{Key: aws.String("GitHubJob"), Value: aws.String(gitHubJob)},
+			{Key: aws.String("GitHubRunAttempt"), Value: aws.String(gitHubRunAttempt)},
 		},
 		client,
-		r53,
 		cacheFile,
 		&env,
 		log,
@@ -148,37 +164,6 @@ func (p *Provider) unmarsalCache() (*AWS, error) {
 	}
 
 	return aws, nil
-}
-
-// dump writes the AWS struct to the cache file
-func (p *Provider) dumpCache(aws *AWS) error {
-	env := p.Environment.DeepCopy()
-	env.Status.Properties = []v1alpha1.Properties{
-		{Name: VpcID, Value: aws.Vpcid},
-		{Name: SubnetID, Value: aws.Subnetid},
-		{Name: InternetGwID, Value: aws.InternetGwid},
-		{Name: InternetGatewayAttachment, Value: aws.InternetGatewayAttachment},
-		{Name: RouteTable, Value: aws.RouteTable},
-		{Name: SecurityGroupID, Value: aws.SecurityGroupid},
-		{Name: InstanceID, Value: aws.Instanceid},
-		{Name: PublicDnsName, Value: aws.PublicDnsName},
-	}
-
-	data, err := yaml.Marshal(env)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(p.cacheFile, data, 0644)
-	if err != nil {
-		return err
-	}
-
-	// Update the environment object with the new properties
-
-	p.Environment = env
-
-	return nil
 }
 
 func (p *Provider) done() {

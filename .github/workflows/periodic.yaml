@@ -1,0 +1,47 @@
+name: Periodic actions
+
+on:
+  schedule:
+    - cron: '0 0,12 * * *' # Runs daily at 12AM and 12PM
+
+jobs:
+  cleanup:
+    runs-on: linux-amd64-cpu4
+    strategy:
+      matrix:
+        aws-region: [us-west-1, us-east-1]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ matrix.aws-region }}
+
+      - name: Identify resources for deletion
+        id: identify-resources
+        run: |
+          # Find VPCs with tags Project=holodeck and Environment=cicd
+          vpcs=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:Project,Values=holodeck" "Name=tag:Environment,Values=cicd" \
+            --query "Vpcs[].VpcId" \
+            --output text | tr -d '\r' | tr '\n' ' ')
+          echo "Found VPCs: $vpcs"
+          echo "AWS_VPC_IDS=$vpcs" >> $GITHUB_ENV
+
+      - name: Clean up VPCs
+        if: env.AWS_VPC_IDS != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for vpcid in $AWS_VPC_IDS; do
+            scripts/awscleanup.sh $vpcid
+          done
+
+      - name: Post cleanup
+        run: |
+          echo "Cleanup completed."

@@ -31,7 +31,7 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	remoteFilePath := "${HOME}/.kube/config"
 
 	// Create a new ssh session
-	p, err := provisioner.New(log, cfg.Spec.Auth.PrivateKey, cfg.Spec.Auth.Username, hostUrl)
+	p, err := provisioner.New(log, cfg.Spec.PrivateKey, cfg.Spec.Username, hostUrl)
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	if err != nil {
 		return fmt.Errorf("error creating session: %v", err)
 	}
-	defer session.Close()
+	defer session.Close() // nolint:errcheck, gosec
 
 	// Set up a pipe to receive the remote file content
 	remoteFile, err := session.StdoutPipe()
@@ -55,11 +55,11 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	}
 
 	// Create a new file on the local system to save the downloaded content
-	localFile, err := os.Create(dest)
+	localFile, err := os.Create(dest) // nolint:gosec
 	if err != nil {
 		return fmt.Errorf("error creating local file: %v", err)
 	}
-	defer localFile.Close()
+	defer localFile.Close() // nolint:errcheck, gosec
 
 	// Copy the remote file content to the local file
 	_, err = io.Copy(localFile, remoteFile)

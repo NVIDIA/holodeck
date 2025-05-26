@@ -25,11 +25,10 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
-	"golang.org/x/crypto/ssh"
 
 	cli "github.com/urfave/cli/v2"
+	"golang.org/x/crypto/ssh"
 )
 
 type options struct {
@@ -76,14 +75,14 @@ func (m command) build() *cli.Command {
 			return nil
 		},
 		Action: func(c *cli.Context) error {
-			return m.run(c, &opts)
+			return m.run(&opts)
 		},
 	}
 
 	return &dryrun
 }
 
-func (m command) run(c *cli.Context, opts *options) error {
+func (m command) run(opts *options) error {
 	m.log.Info("Dryrun environment %s \U0001f50d", opts.cfg.Name)
 
 	// Check Provider
@@ -93,17 +92,12 @@ func (m command) run(c *cli.Context, opts *options) error {
 		if err != nil {
 			return err
 		}
-	case v1alpha1.ProviderVSphere:
-		err := validateVSphere(m.log, opts)
-		if err != nil {
-			return err
-		}
 	case v1alpha1.ProviderSSH:
 		// if username is not provided, use the current user
 		if opts.cfg.Spec.Username == "" {
 			opts.cfg.Spec.Username = os.Getenv("USER")
 		}
-		if err := connectOrDie(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.Instance.HostUrl); err != nil {
+		if err := connectOrDie(opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.HostUrl); err != nil {
 			return err
 		}
 	default:
@@ -133,23 +127,10 @@ func validateAWS(log *logger.FunLogger, opts *options) error {
 	return nil
 }
 
-func validateVSphere(log *logger.FunLogger, opts *options) error {
-	client, err := vsphere.New(log, opts.cfg, opts.envFile)
-	if err != nil {
-		return err
-	}
-
-	if err = client.DryRun(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // createSshClient creates a ssh client, and retries if it fails to connect
 func connectOrDie(keyPath, userName, hostUrl string) error {
 	var err error
-	key, err := os.ReadFile(keyPath)
+	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to read key file: %v", err)
 	}
@@ -162,15 +143,15 @@ func connectOrDie(keyPath, userName, hostUrl string) error {
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // nolint:gosec
 	}
 
 	connectionFailed := false
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		client, err := ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
-			client.Close()
-			return nil // Connection succeeded,
+			client.Close() // nolint:errcheck, gosec
+			return nil     // Connection succeeded,
 		}
 		connectionFailed = true
 		// Sleep for a brief moment before retrying.

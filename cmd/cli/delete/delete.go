@@ -21,27 +21,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
-	"github.com/NVIDIA/holodeck/pkg/jyaml"
-	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	"github.com/NVIDIA/holodeck/pkg/provider/vsphere"
 
 	cli "github.com/urfave/cli/v2"
 )
 
-type options struct {
-	cachePath string
-	envFile   string
-
-	cachefile string
-
-	cfg   v1alpha1.Environment
-	cache v1alpha1.Environment
-}
-
 type command struct {
-	log *logger.FunLogger
+	log       *logger.FunLogger
+	cachePath string
 }
 
 // NewCommand constructs the delete command with the specified logger
@@ -53,123 +41,49 @@ func NewCommand(log *logger.FunLogger) *cli.Command {
 }
 
 func (m command) build() *cli.Command {
-	opts := options{}
-
 	// Create the 'delete' command
-	create := cli.Command{
+	delete := cli.Command{
 		Name:  "delete",
-		Usage: "delete a test environment",
+		Usage: "Delete a Holodeck instance",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "cachepath",
 				Aliases:     []string{"c"},
 				Usage:       "Path to the cache directory",
-				Destination: &opts.cachePath,
+				Destination: &m.cachePath,
+				Value:       filepath.Join(os.Getenv("HOME"), ".cache", "holodeck"),
 			},
 			&cli.StringFlag{
-				Name:        "envFile",
-				Aliases:     []string{"f"},
-				Usage:       "Path to the Environment file",
-				Destination: &opts.envFile,
+				Name:    "instance-id",
+				Aliases: []string{"i"},
+				Usage:   "Instance ID to delete",
 			},
 		},
-		Before: func(c *cli.Context) error {
-			// Read the config file
-			var err error
-			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
-			if err != nil {
-				return fmt.Errorf("error reading config file: %s", err)
-			}
 
-			if opts.cfg.Spec.Provider != v1alpha1.ProviderAWS && opts.cfg.Spec.Provider != v1alpha1.ProviderVSphere {
-				return fmt.Errorf("provider %s not supported", opts.cfg.Spec.Provider)
-			}
-
-			// read cache
-			if opts.cachePath == "" {
-				opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
-			}
-			opts.cachefile = filepath.Join(opts.cachePath, opts.cfg.Name+".yaml")
-			opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachefile)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		},
 		Action: func(c *cli.Context) error {
-			return m.run(c, &opts)
+			// Delete using instance ID
+			instanceID := c.String("instance-id")
+			return m.run(c, instanceID)
 		},
 	}
 
-	return &create
+	return &delete
 }
 
-func (m command) run(c *cli.Context, opts *options) error {
-	if opts.cachePath == "" {
-		opts.cachePath = filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
-	}
+func (m command) run(c *cli.Context, instanceID string) error {
+	manager := instances.NewManager(m.log, m.cachePath)
 
-	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
+	// First check if the instance exists
+	instance, err := manager.GetInstance(instanceID)
 	if err != nil {
-		m.log.Error(err)
-		m.log.Exit(1)
-	}
-	cachefile := filepath.Join(opts.cachePath, cfg.Name+".yaml")
-
-	if cfg.Spec.Provider == v1alpha1.ProviderAWS {
-		if err := deleteAWS(m.log, cfg, cachefile); err != nil {
-			m.log.Error(err)
-			m.log.Exit(1)
-		}
-	} else if cfg.Spec.Provider == v1alpha1.ProviderVSphere {
-		if err := deleteVSphere(m.log, cfg, cachefile); err != nil {
-			m.log.Error(err)
-			m.log.Exit(1)
-		}
+		return fmt.Errorf("failed to get instance: %v", err)
 	}
 
-	m.log.Info("Successfully deleted environment %s\n", cfg.Name)
-
-	return nil
-}
-
-func deleteAWS(log *logger.FunLogger, cfg v1alpha1.Environment, cachefile string) error {
-	client, err := aws.New(log, cfg, cachefile)
-	if err != nil {
-		return err
+	// Delete the instance
+	if err := manager.DeleteInstance(instanceID); err != nil {
+		return fmt.Errorf("failed to delete instance: %v", err)
 	}
 
-	// check if cache exists
-	if _, err := os.Stat(cachefile); err != nil {
-		fmt.Printf("Error reading cache file: %s\n", err)
-		fmt.Printf("Cache file %s does not exist\n", cachefile)
-		os.Exit(1)
-	}
-
-	if err := client.Delete(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func deleteVSphere(log *logger.FunLogger, cfg v1alpha1.Environment, cachefile string) error {
-	client, err := vsphere.New(log, cfg, cachefile)
-	if err != nil {
-		return err
-	}
-
-	// check if cache exists
-	if _, err := os.Stat(cachefile); err != nil {
-		fmt.Printf("Error reading cache file: %s\n", err)
-		fmt.Printf("Cache file %s does not exist\n", cachefile)
-		os.Exit(1)
-	}
-
-	if err := client.Delete(); err != nil {
-		return err
-	}
-
+	m.log.Info("Successfully deleted instance %s (%s)", instanceID, instance.Name)
 	return nil
 }

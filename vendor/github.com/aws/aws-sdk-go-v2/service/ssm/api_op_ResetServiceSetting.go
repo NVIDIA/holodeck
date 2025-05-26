@@ -48,15 +48,19 @@ type ResetServiceSettingInput struct {
 	// The Amazon Resource Name (ARN) of the service setting to reset. The setting ID
 	// can be one of the following.
 	//
-	//   - /ssm/managed-instance/default-ec2-instance-management-role
+	//   - /ssm/appmanager/appmanager-enabled
 	//
 	//   - /ssm/automation/customer-script-log-destination
 	//
 	//   - /ssm/automation/customer-script-log-group-name
 	//
+	//   - /ssm/automation/enable-adaptive-concurrency
+	//
 	//   - /ssm/documents/console/public-sharing-permission
 	//
 	//   - /ssm/managed-instance/activation-tier
+	//
+	//   - /ssm/managed-instance/default-ec2-instance-management-role
 	//
 	//   - /ssm/opsinsights/opscenter
 	//
@@ -126,6 +130,9 @@ func (c *Client) addOperationResetServiceSettingMiddlewares(stack *middleware.St
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -142,6 +149,9 @@ func (c *Client) addOperationResetServiceSettingMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpResetServiceSettingValidationMiddleware(stack); err != nil {
@@ -163,6 +173,18 @@ func (c *Client) addOperationResetServiceSettingMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil

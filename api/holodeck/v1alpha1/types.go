@@ -29,10 +29,9 @@ type EnvironmentSpec struct {
 	// Instance is required for AWS provider
 	// +optional
 	Instance `json:"instance"`
-	// VsphereVirtualMachine is required for VSphere provider
-	// +optional
-	VsphereVirtualMachine `json:"VsphereVirtualMachine"`
 
+	// +optional
+	Kernel Kernel `json:"kernel"`
 	// +optional
 	NVIDIADriver NVIDIADriver `json:"nvidiaDriver"`
 	// +optional
@@ -48,8 +47,6 @@ type Provider string
 const (
 	// ProviderAWS means the infra provider is AWS
 	ProviderAWS Provider = "aws"
-	// ProviderVSphere means the infra provider is VSphere
-	ProviderVSphere Provider = "vsphere"
 	// ProviderSSH means the user already has a running instance
 	// and wants to use it as the infra provider via SSH
 	ProviderSSH Provider = "ssh"
@@ -71,18 +68,6 @@ type Instance struct {
 	IngresIpRanges []string `json:"ingressIpRanges"`
 	// +optional
 	HostUrl string `json:"hostUrl"`
-}
-
-// VsphereVirtualMachine defines a VSphere VM
-type VsphereVirtualMachine struct {
-	VCenterURL    string `json:"vCenterURL"`
-	Datacenter    string `json:"datacenter"`
-	DataStore     string `json:"dataStore"`
-	Cluster       string `json:"cluster"`
-	Network       string `json:"network"`
-	VMFolder      string `json:"vmFolder"`
-	ResoursePool  string `json:"resoursePool"`
-	TemplateImage string `json:"templateImage"`
 }
 
 // Describes an image or vm template.
@@ -125,10 +110,10 @@ type EnvironmentStatus struct {
 // Environment is the Schema for the Holodeck Environment API
 type Environment struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata"`
 
-	Spec   EnvironmentSpec   `json:"spec,omitempty"`
-	Status EnvironmentStatus `json:"status,omitempty"`
+	Spec   EnvironmentSpec   `json:"spec"`
+	Status EnvironmentStatus `json:"status"`
 }
 
 //+kubebuilder:object:root=true
@@ -136,7 +121,7 @@ type Environment struct {
 // EnvironmentList contains a list of Holodeck
 type EnvironmentList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata"`
 	Items           []Environment `json:"items"`
 }
 
@@ -162,6 +147,10 @@ type Auth struct {
 
 type NVIDIADriver struct {
 	Install bool `json:"install"`
+	// Branch specifies the driver branch.
+	// If a version is specified, this takes precedence.
+	// +optional
+	Branch string `json:"branch"`
 	// If not set the latest stable version will be used
 	// +optional
 	Version string `json:"version"`
@@ -206,6 +195,10 @@ type Kubernetes struct {
 	// alpha/experimental features
 	K8sFeatureGates []string `json:"K8sFeatureGates"`
 
+	// KubeAdmConfig is the path to the KubeAdmConfig file on the local machine
+	// +optional
+	KubeAdmConfig string `json:"kubeAdmConfig"`
+
 	// Kind exclusive
 	KindConfig string `json:"kindConfig"`
 }
@@ -220,4 +213,16 @@ type NVIDIAContainerToolkit struct {
 	// If not set the latest stable version will be used
 	// +optional
 	Version string `json:"version"`
+	// EnableCDI enables the Container Device Interface (CDI) in the selected
+	// container runtime.
+	// +optional
+	EnableCDI bool `json:"enableCDI"`
+}
+
+// Kernel defines the kernel configuration
+type Kernel struct {
+	// Version specifies the kernel version to install
+	// If not set, no kernel changes will be made
+	// +optional
+	Version string `json:"version,omitempty"`
 }

@@ -26,13 +26,6 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-var (
-	// outFile is where Out* functions send output to. Set using SetOutFile()
-	outFile fdWriter
-	// errFile is where Err* functions send output to. Set using SetErrFile()
-	errFile fdWriter
-)
-
 // fdWriter is the subset of file.File that implements io.Writer and Fd()
 type fdWriter interface {
 	io.Writer
@@ -103,7 +96,7 @@ func (l *FunLogger) Info(format string, a ...any) {
 		format += "\n"
 	}
 
-	fmt.Fprintf(l.Out, format, a...)
+	fmt.Fprintf(l.Out, format, a...) // nolint: errcheck
 }
 
 // Info prints an information message with a check emoji.
