@@ -43,4 +43,9 @@ func TestCriO_Execute(t *testing.T) {
 	if !strings.Contains(out, "systemctl start crio.service") {
 		t.Errorf("template output missing crio start: %s", out)
 	}
+
+	// Test safe exit
+	if !strings.Contains(out, "exit 0") {
+		t.Errorf("template output missing safe exit: %s", out)
+	}
 }

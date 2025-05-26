@@ -315,6 +315,9 @@ sudo ctr images pull docker.io/library/hello-world:latest
 sudo ctr run --rm docker.io/library/hello-world:latest test
 
 echo "Containerd installation completed successfully!"
+
+# safely close the ssh connection
+exit 0 
 `
 
 type Containerd struct {

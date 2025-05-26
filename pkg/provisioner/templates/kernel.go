@@ -60,6 +60,9 @@ if [ "${CURRENT_KERNEL}" != "${KERNEL_VERSION}" ]; then
     # Run the reboot command with nohup to avoid abrupt SSH closure issues
     nohup sudo reboot &
 fi
+
+# safely close the ssh connection
+exit 0
 {{- end }}
 `
 

@@ -38,6 +38,9 @@ apt install -y cri-o
 # Start and enable Service
 systemctl daemon-reload
 systemctl start crio.service
+
+# safely close the ssh connection
+exit 0 
 `
 
 type CriO struct {

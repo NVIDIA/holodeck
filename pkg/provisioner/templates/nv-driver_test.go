@@ -19,6 +19,7 @@ package templates
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -59,6 +60,9 @@ sudo nvidia-persistenced --persistence-mode
 
 # Quick check to see if the driver is installed
 nvidia-smi
+
+# safely close the ssh connection
+exit 0 
 `,
 		},
 		{
@@ -87,6 +91,9 @@ sudo nvidia-persistenced --persistence-mode
 
 # Quick check to see if the driver is installed
 nvidia-smi
+
+# safely close the ssh connection
+exit 0 
 `,
 		},
 		{
@@ -116,6 +123,9 @@ sudo nvidia-persistenced --persistence-mode
 
 # Quick check to see if the driver is installed
 nvidia-smi
+
+# safely close the ssh connection
+exit 0 
 `,
 		},
 	}
@@ -128,7 +138,11 @@ nvidia-smi
 			err := tc.driver.Execute(&output, v1alpha1.Environment{})
 			require.EqualValues(t, tc.expecteError, err)
 
-			require.EqualValues(t, tc.expectedOutput, output.String())
+			// Compare trimmed strings to avoid whitespace issues
+			require.EqualValues(t, strings.TrimSpace(tc.expectedOutput), strings.TrimSpace(output.String()))
+
+			// Test safe exit
+			require.Contains(t, output.String(), "exit 0", "template output missing safe exit")
 		})
 
 	}
