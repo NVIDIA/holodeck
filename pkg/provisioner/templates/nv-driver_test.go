@@ -47,8 +47,17 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry cuda-drivers=123.4.5
+install_packages_with_retry nvidia-driver=123.4.5
 
+# Check if NVIDIA module is loaded, if not load it
+if ! lsmod | grep -q "^nvidia "; then
+    sudo modprobe nvidia
+fi
+
+# Start nvidia-persistenced
+sudo nvidia-persistenced --persistence-mode
+
+# Quick check to see if the driver is installed
 nvidia-smi
 `,
 		},
@@ -66,8 +75,17 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry cuda-drivers-550
+install_packages_with_retry nvidia-driver-550
 
+# Check if NVIDIA module is loaded, if not load it
+if ! lsmod | grep -q "^nvidia "; then
+    sudo modprobe nvidia
+fi
+
+# Start nvidia-persistenced
+sudo nvidia-persistenced --persistence-mode
+
+# Quick check to see if the driver is installed
 nvidia-smi
 `,
 		},
@@ -86,8 +104,17 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry cuda-drivers=123.4.5
+install_packages_with_retry nvidia-driver=123.4.5
 
+# Check if NVIDIA module is loaded, if not load it
+if ! lsmod | grep -q "^nvidia "; then
+    sudo modprobe nvidia
+fi
+
+# Start nvidia-persistenced
+sudo nvidia-persistenced --persistence-mode
+
+# Quick check to see if the driver is installed
 nvidia-smi
 `,
 		},
