@@ -30,6 +30,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	cli "github.com/urfave/cli/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type options struct {
@@ -200,6 +201,23 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	opts.cfg.Status = opts.cache.Status
 
 	if err = p.Run(opts.cfg); err != nil {
+		// Set degraded condition when provisioning fails
+		opts.cfg.Status.Conditions = []metav1.Condition{
+			{
+				Type:               v1alpha1.ConditionDegraded,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "ProvisioningFailed",
+				Message:            fmt.Sprintf("Failed to provision environment: %v", err),
+			},
+		}
+		data, err := jyaml.MarshalYAML(opts.cfg)
+		if err != nil {
+			return fmt.Errorf("failed to marshal environment: %v", err)
+		}
+		if err := os.WriteFile(opts.cachePath, data, 0600); err != nil {
+			return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+		}
 		return fmt.Errorf("failed to run provisioner: %v", err)
 	}
 
