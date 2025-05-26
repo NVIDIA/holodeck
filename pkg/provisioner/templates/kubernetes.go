@@ -104,10 +104,8 @@ export KUBECONFIG="${HOME}/.kube/config"
 
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-with_retry 3 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
-# Calico CRDs created. Now we sleep for 10s to ensure they are fully registered in the K8s etcd
-sleep 10s
-with_retry 3 10s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+with_retry 5 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+with_retry 5 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 # Make single-node cluster schedulable
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 kubectl label node --all node-role.kubernetes.io/worker=
@@ -445,7 +443,7 @@ func GetCRISocket(runtime string) (string, error) {
 	}
 }
 
-// isLegacyKubernetesVersion checks if the Kubernetes version is older than v1.30.0
+// isLegacyKubernetesVersion checks if the Kubernetes version is older than v1.32.0
 // which requires using legacy kubeadm init flags instead of config file
 func isLegacyKubernetesVersion(version string) bool {
 	// Remove 'v' prefix if present
@@ -461,6 +459,6 @@ func isLegacyKubernetesVersion(version string) bool {
 	major, _ := strconv.Atoi(parts[0])
 	minor, _ := strconv.Atoi(parts[1])
 
-	// Return true if version is older than v1.30.0
-	return major < 1 || (major == 1 && minor < 30)
+	// Return true if version is older than v1.32.0
+	return major < 1 || (major == 1 && minor < 32)
 }

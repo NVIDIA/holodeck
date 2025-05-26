@@ -38,8 +38,6 @@ echo "Current kernel version: $CURRENT_KERNEL"
 KERNEL_VERSION="{{ .Spec.Kernel.Version }}"
 
 if [ "${CURRENT_KERNEL}" != "${KERNEL_VERSION}" ]; then
-    echo "--------------Upgrading kernel to ${KERNEL_VERSION}--------------"
-    
     # Update package lists
     sudo apt-get update -y || true
     
@@ -61,10 +59,6 @@ if [ "${CURRENT_KERNEL}" != "${KERNEL_VERSION}" ]; then
     echo "Rebooting..."
     # Run the reboot command with nohup to avoid abrupt SSH closure issues
     nohup sudo reboot &
-    
-    echo "--------------Kernel upgrade completed--------------"
-else
-    echo "--------------Kernel upgrade not required, current kernel version ${KERNEL_VERSION}--------------"
 fi
 {{- end }}
 `
