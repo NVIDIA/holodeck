@@ -199,11 +199,6 @@ func TestContainerd_Execute_SystemChecks(t *testing.T) {
 		t.Error("template output missing temporary directory creation")
 	}
 
-	// Test safe exit
-	if !strings.Contains(out, "exit 0") {
-		t.Error("template output missing safe exit")
-	}
-
 	// Test error handling
 	if !strings.Contains(out, "Error: Failed to download containerd tarball") {
 		t.Error("template output missing download error handling")

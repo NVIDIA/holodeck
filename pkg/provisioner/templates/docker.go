@@ -74,8 +74,64 @@ sudo systemctl restart docker
 sudo usermod -aG docker $USER
 newgrp docker
 
-# safely close the ssh connection
-exit 0 
+# Install cri-dockerd
+CRI_DOCKERD_VERSION="0.3.17"
+CRI_DOCKERD_ARCH="amd64"
+CRI_DOCKERD_URL="https://github.com/Mirantis/cri-dockerd/releases/download/v${CRI_DOCKERD_VERSION}/cri-dockerd-${CRI_DOCKERD_VERSION}.${CRI_DOCKERD_ARCH}.tgz"
+
+# Download and install cri-dockerd
+curl -L ${CRI_DOCKERD_URL} | sudo tar xzv -C /usr/local/bin --strip-components=1
+
+# Create systemd service file for cri-dockerd
+sudo tee /etc/systemd/system/cri-docker.service <<EOF
+[Unit]
+Description=CRI Interface for Docker Application Container Engine
+Documentation=https://docs.mirantis.com
+After=network-online.target firewalld.service docker.service
+Wants=network-online.target
+Requires=cri-docker.socket
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/cri-dockerd --container-runtime-endpoint fd://
+ExecReload=/bin/kill -s HUP $MAINPID
+TimeoutSec=0
+RestartSec=2
+Restart=always
+StartLimitBurst=3
+StartLimitInterval=60s
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+Delegate=yes
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Create socket file for cri-dockerd
+sudo tee /etc/systemd/system/cri-docker.socket <<EOF
+[Unit]
+Description=CRI Docker Socket for the API
+PartOf=cri-docker.service
+
+[Socket]
+ListenStream=/run/cri-dockerd.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=docker
+
+[Install]
+WantedBy=sockets.target
+EOF
+
+# Enable and start cri-dockerd
+sudo systemctl daemon-reload
+sudo systemctl enable cri-docker.service
+sudo systemctl enable cri-docker.socket
+sudo systemctl start cri-docker.service
 `
 
 type Docker struct {
