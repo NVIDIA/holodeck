@@ -30,6 +30,7 @@ var (
 	LogArtifactDir string
 	cwd            string
 	packagePath    string
+	sshKey         string
 )
 
 func TestMain(t *testing.T) {
@@ -46,6 +47,9 @@ func getTestEnv() {
 	var err error
 
 	LogArtifactDir = os.Getenv("LOG_ARTIFACT_DIR")
+
+	sshKey = os.Getenv("E2E_SSH_KEY")
+	Expect(sshKey).NotTo(BeEmpty(), "E2E_SSH_KEY is not set")
 
 	// Get current working directory
 	cwd, err = os.Getwd()

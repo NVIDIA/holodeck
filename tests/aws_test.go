@@ -168,6 +168,8 @@ var _ = Describe("AWS Environment", func() {
 					})
 
 					It("should create the environment successfully", func() {
+						state.opts.cfg.Spec.PrivateKey = sshKey
+						state.opts.cfg.Spec.Username = "ubuntu"
 						Expect(state.provider.Create()).To(Succeed(), "Failed to create environment")
 					})
 
