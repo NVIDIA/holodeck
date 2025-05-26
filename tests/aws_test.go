@@ -28,10 +28,17 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider"
+	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/tests/common"
 )
 
+// AWSEnvironmentTests contains end-to-end tests for AWS environment provisioning and management.
+// These tests verify the complete lifecycle of AWS environments, including:
+// - Environment creation and validation
+// - Kubernetes cluster setup (when enabled)
+// - Resource provisioning and cleanup
+// - Configuration validation
 var _ = Describe("AWS Environment", func() {
 	// Test configuration structure
 	type testConfig struct {
@@ -112,7 +119,8 @@ var _ = Describe("AWS Environment", func() {
 		}
 	}
 
-	// Run each test configuration sequentially
+	// Run each test configuration sequentially to ensure proper resource management
+	// and avoid potential conflicts between concurrent test runs
 	for _, config := range testConfigs {
 		config := config // Create a new variable to avoid closure issues
 		When("testing "+config.name, Ordered, func() {
@@ -165,6 +173,34 @@ var _ = Describe("AWS Environment", func() {
 
 					It("should have valid environment name", func() {
 						Expect(state.opts.cfg.Name).NotTo(BeEmpty(), "Environment name should not be empty")
+					})
+					It("should provision the environment successfully", func() {
+						By("Reading the environment file")
+						env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](state.opts.cachefile)
+						Expect(err).NotTo(HaveOccurred(), "Failed to read environment file")
+
+						var hostUrl string
+						for _, p := range env.Status.Properties {
+							if p.Name == aws.PublicDnsName {
+								hostUrl = p.Value
+								break
+							}
+						}
+						Expect(hostUrl).NotTo(BeEmpty(), "Host URL should not be empty")
+
+						By("Provisioning the environment")
+						p, err := provisioner.New(state.log, state.opts.cfg.Spec.PrivateKey, state.opts.cfg.Spec.Username, hostUrl)
+						Expect(err).NotTo(HaveOccurred(), "Failed to create provisioner")
+
+						// Ensure client is properly closed after test
+						defer func() {
+							if err := p.Client.Close(); err != nil {
+								state.log.Error(err)
+							}
+						}()
+
+						By("Running the provisioner")
+						Expect(p.Run(env)).To(Succeed(), "Failed to provision environment")
 					})
 				})
 			})
