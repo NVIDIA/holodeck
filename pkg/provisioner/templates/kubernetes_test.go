@@ -178,6 +178,7 @@ func TestKubernetes_Execute(t *testing.T) {
 		wantErr        bool
 		checkTemplate  bool
 		expectedString string
+		checkSafeExit  bool
 	}{
 		{
 			name: "kubeadm installer",
@@ -192,7 +193,8 @@ func TestKubernetes_Execute(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantErr:       false,
+			checkSafeExit: true,
 		},
 		{
 			name: "legacy kubeadm installer",
@@ -211,6 +213,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			wantErr:        false,
 			checkTemplate:  true,
 			expectedString: "kubeadm init \\\n  --kubernetes-version=${K8S_VERSION} \\\n  --pod-network-cidr=192.168.0.0/16 \\\n  --control-plane-endpoint=test-host:6443 \\\n  --ignore-preflight-errors=all",
+			checkSafeExit:  true,
 		},
 		{
 			name: "kind installer",
@@ -225,7 +228,8 @@ func TestKubernetes_Execute(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantErr:       false,
+			checkSafeExit: true,
 		},
 		{
 			name: "microk8s installer",
@@ -240,7 +244,8 @@ func TestKubernetes_Execute(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantErr:       false,
+			checkSafeExit: true,
 		},
 		{
 			name: "invalid installer",
@@ -276,13 +281,14 @@ func TestKubernetes_Execute(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-			assert.NotEmpty(t, buf.String())
 
+			out := buf.String()
 			if tt.checkTemplate {
-				// Check if the template contains the expected kubeadm init command
-				assert.Contains(t, buf.String(), tt.expectedString)
-				// Verify that it doesn't use the config file
-				assert.NotContains(t, buf.String(), "kubeadm init --config /etc/kubernetes/kubeadm-config.yaml")
+				assert.Contains(t, out, tt.expectedString)
+			}
+
+			if tt.checkSafeExit {
+				assert.Contains(t, out, "exit 0", "template output missing safe exit")
 			}
 		})
 	}

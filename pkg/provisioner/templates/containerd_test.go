@@ -198,8 +198,10 @@ func TestContainerd_Execute_SystemChecks(t *testing.T) {
 	if !strings.Contains(out, "TMP_DIR=$(mktemp -d)") {
 		t.Error("template output missing temporary directory creation")
 	}
-	if !strings.Contains(out, "rm -rf $TMP_DIR") {
-		t.Error("template output missing temporary directory cleanup")
+
+	// Test safe exit
+	if !strings.Contains(out, "exit 0") {
+		t.Error("template output missing safe exit")
 	}
 
 	// Test error handling

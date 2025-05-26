@@ -73,6 +73,9 @@ sudo systemctl restart docker
 # Post-installation steps for Linux
 sudo usermod -aG docker $USER
 newgrp docker
+
+# safely close the ssh connection
+exit 0 
 `
 
 type Docker struct {

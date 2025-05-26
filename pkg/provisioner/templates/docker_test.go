@@ -54,4 +54,9 @@ func TestDocker_Execute(t *testing.T) {
 	if !strings.Contains(out, "systemctl enable docker") {
 		t.Errorf("template output missing enable docker: %s", out)
 	}
+
+	// Test safe exit
+	if !strings.Contains(out, "exit 0") {
+		t.Errorf("template output missing safe exit: %s", out)
+	}
 }

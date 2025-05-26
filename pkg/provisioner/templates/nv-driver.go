@@ -46,6 +46,9 @@ sudo nvidia-persistenced --persistence-mode
 
 # Quick check to see if the driver is installed
 nvidia-smi
+
+# safely close the ssh connection
+exit 0 
 `
 
 type NvDriver v1alpha1.NVIDIADriver

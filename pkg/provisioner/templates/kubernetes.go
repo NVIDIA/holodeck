@@ -110,6 +110,9 @@ with_retry 5 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubus
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 kubectl label node --all node-role.kubernetes.io/worker=
 kubectl label node --all nvidia.com/holodeck.managed=true
+
+# safely close the ssh connection
+exit 0 
 `
 
 const KindTemplate = `
@@ -152,6 +155,9 @@ with_retry 3 10s kind create cluster --name holodeck $KIND_CONFIG --kubeconfig="
 echo "KIND installed successfully"
 echo "you can now access the cluster with:"
 echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
+
+# safely close the ssh connection
+exit 0
 `
 
 const microk8sTemplate = `
@@ -173,6 +179,9 @@ sudo snap alias microk8s.kubectl kubectl
 echo "Microk8s {{.Version}} installed successfully"
 echo "you can now access the cluster with:"
 echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
+
+# safely close the ssh connection
+exit 0
 `
 
 const kubeadmTemplate = `apiVersion: kubeadm.k8s.io/v1beta4
