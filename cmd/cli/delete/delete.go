@@ -21,7 +21,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
@@ -31,7 +30,6 @@ import (
 type command struct {
 	log       *logger.FunLogger
 	cachePath string
-	cfg       v1alpha1.Environment
 }
 
 // NewCommand constructs the delete command with the specified logger
