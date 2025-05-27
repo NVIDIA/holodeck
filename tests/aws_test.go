@@ -196,8 +196,18 @@ var _ = Describe("AWS Environment", func() {
 
 						// Ensure client is properly closed after test
 						defer func() {
-							if err := p.Client.Close(); err != nil {
-								state.log.Error(err)
+							if p.Client != nil {
+								// Try to create a new session to check if connection is alive
+								session, err := p.Client.NewSession()
+								if err == nil {
+									session.Close() // nolint:errcheck, gosec
+									// Connection is alive, close it
+									if err := p.Client.Close(); err != nil {
+										Expect(err).NotTo(HaveOccurred(), "Failed to close ssh client")
+									}
+								}
+								// If we get here, either the connection was already closed or we couldn't create a session
+								p.Client = nil
 							}
 						}()
 

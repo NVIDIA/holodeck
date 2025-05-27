@@ -155,10 +155,6 @@ func TestKernelTemplateContent(t *testing.T) {
 			name:     "reboot command",
 			contains: "nohup sudo reboot",
 		},
-		{
-			name:     "safe exit",
-			contains: "# safely close the ssh connection\nexit 0",
-		},
 	}
 
 	for _, tt := range tests {

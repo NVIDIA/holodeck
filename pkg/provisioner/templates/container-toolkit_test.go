@@ -60,9 +60,4 @@ func TestContainerToolkit_Execute(t *testing.T) {
 	if !strings.Contains(out, "nvidia-ctk runtime configure --runtime=containerd --set-as-default --enable-cdi=true") {
 		t.Errorf("template output missing expected runtime config: %s", out)
 	}
-
-	// Test safe exit
-	if !strings.Contains(out, "exit 0") {
-		t.Errorf("template output missing safe exit: %s", out)
-	}
 }

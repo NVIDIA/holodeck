@@ -289,7 +289,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now containerd
 
 # Wait for containerd to be ready
-echo "Waiting for containerd to be ready..."
 timeout=60
 while ! sudo ctr version &>/dev/null; do
     if [ $timeout -le 0 ]; then
@@ -304,20 +303,15 @@ done
 sudo chmod 666 /run/containerd/containerd.sock
 
 # Verify installation
-echo "Verifying installation..."
 containerd --version
 runc --version
 sudo ctr version
 
 # Test containerd functionality
-echo "Testing containerd functionality..."
 sudo ctr images pull docker.io/library/hello-world:latest
 sudo ctr run --rm docker.io/library/hello-world:latest test
 
-echo "Containerd installation completed successfully!"
-
-# safely close the ssh connection
-exit 0 
+# Containerd installation completed successfully!
 `
 
 type Containerd struct {
