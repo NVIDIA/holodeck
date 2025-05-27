@@ -48,7 +48,7 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry nvidia-driver=123.4.5
+install_packages_with_retry cuda-drivers=123.4.5
 
 # Check if NVIDIA module is loaded, if not load it
 if ! lsmod | grep -q "^nvidia "; then
@@ -60,9 +60,6 @@ sudo nvidia-persistenced --persistence-mode
 
 # Quick check to see if the driver is installed
 nvidia-smi
-
-# safely close the ssh connection
-exit 0 
 `,
 		},
 		{
@@ -79,7 +76,7 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry nvidia-driver-550
+install_packages_with_retry cuda-drivers-550
 
 # Check if NVIDIA module is loaded, if not load it
 if ! lsmod | grep -q "^nvidia "; then
@@ -91,9 +88,6 @@ sudo nvidia-persistenced --persistence-mode
 
 # Quick check to see if the driver is installed
 nvidia-smi
-
-# safely close the ssh connection
-exit 0 
 `,
 		},
 		{
@@ -111,7 +105,7 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
 
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry nvidia-driver=123.4.5
+install_packages_with_retry cuda-drivers=123.4.5
 
 # Check if NVIDIA module is loaded, if not load it
 if ! lsmod | grep -q "^nvidia "; then
@@ -123,9 +117,6 @@ sudo nvidia-persistenced --persistence-mode
 
 # Quick check to see if the driver is installed
 nvidia-smi
-
-# safely close the ssh connection
-exit 0 
 `,
 		},
 	}
@@ -140,9 +131,6 @@ exit 0
 
 			// Compare trimmed strings to avoid whitespace issues
 			require.EqualValues(t, strings.TrimSpace(tc.expectedOutput), strings.TrimSpace(output.String()))
-
-			// Test safe exit
-			require.Contains(t, output.String(), "exit 0", "template output missing safe exit")
 		})
 
 	}

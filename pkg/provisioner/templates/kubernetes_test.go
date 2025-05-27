@@ -286,10 +286,6 @@ func TestKubernetes_Execute(t *testing.T) {
 			if tt.checkTemplate {
 				assert.Contains(t, out, tt.expectedString)
 			}
-
-			if tt.checkSafeExit {
-				assert.Contains(t, out, "exit 0", "template output missing safe exit")
-			}
 		})
 	}
 }

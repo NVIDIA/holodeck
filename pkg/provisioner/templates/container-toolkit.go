@@ -39,9 +39,6 @@ install_packages_with_retry nvidia-container-toolkit
 # Configure container runtime
 sudo nvidia-ctk runtime configure --runtime={{.ContainerRuntime}} --set-as-default --enable-cdi={{.EnableCDI}}
 sudo systemctl restart {{.ContainerRuntime}}
-
-# safely close the ssh connection
-exit 0 
 `
 
 type ContainerToolkit struct {

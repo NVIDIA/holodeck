@@ -9,7 +9,7 @@ spec:
     keyName: cnt-ci
     privateKey: /home/runner/.cache/key
   instance:
-    type: m4.xlarge
+    type: g4dn.xlarge
     region: us-west-1
     ingressIpRanges:
     - 18.190.12.32/32
@@ -22,7 +22,11 @@ spec:
       architecture: amd64
   containerRuntime:
     install: true
-    name: containerd
+    name: docker
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
   kubernetes:
     install: true
     installer: kubeadm

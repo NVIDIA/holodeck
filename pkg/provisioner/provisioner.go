@@ -182,9 +182,19 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 
 // resetConnection resets the ssh connection, and retries if it fails to connect
 func (p *Provisioner) resetConnection() error {
-	// Close the current ssh connection
-	if err := p.Client.Close(); err != nil {
-		return fmt.Errorf("failed to close ssh client: %v", err)
+	// Check if the connection is still active before closing
+	if p.Client != nil {
+		// Try to create a new session to check if connection is alive
+		session, err := p.Client.NewSession()
+		if err == nil {
+			session.Close() // nolint:errcheck, gosec
+			// Connection is alive, close it
+			if err := p.Client.Close(); err != nil {
+				return fmt.Errorf("failed to close ssh client: %w", err)
+			}
+		}
+		// If we get here, either the connection was already closed or we couldn't create a session
+		p.Client = nil
 	}
 
 	return nil
