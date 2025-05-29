@@ -1,0 +1,38 @@
+## Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.## 
+## Licensed under the Apache License, Version 2.0 (the "License");
+## you may not use this file except in compliance with the License.
+## You may obtain a copy of the License at
+##
+##     http://www.apache.org/licenses/LICENSE-2.0 
+##
+## Unless required by applicable law or agreed to in writing, software
+## distributed under the License is distributed on an "AS IS" BASIS,
+## WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+## See the License for the specific language governing permissions and
+## limitations under the License.
+## 
+
+name: Docs
+
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.5'
+
+      - name: Install mdl
+        run: gem install mdl -v 0.13.0
+
+      - name: Run Markdown lint
+        run: |
+          find docs/ -path docs/vendor -prune -false -o -name '*.md' | xargs mdl -s docs/mdl-style.rb

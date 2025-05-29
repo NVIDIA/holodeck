@@ -171,7 +171,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 		}
 	}
 
-	m.log.Info("Created instance %s", instanceID)
+	m.log.Info("\nCreated instance %s", instanceID)
 	return nil
 }
 

@@ -44,7 +44,7 @@ func (m command) build() *cli.Command {
 	// Create the 'delete' command
 	delete := cli.Command{
 		Name:  "delete",
-		Usage: "Delete a Holodeck instance",
+		Usage: "Delete one or more Holodeck instances",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "cachepath",
@@ -53,37 +53,36 @@ func (m command) build() *cli.Command {
 				Destination: &m.cachePath,
 				Value:       filepath.Join(os.Getenv("HOME"), ".cache", "holodeck"),
 			},
-			&cli.StringFlag{
-				Name:    "instance-id",
-				Aliases: []string{"i"},
-				Usage:   "Instance ID to delete",
-			},
 		},
-
 		Action: func(c *cli.Context) error {
-			// Delete using instance ID
-			instanceID := c.String("instance-id")
-			return m.run(c, instanceID)
+			if c.NArg() == 0 {
+				return fmt.Errorf("at least one instance ID is required")
+			}
+			return m.run(c)
 		},
 	}
 
 	return &delete
 }
 
-func (m command) run(c *cli.Context, instanceID string) error {
+func (m command) run(c *cli.Context) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 
-	// First check if the instance exists
-	instance, err := manager.GetInstance(instanceID)
-	if err != nil {
-		return fmt.Errorf("failed to get instance: %v", err)
+	// Process each instance ID provided as an argument
+	for _, instanceID := range c.Args().Slice() {
+		// First check if the instance exists
+		instance, err := manager.GetInstance(instanceID)
+		if err != nil {
+			return fmt.Errorf("failed to get instance %s: %v", instanceID, err)
+		}
+
+		// Delete the instance
+		if err := manager.DeleteInstance(instanceID); err != nil {
+			return fmt.Errorf("failed to delete instance %s: %v", instanceID, err)
+		}
+
+		m.log.Info("Successfully deleted instance %s (%s)", instanceID, instance.Name)
 	}
 
-	// Delete the instance
-	if err := manager.DeleteInstance(instanceID); err != nil {
-		return fmt.Errorf("failed to delete instance: %v", err)
-	}
-
-	m.log.Info("Successfully deleted instance %s (%s)", instanceID, instance.Name)
 	return nil
 }

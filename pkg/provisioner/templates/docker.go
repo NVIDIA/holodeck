@@ -30,7 +30,7 @@ const dockerTemplate = `
 : ${DOCKER_VERSION:={{.Version}}}
 
 # Add Docker's official GPG key:
-sudo apt-get update
+with_retry 3 10s sudo apt-get update
 install_packages_with_retry ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg

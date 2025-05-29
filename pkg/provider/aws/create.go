@@ -300,10 +300,11 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	}
 
 	instanceIn := &ec2.RunInstancesInput{
-		ImageId:      p.Spec.Image.ImageId,
-		InstanceType: types.InstanceType(p.Spec.Type),
-		MaxCount:     &minMaxCount,
-		MinCount:     &minMaxCount,
+		ImageId:                           p.Spec.Image.ImageId,
+		InstanceType:                      types.InstanceType(p.Spec.Type),
+		MaxCount:                          &minMaxCount,
+		MinCount:                          &minMaxCount,
+		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		BlockDeviceMappings: []types.BlockDeviceMapping{
 			{
 				DeviceName: aws.String("/dev/sda1"),

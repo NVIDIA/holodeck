@@ -31,17 +31,18 @@ import (
 type command struct {
 	log       *logger.FunLogger
 	cachePath string
+	quiet     bool
 }
 
 // NewCommand constructs the list command with the specified logger
 func NewCommand(log *logger.FunLogger) *cli.Command {
-	c := command{
+	c := &command{
 		log: log,
 	}
 	return c.build()
 }
 
-func (m command) build() *cli.Command {
+func (m *command) build() *cli.Command {
 	// Create the 'list' command
 	list := cli.Command{
 		Name:    "list",
@@ -54,6 +55,12 @@ func (m command) build() *cli.Command {
 				Usage:       "Path to the cache directory",
 				Destination: &m.cachePath,
 			},
+			&cli.BoolFlag{
+				Name:        "quiet",
+				Aliases:     []string{"q"},
+				Usage:       "Only display instance IDs",
+				Destination: &m.quiet,
+			},
 		},
 		Action: m.run,
 	}
@@ -61,7 +68,7 @@ func (m command) build() *cli.Command {
 	return &list
 }
 
-func (m command) run(c *cli.Context) error {
+func (m *command) run(c *cli.Context) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instances, err := manager.ListInstances()
 	if err != nil {
@@ -70,6 +77,17 @@ func (m command) run(c *cli.Context) error {
 
 	if len(instances) == 0 {
 		m.log.Info("No instances found")
+		return nil
+	}
+
+	// If quiet mode is enabled, only print instance IDs
+	if m.quiet {
+		for _, instance := range instances {
+			if instance.ID == "" {
+				continue
+			}
+			fmt.Println(instance.ID)
+		}
 		return nil
 	}
 

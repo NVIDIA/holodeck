@@ -116,6 +116,9 @@ with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=establish
 # Apply custom resources with increased retry attempts
 with_retry 10 15s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 
+# Wait for cluster to be ready
+with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
+
 # Make single-node cluster schedulable
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 kubectl label node --all node-role.kubernetes.io/worker=
