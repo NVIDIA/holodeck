@@ -27,13 +27,28 @@ import (
 // From https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
 const NvDriverTemplate = `
 
-sudo apt-get update
-install_packages_with_retry linux-headers-$(uname -r)
+with_retry 3 10s sudo apt-get update
+install_packages_with_retry linux-headers-$(uname -r) gcc make 
+install_packages_with_retry apt-utils build-essential \
+							ca-certificates \
+							curl \
+							kmod \
+							file \
+							libelf-dev \
+							libglvnd-dev \
+							pkg-config
+
+install_packages_with_retry gcc-12 g++-12 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+
+# Install the new cuda-keyring package	
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
 wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-keyring_1.1-1_all.deb
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
-
 with_retry 3 10s sudo apt-get update
+
+# Install the NVIDIA driver
 install_packages_with_retry cuda-drivers{{if .Version}}={{.Version}}{{else if .Branch}}-{{.Branch}}{{end}}
 
 # Check if NVIDIA module is loaded, if not load it
@@ -51,7 +66,15 @@ nvidia-smi
 type NvDriver v1alpha1.NVIDIADriver
 
 func NewNvDriver(env v1alpha1.Environment) *NvDriver {
-	return (*NvDriver)(&env.Spec.NVIDIADriver)
+	var nvDriver NvDriver
+
+	nvDriver.Install = env.Spec.NVIDIADriver.Install
+
+	if env.Spec.NVIDIADriver.Branch == "" {
+		nvDriver.Branch = "575"
+	}
+
+	return &nvDriver
 }
 
 func (t *NvDriver) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
