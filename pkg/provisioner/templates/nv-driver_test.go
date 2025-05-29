@@ -41,13 +41,29 @@ func TestNVDriverTemplate(t *testing.T) {
 			},
 			expectedOutput: `
 
-sudo apt-get update
-install_packages_with_retry linux-headers-$(uname -r)
+# Install Dependencies
+with_retry 3 10s sudo apt-get update
+install_packages_with_retry linux-headers-$(uname -r) gcc make 
+install_packages_with_retry apt-utils build-essential \
+							ca-certificates \
+							curl \
+							kmod \
+							file \
+							libelf-dev \
+							libglvnd-dev \
+							pkg-config
+
+install_packages_with_retry gcc-12 g++-12 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+
+# Install the new cuda-keyring package	
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
 wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-keyring_1.1-1_all.deb
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
-
 with_retry 3 10s sudo apt-get update
+
+# Install the NVIDIA driver
 install_packages_with_retry cuda-drivers=123.4.5
 
 # Check if NVIDIA module is loaded, if not load it
@@ -68,14 +84,29 @@ nvidia-smi
 				Branch: "550",
 			},
 			expectedOutput: `
+# Install Dependencies
+with_retry 3 10s sudo apt-get update
+install_packages_with_retry linux-headers-$(uname -r) gcc make 
+install_packages_with_retry apt-utils build-essential \
+							ca-certificates \
+							curl \
+							kmod \
+							file \
+							libelf-dev \
+							libglvnd-dev \
+							pkg-config
 
-sudo apt-get update
-install_packages_with_retry linux-headers-$(uname -r)
+install_packages_with_retry gcc-12 g++-12 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+
+# Install the new cuda-keyring package	
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
 wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-keyring_1.1-1_all.deb
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
-
 with_retry 3 10s sudo apt-get update
+
+# Install the NVIDIA driver
 install_packages_with_retry cuda-drivers-550
 
 # Check if NVIDIA module is loaded, if not load it
@@ -97,14 +128,29 @@ nvidia-smi
 				Version: "123.4.5",
 			},
 			expectedOutput: `
+# Install Dependencies
+with_retry 3 10s sudo apt-get update
+install_packages_with_retry linux-headers-$(uname -r) gcc make 
+install_packages_with_retry apt-utils build-essential \
+							ca-certificates \
+							curl \
+							kmod \
+							file \
+							libelf-dev \
+							libglvnd-dev \
+							pkg-config
 
-sudo apt-get update
-install_packages_with_retry linux-headers-$(uname -r)
+install_packages_with_retry gcc-12 g++-12 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+
+# Install the new cuda-keyring package	
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
 wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-keyring_1.1-1_all.deb
 sudo dpkg -i cuda-keyring_1.1-1_all.deb
-
 with_retry 3 10s sudo apt-get update
+
+# Install the NVIDIA driver
 install_packages_with_retry cuda-drivers=123.4.5
 
 # Check if NVIDIA module is loaded, if not load it

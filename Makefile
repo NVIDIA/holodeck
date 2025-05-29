@@ -8,8 +8,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-.PHONY: build fmt verify release lint vendor mod-tidy mod-vendor mod-verify check-vendor
+.PHONY: build fmt verify release lint vendor mod-tidy mod-vendor mod-verify check-vendor mdlint
 
+CONTAINER_RUN_CMD ?= docker run
 GO_CMD ?= go
 GO_FMT ?= gofmt
 GO_SRC := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
@@ -87,6 +88,14 @@ test:
 coverage: test
 	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
 	go tool cover -func=$(COVERAGE_FILE).no-mocks
+
+mdlint:
+	${CONTAINER_RUN_CMD} \
+	--rm \
+	--volume "${PWD}:/workdir:ro,z" \
+	--workdir /workdir \
+	ruby:slim \
+	/workdir/scripts/mdlint.sh
 
 release:
 	@rm -rf bin

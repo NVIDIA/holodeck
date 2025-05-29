@@ -27,7 +27,11 @@ jobs:
   
     golang:
       uses: ./.github/workflows/golang.yaml
-    
+
+    docs-check:
+      uses: ./.github/workflows/docs_check.yaml
+      secrets: inherit
+
     image:
       uses: ./.github/workflows/image.yaml
       needs: [golang, code-scanning]
