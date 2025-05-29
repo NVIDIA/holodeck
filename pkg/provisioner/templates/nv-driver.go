@@ -26,7 +26,7 @@ import (
 
 // From https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
 const NvDriverTemplate = `
-
+# Install Dependencies
 with_retry 3 10s sudo apt-get update
 install_packages_with_retry linux-headers-$(uname -r) gcc make 
 install_packages_with_retry apt-utils build-essential \
