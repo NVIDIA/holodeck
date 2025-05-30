@@ -93,7 +93,7 @@ with_retry 3 10s sudo kubeadm init \
   --ignore-preflight-errors=all
 {{- else }}
 # Using kubeadm config file for newer Kubernetes versions
-with_retry 3 10s sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml
+with_retry 3 10s sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml --ignore-preflight-errors=all
 {{- end }}
 
 mkdir -p $HOME/.kube
