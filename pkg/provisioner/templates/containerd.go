@@ -169,7 +169,7 @@ RUNC_VERSION=$(curl -fsSL https://api.github.com/repos/opencontainers/runc/relea
 
 if [ -z "$RUNC_VERSION" ]; then
     echo "Failed to fetch latest RUNC version. Using default version."
-    RUNC_VERSION="1.2.6"
+    RUNC_VERSION="1.3.0"
 fi
 
 RUNC_URL="https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH}"
@@ -184,7 +184,7 @@ sudo install -m 755 runc.${ARCH} /usr/local/sbin/runc
 echo "Runc ${RUNC_VERSION} installed successfully."
 
 # Install CNI plugins
-CNI_VERSION="1.1.1"
+CNI_VERSION="1.3.0"
 CNI_TAR="cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz"
 CNI_URL="https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/${CNI_TAR}"
 
@@ -322,7 +322,7 @@ func NewContainerd(env v1alpha1.Environment) *Containerd {
 	var version string
 
 	if env.Spec.ContainerRuntime.Version == "" {
-		version = "1.6.27"
+		version = "1.7.26"
 	} else {
 		// remove the 'v' prefix from the version if it exists
 		version = strings.TrimPrefix(env.Spec.ContainerRuntime.Version, "v")
