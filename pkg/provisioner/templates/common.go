@@ -30,25 +30,23 @@ export HOLODECK_ENVIRONMENT=true
 echo "APT::Get::AllowUnauthenticated 1;" | sudo tee /etc/apt/apt.conf.d/99allow-unauthenticated
 
 install_packages_with_retry() {
-    local packages=("$@")
-    local max_retries=5
-    local retry_delay=5
-
-    for ((i=1; i<=$max_retries; i++)); do
-        echo "Attempt $i to install packages: ${packages[@]}"
-        
-        # Attempt to install packages
-        sudo apt-get install -y --no-install-recommends "${packages[@]}"
-
-        # Check if the last command failed and the error is related to unsigned repository
-        if [ $? -ne 0 ] && grep -q 'NO_PUBKEY' <<< "$(tail -n 1 /var/lib/dpkg/status 2>/dev/null)"; then
-            echo "Error: Unsigned repository. Retrying in $retry_delay seconds..."
-            sleep $retry_delay
-        else
-            # Exit loop if installation is successful or the error is not related to unsigned repository
-            break
-        fi
-    done
+	local max_retries=5 retry_delay=5
+	local packages=("$@")
+	
+	for ((i=1; i<=max_retries; i++)); do
+		echo "[$i/$max_retries] apt-get update"
+		if sudo apt-get -o Acquire::Retries=3 update; then
+			echo "[$i/$max_retries] installing: ${packages[*]}"
+			if sudo DEBIAN_FRONTEND=noninteractive \
+				   apt-get install -y --no-install-recommends "${packages[@]}"; then
+				return 0            # success
+			fi
+		fi
+		echo "Attempt $i failed; sleeping ${retry_delay}s" >&2
+		sleep "$retry_delay"
+	done
+	echo "All ${max_retries} attempts failed" >&2
+	return 1
 }
 
 with_retry() {

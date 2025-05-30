@@ -43,15 +43,8 @@ func TestNVDriverTemplate(t *testing.T) {
 
 # Install Dependencies
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry linux-headers-$(uname -r) gcc make 
-install_packages_with_retry apt-utils build-essential \
-							ca-certificates \
-							curl \
-							kmod \
-							file \
-							libelf-dev \
-							libglvnd-dev \
-							pkg-config
+install_packages_with_retry linux-headers-$(uname -r)
+install_packages_with_retry apt-utils build-essential ca-certificates curl kmod file libelf-dev libglvnd-dev pkg-config make
 
 install_packages_with_retry gcc-12 g++-12 && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
@@ -86,15 +79,8 @@ nvidia-smi
 			expectedOutput: `
 # Install Dependencies
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry linux-headers-$(uname -r) gcc make 
-install_packages_with_retry apt-utils build-essential \
-							ca-certificates \
-							curl \
-							kmod \
-							file \
-							libelf-dev \
-							libglvnd-dev \
-							pkg-config
+install_packages_with_retry linux-headers-$(uname -r)
+install_packages_with_retry apt-utils build-essential ca-certificates curl kmod file libelf-dev libglvnd-dev pkg-config make
 
 install_packages_with_retry gcc-12 g++-12 && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
@@ -130,15 +116,8 @@ nvidia-smi
 			expectedOutput: `
 # Install Dependencies
 with_retry 3 10s sudo apt-get update
-install_packages_with_retry linux-headers-$(uname -r) gcc make 
-install_packages_with_retry apt-utils build-essential \
-							ca-certificates \
-							curl \
-							kmod \
-							file \
-							libelf-dev \
-							libglvnd-dev \
-							pkg-config
+install_packages_with_retry linux-headers-$(uname -r)
+install_packages_with_retry apt-utils build-essential ca-certificates curl kmod file libelf-dev libglvnd-dev pkg-config make
 
 install_packages_with_retry gcc-12 g++-12 && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12 && \
