@@ -103,18 +103,18 @@ export KUBECONFIG="${HOME}/.kube/config"
 
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
 
 # Wait for Tigera operator to be ready
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
 
 # Wait for all necessary CRDs to be established
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/installations.operator.tigera.io
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/apiservers.operator.tigera.io
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/installations.operator.tigera.io
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/apiservers.operator.tigera.io
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
 
 # Apply custom resources with increased retry attempts
-with_retry 10 15s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 
 # Wait for cluster to be ready
 with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
