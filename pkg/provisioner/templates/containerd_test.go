@@ -11,8 +11,8 @@ import (
 func TestNewContainerd_Defaults(t *testing.T) {
 	env := v1alpha1.Environment{}
 	c := NewContainerd(env)
-	if c.Version != "1.6.27" {
-		t.Errorf("expected default Version to be '1.6.27', got '%s'", c.Version)
+	if c.Version != "1.7.26" {
+		t.Errorf("expected default Version to be '1.7.26', got '%s'", c.Version)
 	}
 }
 
@@ -39,8 +39,8 @@ func TestNewContainerd_EmptyVersion(t *testing.T) {
 		},
 	}
 	c := NewContainerd(env)
-	if c.Version != "1.6.27" {
-		t.Errorf("expected default Version to be '1.6.27' when empty, got '%s'", c.Version)
+	if c.Version != "1.7.26" {
+		t.Errorf("expected default Version to be '1.7.26' when empty, got '%s'", c.Version)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			ContainerRuntime: v1alpha1.ContainerRuntime{
-				Version: "1.6.27",
+				Version: "1.7.26",
 			},
 		},
 	}
@@ -138,7 +138,7 @@ func TestContainerd_Execute_SystemChecks(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			ContainerRuntime: v1alpha1.ContainerRuntime{
-				Version: "1.6.27",
+				Version: "1.7.26",
 			},
 		},
 	}
