@@ -116,13 +116,13 @@ with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=establis
 # Apply custom resources with increased retry attempts
 with_retry 10 20s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 
-# Wait for cluster to be ready
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
-
 # Make single-node cluster schedulable
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 kubectl label node --all node-role.kubernetes.io/worker=
 kubectl label node --all nvidia.com/holodeck.managed=true
+
+# Wait for cluster to be ready
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
 `
 
 const KindTemplate = `

@@ -1,6 +1,6 @@
 # Holodeck
 
-> * Tech preview, under heavy development *
+[![Latest Release](https://img.shields.io/github/v/release/NVIDIA/holodeck?label=latest%20release)](https://github.com/NVIDIA/holodeck/releases/latest)
 
 A tool for creating and managing GPU-ready Cloud test environments.
 
@@ -13,6 +13,7 @@ A tool for creating and managing GPU-ready Cloud test environments.
 - [Commands Reference](docs/commands/)
 - [Contributing Guide](docs/contributing/)
 - [Examples](docs/examples/)
+- [Latest Release](https://github.com/NVIDIA/holodeck/releases/latest)
 
 ---
 
@@ -89,14 +90,6 @@ holodeck status <instance-id>
 holodeck dryrun -f ./examples/v1alpha1_environment.yaml
 ```
 
----
-
-## 📦 Supported Cuda-Drivers
-
-See [docs/prerequisites.md](docs/prerequisites.md#supported-cuda-drivers) for the full list and usage.
-
----
-
 ## 📂 More
 
 - [Examples](docs/examples/)
@@ -104,4 +97,4 @@ See [docs/prerequisites.md](docs/prerequisites.md#supported-cuda-drivers) for th
 
 ---
 
-For more information, see the [docs/](docs/) directory.
+For more information, see the [documentation](docs/README.md) directory.

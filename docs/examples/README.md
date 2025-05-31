@@ -67,4 +67,4 @@ A sample kind cluster configuration for use with the kind installer.
 ---
 
 For more details on configuration options, see the
-[Command Reference](../commands/) and [Quick Start Guide](../quick-start.md).
+[Command Reference](../commands/README.md) and [Quick Start Guide](../quick-start.md).

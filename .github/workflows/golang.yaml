@@ -75,7 +75,14 @@ jobs:
       with:
         go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
-    - run: make coverage
+    - name: Run unit tests and generate coverage report
+      run: make coverage
+
+    - name: Upload to Coveralls
+      uses: coverallsapp/github-action@v2
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        file: coverage.out
 
   build:
     name: Build
