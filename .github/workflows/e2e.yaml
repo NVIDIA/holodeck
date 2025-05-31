@@ -47,7 +47,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y make
-        make -f tests/Makefile ginkgo
 
     - name: Run e2e test for ${{ matrix.label }}
       env:
@@ -60,7 +59,7 @@ jobs:
         echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
         chmod 600 "$e2e_ssh_key"
         export E2E_SSH_KEY="$e2e_ssh_key"
-        ginkgo -v --label-filter="${{ matrix.label }}" ./tests/...
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}'"
 
     - name: Archive Ginkgo logs
       uses: actions/upload-artifact@v4
