@@ -71,5 +71,5 @@ holodeck delete <instance-id>
 
 - Check out the [Prerequisites](prerequisites.md) for detailed setup
    requirements
-- Explore the [Command Reference](commands/) for all available commands
+- Explore the [Command Reference](commands/README.md) for all available commands
 - See [Examples](../examples/) for more complex configurations
