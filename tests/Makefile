@@ -27,7 +27,7 @@ test: $(GINKGO_BIN)
 	CI=$(CI) \
 	ENV_FILE=$(ENV_FILE) \
 	GINKGO_FOCUS=$(GINKGO_FOCUS) \
-	$(GINKGO_BIN) $(GINKGO_ARGS) -v --json-report ginkgo.json ./tests/...
+	$(GINKGO_BIN) $(GINKGO_ARGS) -v ./tests/...
 
 $(GINKGO_BIN):
 	mkdir -p $(CURDIR)/bin
