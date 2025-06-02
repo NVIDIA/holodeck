@@ -18,6 +18,7 @@ package provisioner
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/pkg/provisioner/templates"
@@ -176,10 +177,6 @@ func (d *DependencyResolver) withKernel() {
 
 // Resolve returns the dependency list in the correct order
 func (d *DependencyResolver) Resolve() []ProvisionFunc {
-	// Add Kernel to the list first since it's a system-level dependency
-	if d.env.Spec.Kernel.Version != "" {
-		d.withKernel()
-	}
 
 	// Add NVDriver to the list
 	if d.env.Spec.NVIDIADriver.Install {
@@ -201,5 +198,12 @@ func (d *DependencyResolver) Resolve() []ProvisionFunc {
 		d.withKubernetes()
 	}
 
+	// Add Kernel to the list first since it's a system-level dependency
+	if d.env.Spec.Kernel.Version != "" {
+		d.withKernel()
+	}
+
+	// Wait for the node to come back online
+	time.Sleep(60 * time.Second)
 	return d.Dependencies
 }
