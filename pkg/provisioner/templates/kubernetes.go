@@ -272,14 +272,16 @@ type KubeadmConfig struct {
 }
 
 func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
-	kubernetes := &Kubernetes{
-		Version: env.Spec.Kubernetes.KubernetesVersion,
-	}
-	// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
-	// if not, set the default version
-	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s" {
-		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.32.1\n", env.Spec.Kubernetes.KubernetesVersion)
+	kubernetes := &Kubernetes{}
+
+	// Normalize Kubernetes version using a switch statement
+	switch {
+	case env.Spec.Kubernetes.KubernetesVersion == "":
 		kubernetes.Version = defaultKubernetesVersion
+	case !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s":
+		kubernetes.Version = "v" + env.Spec.Kubernetes.KubernetesVersion
+	default:
+		kubernetes.Version = env.Spec.Kubernetes.KubernetesVersion
 	}
 	if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
 		kubernetes.KubeletReleaseVersion = env.Spec.Kubernetes.KubeletReleaseVersion
