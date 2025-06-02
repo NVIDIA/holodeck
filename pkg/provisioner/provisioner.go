@@ -93,8 +93,8 @@ func (p *Provisioner) waitForNodeReboot() error {
 	}
 
 	// Wait for the node to come back up
-	maxRetries := 30
-	retryInterval := 10 * time.Second
+	maxRetries := 10
+	retryInterval := 30 * time.Second
 
 	for i := 0; i < maxRetries; i++ {
 		p.log.Info("Waiting for node to come back online...")

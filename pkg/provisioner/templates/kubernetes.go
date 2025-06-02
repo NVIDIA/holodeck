@@ -101,25 +101,28 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG="${HOME}/.kube/config"
 
+# Wait explicitly for kube-apiserver availability
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG version
+
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
 
 # Wait for Tigera operator to be ready
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
 
 # Wait for all necessary CRDs to be established
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/installations.operator.tigera.io
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/apiservers.operator.tigera.io
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/installations.operator.tigera.io
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/apiservers.operator.tigera.io
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
 
 # Apply custom resources with increased retry attempts
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 
 # Make single-node cluster schedulable
-kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
-kubectl label node --all node-role.kubernetes.io/worker=
-kubectl label node --all nvidia.com/holodeck.managed=true
+with_retry 10 30s kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
+with_retry 10 30s kubectl label node --all node-role.kubernetes.io/worker=
+with_retry 10 30s kubectl label node --all nvidia.com/holodeck.managed=true
 
 # Wait for cluster to be ready
 with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
