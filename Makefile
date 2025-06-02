@@ -86,8 +86,7 @@ test:
 	go test -coverprofile=$(COVERAGE_FILE) ./pkg/...
 
 coverage: test
-	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
-	go tool cover -func=$(COVERAGE_FILE).no-mocks
+	go tool cover -func=$(COVERAGE_FILE)
 
 mdlint:
 	${CONTAINER_RUN_CMD} \

@@ -93,7 +93,7 @@ with_retry 3 10s sudo kubeadm init \
   --ignore-preflight-errors=all
 {{- else }}
 # Using kubeadm config file for newer Kubernetes versions
-with_retry 3 10s sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml
+with_retry 3 10s sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml --ignore-preflight-errors=all
 {{- end }}
 
 mkdir -p $HOME/.kube
@@ -101,28 +101,31 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG="${HOME}/.kube/config"
 
+# Wait explicitly for kube-apiserver availability
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG version
+
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
 
 # Wait for Tigera operator to be ready
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
 
 # Wait for all necessary CRDs to be established
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/installations.operator.tigera.io
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/apiservers.operator.tigera.io
-with_retry 5 10s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/installations.operator.tigera.io
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/apiservers.operator.tigera.io
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
 
 # Apply custom resources with increased retry attempts
-with_retry 10 15s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
-
-# Wait for cluster to be ready
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 
 # Make single-node cluster schedulable
-kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
-kubectl label node --all node-role.kubernetes.io/worker=
-kubectl label node --all nvidia.com/holodeck.managed=true
+with_retry 10 30s kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
+with_retry 10 30s kubectl label node --all node-role.kubernetes.io/worker=
+with_retry 10 30s kubectl label node --all nvidia.com/holodeck.managed=true
+
+# Wait for cluster to be ready
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
 `
 
 const KindTemplate = `
@@ -168,11 +171,14 @@ echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 
 const microk8sTemplate = `
 : ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
+: ${K8S_VERSION:={{.Version}}}
+
+# Remove leading 'v' from version if present for microk8s snap channel
+MICROK8S_VERSION="${K8S_VERSION#v}"
 
 # Install microk8s
 sudo apt-get update
-
-sudo snap install microk8s --classic --channel={{.Version}}
+sudo snap install microk8s --classic --channel=${MICROK8S_VERSION}
 sudo microk8s enable gpu dashboard dns registry
 sudo usermod -a -G microk8s ubuntu
 mkdir -p ~/.kube
@@ -181,7 +187,7 @@ sudo microk8s config > ~/.kube/config
 sudo chown -f -R ubuntu ~/.kube
 sudo snap alias microk8s.kubectl kubectl
 
-echo "Microk8s {{.Version}} installed successfully"
+echo "Microk8s ${MICROK8S_VERSION} installed successfully"
 echo "you can now access the cluster with:"
 echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 `
@@ -269,14 +275,16 @@ type KubeadmConfig struct {
 }
 
 func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
-	kubernetes := &Kubernetes{
-		Version: env.Spec.Kubernetes.KubernetesVersion,
-	}
-	// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
-	// if not, set the default version
-	if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s" {
-		fmt.Printf("Kubernetes version %s is not in the format of vX.Y.Z, setting default version v1.32.1\n", env.Spec.Kubernetes.KubernetesVersion)
+	kubernetes := &Kubernetes{}
+
+	// Normalize Kubernetes version: always ensure it starts with 'v'
+	switch {
+	case env.Spec.Kubernetes.KubernetesVersion == "":
 		kubernetes.Version = defaultKubernetesVersion
+	case !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v"):
+		kubernetes.Version = "v" + env.Spec.Kubernetes.KubernetesVersion
+	default:
+		kubernetes.Version = env.Spec.Kubernetes.KubernetesVersion
 	}
 	if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
 		kubernetes.KubeletReleaseVersion = env.Spec.Kubernetes.KubeletReleaseVersion
