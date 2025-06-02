@@ -26,6 +26,6 @@ spec:
   kubernetes:
     install: true
     installer: kubeadm
-    kubernetesVersion: v1.32.1
+    version: v1.32.1
     k8sFeatureGates:
     - DynamicResourceAllocation=true
