@@ -171,11 +171,14 @@ echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 
 const microk8sTemplate = `
 : ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
+: ${K8S_VERSION:={{.Version}}}
+
+# Remove leading 'v' from version if present for microk8s snap channel
+MICROK8S_VERSION="${K8S_VERSION#v}"
 
 # Install microk8s
 sudo apt-get update
-
-sudo snap install microk8s --classic --channel={{.Version}}
+sudo snap install microk8s --classic --channel=${MICROK8S_VERSION}
 sudo microk8s enable gpu dashboard dns registry
 sudo usermod -a -G microk8s ubuntu
 mkdir -p ~/.kube
@@ -184,7 +187,7 @@ sudo microk8s config > ~/.kube/config
 sudo chown -f -R ubuntu ~/.kube
 sudo snap alias microk8s.kubectl kubectl
 
-echo "Microk8s {{.Version}} installed successfully"
+echo "Microk8s ${MICROK8S_VERSION} installed successfully"
 echo "you can now access the cluster with:"
 echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
 `
@@ -274,11 +277,11 @@ type KubeadmConfig struct {
 func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	kubernetes := &Kubernetes{}
 
-	// Normalize Kubernetes version using a switch statement
+	// Normalize Kubernetes version: always ensure it starts with 'v'
 	switch {
 	case env.Spec.Kubernetes.KubernetesVersion == "":
 		kubernetes.Version = defaultKubernetesVersion
-	case !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") && env.Spec.Kubernetes.KubernetesInstaller != "microk8s":
+	case !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v"):
 		kubernetes.Version = "v" + env.Spec.Kubernetes.KubernetesVersion
 	default:
 		kubernetes.Version = env.Spec.Kubernetes.KubernetesVersion
