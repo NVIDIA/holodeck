@@ -103,7 +103,7 @@ export KUBECONFIG="${HOME}/.kube/config"
 
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml --validate=false
 
 # Wait for Tigera operator to be ready
 with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
@@ -114,7 +114,7 @@ with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=establis
 with_retry 10 20s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
 
 # Apply custom resources with increased retry attempts
-with_retry 10 20s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+with_retry 10 20s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml --validate=false
 
 # Make single-node cluster schedulable
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
