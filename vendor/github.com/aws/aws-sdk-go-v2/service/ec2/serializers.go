@@ -49832,6 +49832,16 @@ func awsEc2query_serializeDocumentEbsBlockDevice(v *types.EbsBlockDevice, value 
 	object := value.Object()
 	_ = object
 
+	if v.AvailabilityZone != nil {
+		objectKey := object.Key("AvailabilityZone")
+		objectKey.String(*v.AvailabilityZone)
+	}
+
+	if v.AvailabilityZoneId != nil {
+		objectKey := object.Key("AvailabilityZoneId")
+		objectKey.String(*v.AvailabilityZoneId)
+	}
+
 	if v.DeleteOnTermination != nil {
 		objectKey := object.Key("DeleteOnTermination")
 		objectKey.Boolean(*v.DeleteOnTermination)
@@ -57399,6 +57409,19 @@ func awsEc2query_serializeDocumentSubnetConfigurationsList(v []types.SubnetConfi
 	return nil
 }
 
+func awsEc2query_serializeDocumentSubnetIdList(v []string, value query.Value) error {
+	if len(v) == 0 {
+		return nil
+	}
+	array := value.Array("AssociatedSubnetId")
+
+	for i := range v {
+		av := array.Value()
+		av.String(v[i])
+	}
+	return nil
+}
+
 func awsEc2query_serializeDocumentSubnetIdStringList(v []string, value query.Value) error {
 	if len(v) == 0 {
 		return nil
@@ -61424,6 +61447,11 @@ func awsEc2query_serializeOpDocumentCreateImageInput(v *CreateImageInput, value 
 	if v.NoReboot != nil {
 		objectKey := object.Key("NoReboot")
 		objectKey.Boolean(*v.NoReboot)
+	}
+
+	if len(v.SnapshotLocation) > 0 {
+		objectKey := object.Key("SnapshotLocation")
+		objectKey.String(string(v.SnapshotLocation))
 	}
 
 	if v.TagSpecifications != nil {
@@ -76777,6 +76805,13 @@ func awsEc2query_serializeOpDocumentModifyManagedPrefixListInput(v *ModifyManage
 func awsEc2query_serializeOpDocumentModifyNetworkInterfaceAttributeInput(v *ModifyNetworkInterfaceAttributeInput, value query.Value) error {
 	object := value.Object()
 	_ = object
+
+	if v.AssociatedSubnetIds != nil {
+		objectKey := object.FlatKey("AssociatedSubnetId")
+		if err := awsEc2query_serializeDocumentSubnetIdList(v.AssociatedSubnetIds, objectKey); err != nil {
+			return err
+		}
+	}
 
 	if v.AssociatePublicIpAddress != nil {
 		objectKey := object.Key("AssociatePublicIpAddress")
