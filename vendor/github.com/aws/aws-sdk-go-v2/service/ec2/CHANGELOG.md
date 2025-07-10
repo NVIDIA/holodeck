@@ -1,3 +1,44 @@
+# v1.231.0 (2025-07-09)
+
+* **Feature**: Adds support to Capacity Blocks for ML for purchasing EC2 P6e-GB200 UltraServers. Customers can now purchase u-p6e-gb200x72 and u-p6e-gb200x36 UltraServers. Adds new DescribeCapacityBlocks andDescribeCapacityBlockStatus APIs. Adds support for CapacityBlockId to DescribeInstanceTopology.
+
+# v1.230.0 (2025-07-03)
+
+* **Feature**: This release adds GroupOwnerId as a response member to the DescribeSecurityGroupVpcAssociations API and also adds waiters for SecurityGroupVpcAssociations (SecurityGroupVpcAssociationAssociated and SecurityGroupVpcAssociationDisassociated).
+
+# v1.229.0 (2025-07-02)
+
+* **Feature**: AWS Site-to-Site VPN now supports IPv6 addresses on outer tunnel IPs, making it easier for customers to build or transition to IPv6-only networks.
+
+# v1.228.0 (2025-07-01)
+
+* **Feature**: Add Context to GetInstanceTypesFromInstanceRequirements API
+
+# v1.227.0 (2025-06-26)
+
+* **Feature**: This release adds support for OdbNetworkArn as a target in VPC Route Tables
+
+# v1.226.0 (2025-06-24)
+
+* **Feature**: This release allows you to create and register AMIs while maintaining their underlying EBS snapshots within Local Zones.
+
+# v1.225.2 (2025-06-17)
+
+* **Dependency Update**: Update to smithy-go v1.22.4.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.225.1 (2025-06-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.225.0 (2025-06-09)
+
+* **Feature**: Release to support Elastic VMware Service (Amazon EVS) Subnet and Amazon EVS Network Interface Types.
+
+# v1.224.1 (2025-06-06)
+
+* No change notes available for this release.
+
 # v1.224.0 (2025-05-28)
 
 * **Feature**: Enable the option to automatically delete underlying Amazon EBS snapshots when deregistering Amazon Machine Images (AMIs)
