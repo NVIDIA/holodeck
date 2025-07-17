@@ -24,6 +24,8 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
+const defaultNVBranch = "575"
+
 // From https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
 const NvDriverTemplate = `
 # Install Dependencies
@@ -61,10 +63,14 @@ type NvDriver v1alpha1.NVIDIADriver
 func NewNvDriver(env v1alpha1.Environment) *NvDriver {
 	var nvDriver NvDriver
 
+	// Propagate user-supplied settings
 	nvDriver.Install = env.Spec.NVIDIADriver.Install
+	nvDriver.Branch = env.Spec.NVIDIADriver.Branch
+	nvDriver.Version = env.Spec.NVIDIADriver.Version
 
-	if env.Spec.NVIDIADriver.Branch == "" {
-		nvDriver.Branch = "575"
+	// Apply default branch only when neither a specific version nor a branch was provided
+	if nvDriver.Version == "" && nvDriver.Branch == "" {
+		nvDriver.Branch = defaultNVBranch
 	}
 
 	return &nvDriver
