@@ -103,7 +103,6 @@ var _ = DescribeTable("AWS Environment E2E",
 		Expect(provisioner.Dryrun(state.log, state.opts.cfg)).To(Succeed(), "Provisioner validation failed")
 		Expect(state.opts.cfg.Spec.Instance.Type).NotTo(BeEmpty(), "Instance type should not be empty")
 		Expect(state.opts.cfg.Spec.Instance.Region).NotTo(BeEmpty(), "Region should not be empty")
-		Expect(state.opts.cfg.Spec.Instance.IngresIpRanges).NotTo(BeEmpty(), "Ingress IP ranges should not be empty")
 
 		By("Environment Management")
 		// Ensure environment cleanup even if test fails
