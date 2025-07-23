@@ -56,6 +56,49 @@ spec:
     version: v1.28.5
 ```
 
+## Automated IP Detection
+
+Holodeck now automatically detects your public IP address when creating AWS environments. This eliminates the need to manually specify your IP address in the configuration file.
+
+### How It Works
+
+- **Automatic Detection**: Your public IP is automatically detected using reliable HTTP services
+- **Fallback Services**: Multiple IP detection services ensure reliability (ipify.org, ifconfig.me, icanhazip.com, ident.me)
+- **Proper CIDR Format**: IP addresses are automatically formatted with `/32` suffix for AWS compatibility
+- **Timeout Protection**: 15-second overall timeout with 5-second per-service timeout
+
+### Configuration
+
+The `ingressIpRanges` field in your configuration is now optional for AWS environments:
+
+```yaml
+spec:
+  provider: aws
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    # ingressIpRanges is now optional - your IP is detected automatically
+    # ingressIpRanges:
+    #   - "192.168.1.1/32"  # Only needed for additional IP ranges
+```
+
+### Manual IP Override
+
+If you need to specify additional IP ranges or override the automatic detection, you can still use the `ingressIpRanges` field:
+
+```yaml
+spec:
+  provider: aws
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    ingressIpRanges:
+      - "10.0.0.0/8"      # Corporate network
+      - "172.16.0.0/12"   # Additional network
+```
+
+Your detected public IP will be automatically added to the security group rules.
+
 ## Sample Output
 
 ```text
@@ -68,6 +111,7 @@ Created instance 123e4567-e89b-12d3-a456-426614174000
   invalid.
 - `failed to provision: ...` — Provisioning failed due to a configuration or
   provider error.
+- `error getting IP address: ...` — IP detection failed (check network connectivity to IP detection services).
 - `Created instance <instance-id>` — Success log after creation.
 
 ## Supported NVIDIA Driver Versions

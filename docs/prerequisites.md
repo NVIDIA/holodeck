@@ -73,9 +73,10 @@ spec:
 
 ## Network Requirements
 
-- Outbound internet access for package downloads
-- Appropriate security group rules for your use case
-- VPC configuration if using AWS provider
+- **Outbound Internet Access**: Required for package downloads and IP detection
+- **IP Detection Services**: Access to public IP detection services (ipify.org, ifconfig.me, icanhazip.com, ident.me)
+- **Security Group Rules**: Automatically configured for your detected public IP
+- **VPC Configuration**: Automatically configured if using AWS provider
 
 ## GPU & Driver Requirements
 

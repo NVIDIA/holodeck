@@ -51,6 +51,43 @@ A sample kind cluster configuration for use with the kind installer.
 
 ---
 
+## Updated AWS Examples
+
+The example configurations now show that `ingressIpRanges` is optional:
+
+**File:** [`examples/aws_kubeadm.yaml`](../../examples/aws_kubeadm.yaml)
+
+```yaml
+spec:
+  provider: aws
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    # ingressIpRanges is now optional - your IP is detected automatically
+    image:
+      architecture: amd64
+```
+
+**File:** [`examples/aws_kind.yaml`](../../examples/aws_kind.yaml)
+
+```yaml
+spec:
+  provider: aws
+  instance:
+    type: g4dn.xlarge
+    region: eu-north-1
+    # ingressIpRanges is now optional - your IP is detected automatically
+    image:
+      architecture: amd64
+```
+
+### Benefits of Automated IP Detection
+
+- **Simplified Configuration**: No need to manually find and specify your public IP
+- **Dynamic IP Support**: Works with changing IP addresses (DHCP, mobile networks)
+- **Reduced Errors**: Eliminates "CIDR block malformed" errors
+- **Better Security**: Ensures only your current public IP has access
+
 ## How to Use These Examples
 
 1. Copy the desired YAML file to your working directory (optional).
