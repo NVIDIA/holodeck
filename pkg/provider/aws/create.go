@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/NVIDIA/holodeck/pkg/utils"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/aws"
@@ -248,6 +249,17 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 
 	// Enter the Ingress rules for the security group
 	ipRanges := []types.IpRange{}
+	// First lookup for the IP address of the user
+	ip, err := utils.GetIPAddress()
+	if err != nil {
+		p.fail()
+		return fmt.Errorf("error getting IP address: %v", err)
+	}
+	ipRanges = append(ipRanges, types.IpRange{
+		CidrIp: &ip,
+	})
+
+	// Then add the IP ranges from the spec
 	for _, ip := range p.Spec.IngresIpRanges {
 		ipRanges = append(ipRanges, types.IpRange{
 			CidrIp: &ip,
