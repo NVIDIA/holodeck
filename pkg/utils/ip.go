@@ -68,7 +68,7 @@ func getIPFromHTTPService(ctx context.Context, url string, timeout time.Duration
 	}
 
 	// Set user agent to avoid being blocked
-	req.Header.Set("User-Agent", "Holodeck/1.0")
+	req.Header.Set("User-Agent", "Holodeck")
 
 	// Make the request
 	resp, err := client.Do(req)
