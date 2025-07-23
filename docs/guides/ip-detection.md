@@ -2,16 +2,17 @@
 
 ## Overview
 
-Holodeck automatically detects your public IP address when creating AWS environments, eliminating the need to manually configure security group rules.
+Holodeck automatically detects your public IP address when creating AWS
+environments, eliminating the need to manually configure security group rules.
 
 ## How It Works
 
 ### Detection Process
 
 1. **Service Priority**: Tries multiple IP detection services in order
-2. **Fallback Strategy**: If one service fails, automatically tries the next
-3. **Validation**: Ensures detected IP is a valid public IPv4 address
-4. **CIDR Formatting**: Automatically adds `/32` suffix for AWS compatibility
+1. **Fallback Strategy**: If one service fails, automatically tries the next
+1. **Validation**: Ensures detected IP is a valid public IPv4 address
+1. **CIDR Formatting**: Automatically adds `/32` suffix for AWS compatibility
 
 ### Supported Services
 
@@ -66,8 +67,8 @@ spec:
 ### Common Issues
 
 1. **Network Connectivity**: Ensure outbound internet access to IP detection services
-2. **Firewall Rules**: Corporate firewalls may block IP detection services
-3. **Proxy Configuration**: Proxy settings may affect IP detection
+1. **Firewall Rules**: Corporate firewalls may block IP detection services
+1. **Proxy Configuration**: Proxy settings may affect IP detection
 
 ### Manual Override
 
@@ -100,6 +101,7 @@ curl https://ident.me
 ### IP Validation
 
 The system validates that detected IPs are:
+
 - Valid IPv4 addresses
 - Public (not private, loopback, or link-local)
 - Properly formatted for AWS security groups
@@ -113,9 +115,9 @@ The system validates that detected IPs are:
 ## Best Practices
 
 1. **Use Automatic Detection**: Let Holodeck handle IP detection automatically
-2. **Specify Additional Ranges**: Use `ingressIpRanges` only for additional networks
-3. **Test Connectivity**: Verify access to IP detection services in your environment
-4. **Monitor Changes**: Be aware that your public IP may change (DHCP, mobile networks)
+1. **Specify Additional Ranges**: Use `ingressIpRanges` only for additional networks
+1. **Test Connectivity**: Verify access to IP detection services in your environment
+1. **Monitor Changes**: Be aware that your public IP may change (DHCP, mobile networks)
 
 ## Related Documentation
 

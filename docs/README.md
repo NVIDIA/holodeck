@@ -15,7 +15,8 @@ get started, use, and contribute to Holodeck.
     including coding standards and PR process.
 - [Examples](examples/README.md): Example configuration files and usage scenarios.
 - [Guides](guides/README.md): In-depth guides and tutorials for advanced usage.
-- [IP Detection Guide](guides/ip-detection.md): Learn about automatic IP detection for AWS environments.
+- [IP Detection Guide](guides/ip-detection.md): Learn about automatic IP
+    detection for AWS environments.
 - [Latest Release](https://github.com/NVIDIA/holodeck/releases/latest)
 
 ---

@@ -74,7 +74,8 @@ spec:
 ## Network Requirements
 
 - **Outbound Internet Access**: Required for package downloads and IP detection
-- **IP Detection Services**: Access to public IP detection services (ipify.org, ifconfig.me, icanhazip.com, ident.me)
+- **IP Detection Services**: Access to public IP detection services
+  (ipify.org, ifconfig.me, icanhazip.com, ident.me)
 - **Security Group Rules**: Automatically configured for your detected public IP
 - **VPC Configuration**: Automatically configured if using AWS provider
 

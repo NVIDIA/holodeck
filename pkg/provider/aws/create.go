@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/NVIDIA/holodeck/pkg/utils"
+
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/aws"

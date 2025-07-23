@@ -83,7 +83,8 @@ spec:
 
 ### Benefits of Automated IP Detection
 
-- **Simplified Configuration**: No need to manually find and specify your public IP
+- **Simplified Configuration**: No need to manually find and specify your
+  public IP
 - **Dynamic IP Support**: Works with changing IP addresses (DHCP, mobile networks)
 - **Reduced Errors**: Eliminates "CIDR block malformed" errors
 - **Better Security**: Ensures only your current public IP has access
