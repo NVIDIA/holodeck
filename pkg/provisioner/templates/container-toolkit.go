@@ -67,9 +67,5 @@ func (t *ContainerToolkit) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) 
 		return fmt.Errorf("failed to execute container-toolkit template: %v", err)
 	}
 
-	if err := containerTlktTemplate.Execute(tpl, t); err != nil {
-		return fmt.Errorf("failed to execute container-toolkit template: %v", err)
-	}
-
 	return nil
 }
