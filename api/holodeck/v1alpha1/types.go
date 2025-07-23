@@ -65,7 +65,7 @@ type Instance struct {
 	Region string `json:"region"`
 
 	// +optional
-	IngresIpRanges []string `json:"ingressIpRanges"`
+	IngressIpRanges []string `json:"ingressIpRanges"`
 	// +optional
 	HostUrl string `json:"hostUrl"`
 }

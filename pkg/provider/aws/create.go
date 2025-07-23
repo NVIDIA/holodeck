@@ -261,7 +261,7 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 	})
 
 	// Then add the IP ranges from the spec
-	for _, ip := range p.Spec.IngresIpRanges {
+	for _, ip := range p.Spec.IngressIpRanges {
 		ipRanges = append(ipRanges, types.IpRange{
 			CidrIp: &ip,
 		})
