@@ -11,8 +11,9 @@ spec:
   instance:
     type: g4dn.xlarge
     region: us-west-1
-    ingressIpRanges:
-    - <youip/32>
+    # ingressIpRanges is now optional - your IP is detected automatically
+    # ingressIpRanges:
+    #   - "YOUR_IP/32"  # Only needed for additional IP ranges
     image:
       architecture: amd64
   nvidiaDriver:

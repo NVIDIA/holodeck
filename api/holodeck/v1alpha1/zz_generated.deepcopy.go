@@ -227,8 +227,8 @@ func (in *Image) DeepCopy() *Image {
 func (in *Instance) DeepCopyInto(out *Instance) {
 	*out = *in
 	in.Image.DeepCopyInto(&out.Image)
-	if in.IngresIpRanges != nil {
-		in, out := &in.IngresIpRanges, &out.IngresIpRanges
+	if in.IngressIpRanges != nil {
+		in, out := &in.IngressIpRanges, &out.IngressIpRanges
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
