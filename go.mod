@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/aws/aws-sdk-go-v2 v1.36.6
 	github.com/aws/aws-sdk-go-v2/config v1.29.18
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.235.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.236.0
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.60.2
 	github.com/mattn/go-isatty v0.0.20
 	github.com/onsi/ginkgo/v2 v2.23.4
