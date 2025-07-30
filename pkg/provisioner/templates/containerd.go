@@ -199,26 +199,19 @@ sudo tar Cxzvf /opt/cni/bin ${CNI_TAR}
 # Configure containerd
 sudo mkdir -p /etc/containerd
 
-# Generate base configuration
-sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
-
-# Configure based on version
-if [ "$MAJOR_VERSION" = "2" ]; then
-    # Containerd 2.x configuration
-    cat <<EOF | sudo tee /etc/containerd/config.toml > /dev/null
+# Create unified configuration that works for both 1.x and 2.x
+# Start with a minimal config and add only what's needed
+cat <<'EOF' | sudo tee /etc/containerd/config.toml > /dev/null
+# /etc/containerd/config.toml (managed by Holodeck)
 version = 2
-root = "/var/lib/containerd"
-state = "/run/containerd"
-
-[grpc]
-  address = "/run/containerd/containerd.sock"
-  uid = 0
-  gid = 0
 
 [plugins]
   [plugins."io.containerd.grpc.v1.cri"]
     sandbox_image = "registry.k8s.io/pause:3.9"
-    systemd_cgroup = true
+    [plugins."io.containerd.grpc.v1.cri".cni]
+      # Include both locations to survive distro variance
+      bin_dir = "/opt/cni/bin:/usr/libexec/cni"
+      conf_dir = "/etc/cni/net.d"
     [plugins."io.containerd.grpc.v1.cri".containerd]
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
@@ -229,35 +222,18 @@ state = "/run/containerd"
       [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
         [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
           endpoint = ["https://registry-1.docker.io"]
-EOF
-else
-    # Containerd 1.x configuration
-    cat <<EOF | sudo tee /etc/containerd/config.toml > /dev/null
-version = 1
-root = "/var/lib/containerd"
-state = "/run/containerd"
 
 [grpc]
   address = "/run/containerd/containerd.sock"
-  uid = 0
-  gid = 0
-
-[plugins]
-  [plugins."io.containerd.grpc.v1.cri"]
-    sandbox_image = "registry.k8s.io/pause:3.9"
-    systemd_cgroup = true
-    [plugins."io.containerd.grpc.v1.cri".containerd]
-      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
-        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-          runtime_type = "io.containerd.runtime.v1.linux"
-          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-            SystemdCgroup = true
-    [plugins."io.containerd.grpc.v1.cri".registry]
-      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-          endpoint = ["https://registry-1.docker.io"]
 EOF
-fi
+
+# Ensure CNI directories exist
+sudo mkdir -p /etc/cni/net.d
+sudo mkdir -p /opt/cni/bin
+
+# Ensure containerd directories exist
+sudo mkdir -p /var/lib/containerd
+sudo mkdir -p /run/containerd
 
 # Set up systemd service for containerd
 sudo curl -fsSL "https://raw.githubusercontent.com/containerd/containerd/main/containerd.service" -o /etc/systemd/system/containerd.service
@@ -284,9 +260,22 @@ ExecStartPre=/bin/mkdir -p /run/containerd
 ExecStartPre=/bin/chmod 711 /run/containerd
 EOF
 
+# Ensure containerd is not running with stale config
+sudo systemctl stop containerd || true
+
 # Reload systemd and start containerd
 sudo systemctl daemon-reload
-sudo systemctl enable --now containerd
+echo "Starting containerd service..."
+if ! sudo systemctl enable --now containerd; then
+    echo "ERROR: Failed to start containerd service"
+    echo "Checking service status..."
+    sudo systemctl status containerd || true
+    echo "Checking journal logs..."
+    sudo journalctl -xeu containerd -n 50 || true
+    echo "Checking config file syntax..."
+    sudo containerd config dump || true
+    exit 1
+fi
 
 # Wait for containerd to be ready
 timeout=60
@@ -307,11 +296,43 @@ containerd --version
 runc --version
 sudo ctr version
 
+# Verify CNI configuration
+echo "Verifying containerd CNI configuration..."
+if ! sudo grep -q 'bin_dir = "/opt/cni/bin:/usr/libexec/cni"' /etc/containerd/config.toml; then
+    echo "ERROR: CNI bin_dir not properly configured in containerd"
+    exit 1
+fi
+
+if ! sudo grep -q 'conf_dir = "/etc/cni/net.d"' /etc/containerd/config.toml; then
+    echo "ERROR: CNI conf_dir not properly configured in containerd"
+    exit 1
+fi
+
+if ! sudo grep -q 'SystemdCgroup = true' /etc/containerd/config.toml; then
+    echo "ERROR: SystemdCgroup not enabled in containerd config"
+    exit 1
+fi
+
+# Verify with crictl
+if command -v crictl &> /dev/null; then
+    echo "Checking CRI configuration..."
+    sudo crictl info | grep -E "cni|Cni" || true
+fi
+
+# Note about nvidia-container-toolkit compatibility
+echo ""
+echo "Note: This containerd configuration is designed to be compatible with nvidia-container-toolkit."
+echo "When nvidia-ctk runtime configure is run later, it will:"
+echo "  - Add nvidia runtime configuration"
+echo "  - Preserve our CNI settings (bin_dir and conf_dir)"
+echo "  - May change default_runtime_name to 'nvidia'"
+echo "This is expected and will not affect CNI functionality."
+
 # Test containerd functionality
 sudo ctr images pull docker.io/library/hello-world:latest
 sudo ctr run --rm docker.io/library/hello-world:latest test
 
-# Containerd installation completed successfully!
+echo "Containerd installation and CNI configuration completed successfully!"
 `
 
 type Containerd struct {
@@ -322,7 +343,7 @@ func NewContainerd(env v1alpha1.Environment) *Containerd {
 	var version string
 
 	if env.Spec.ContainerRuntime.Version == "" {
-		version = "1.7.26"
+		version = "1.7.28"
 	} else {
 		// remove the 'v' prefix from the version if it exists
 		version = strings.TrimPrefix(env.Spec.ContainerRuntime.Version, "v")
