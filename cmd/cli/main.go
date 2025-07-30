@@ -66,7 +66,7 @@ Examples:
   holodeck status <instance-id>
 
   # Delete an environment
-  holodeck delete -i <instance-id>
+  holodeck delete <instance-id>
 
   # Use a custom cache directory
   holodeck --cachepath /path/to/cache create -f env.yaml`

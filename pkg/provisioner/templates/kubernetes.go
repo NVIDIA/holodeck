@@ -223,6 +223,10 @@ scheduler:
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
+cgroupDriver: systemd
+{{- if .IsUbuntu }}
+resolvConf: /run/systemd/resolve/resolv.conf
+{{- end }}
 {{- if .ParsedFeatureGates }}
 featureGates:
   {{- range $key, $value := .ParsedFeatureGates }}
@@ -272,6 +276,7 @@ type KubeadmConfig struct {
 	PodSubnet            string
 	FeatureGates         string // Feature gates as comma-separated string
 	RuntimeConfig        string // Runtime config (for feature gates) resource.k8s.io/v1beta1=true
+	IsUbuntu             bool   // Whether the system is Ubuntu (for resolvConf)
 }
 
 func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
@@ -374,6 +379,7 @@ func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
 		PodSubnet:            "192.168.0.0/16",               // Default subnet, modify if needed
 		FeatureGates:         featureGates,                   // Convert slice to string for kubeadm
 		RuntimeConfig:        "resource.k8s.io/v1beta1=true", // Example runtime config
+		IsUbuntu:             true,                           // Default to true for Ubuntu-based deployments
 	}
 
 	if env.Spec.Kubernetes.KubernetesVersion == "" {

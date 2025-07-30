@@ -4084,11 +4084,14 @@ type EbsBlockDevice struct {
 	// If neither is specified, Amazon EC2 automatically selects an Availability Zone
 	// within the Region.
 	//
-	// This parameter is not supported when using [CreateImage], [DescribeImages], and [RunInstances].
+	// This parameter is not supported when using [CreateFleet], [CreateImage], [DescribeImages], [RequestSpotFleet], [RequestSpotInstances], and [RunInstances].
 	//
 	// [DescribeImages]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeImages.html
+	// [CreateFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateFleet.html
+	// [RequestSpotInstances]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RequestSpotInstances.html
 	// [RunInstances]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RunInstances.html
 	// [CreateImage]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html
+	// [RequestSpotFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RequestSpotFleet.html
 	AvailabilityZone *string
 
 	// The ID of the Availability Zone where the EBS volume will be created (for
@@ -4098,11 +4101,14 @@ type EbsBlockDevice struct {
 	// If neither is specified, Amazon EC2 automatically selects an Availability Zone
 	// within the Region.
 	//
-	// This parameter is not supported when using [CreateImage], [DescribeImages], and [RunInstances].
+	// This parameter is not supported when using [CreateFleet], [CreateImage], [DescribeImages], [RequestSpotFleet], [RequestSpotInstances], and [RunInstances].
 	//
 	// [DescribeImages]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeImages.html
+	// [CreateFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateFleet.html
+	// [RequestSpotInstances]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RequestSpotInstances.html
 	// [RunInstances]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RunInstances.html
 	// [CreateImage]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html
+	// [RequestSpotFleet]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RequestSpotFleet.html
 	AvailabilityZoneId *string
 
 	// Indicates whether the EBS volume is deleted on instance termination. For more
@@ -6811,6 +6817,14 @@ type Image struct {
 
 	// Specifies whether enhanced networking with ENA is enabled.
 	EnaSupport *bool
+
+	// Indicates whether the image is eligible for Amazon Web Services Free Tier.
+	//
+	//   - If true , the AMI is eligible for Free Tier and can be used to launch
+	//   instances under the Free Tier limits.
+	//
+	//   - If false , the AMI is not eligible for Free Tier.
+	FreeTierEligible *bool
 
 	// The hypervisor type of the image. Only xen is supported. ovm is not supported.
 	Hypervisor HypervisorType
