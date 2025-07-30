@@ -17,8 +17,10 @@
 package create
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/instances"
@@ -167,12 +169,70 @@ func (m command) run(c *cli.Context, opts *options) error {
 	if opts.provision {
 		err := runProvision(m.log, opts)
 		if err != nil {
-			return fmt.Errorf("failed to provision: %v", err)
+			// Handle provisioning failure with user interaction
+			return m.handleProvisionFailure(instanceID, opts.cachePath, err)
 		}
 	}
 
 	m.log.Info("\nCreated instance %s", instanceID)
 	return nil
+}
+
+func (m *command) handleProvisionFailure(instanceID, cachePath string, provisionErr error) error {
+	m.log.Info("\n❌ Provisioning failed: %v\n", provisionErr)
+
+	// Check if we're in a non-interactive environment
+	if os.Getenv("CI") == "true" || os.Getenv("HOLODECK_NONINTERACTIVE") == "true" {
+		m.log.Info("\n💡 To clean up the failed instance, run:")
+		m.log.Info("    holodeck delete %s\n", instanceID)
+		m.log.Info("💡 To list all instances:")
+		m.log.Info("    holodeck list\n")
+		return fmt.Errorf("provisioning failed: %w", provisionErr)
+	}
+
+	// Ask user if they want to delete the failed instance
+	reader := bufio.NewReader(os.Stdin)
+	m.log.Info("\n❓ Would you like to delete the failed instance? (y/N): ")
+
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		m.log.Info("Failed to read user input: %v", err)
+		return m.provideCleanupInstructions(instanceID, provisionErr)
+	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+
+	if response == "y" || response == "yes" {
+		// Delete the instance
+		manager := instances.NewManager(m.log, cachePath)
+		if err := manager.DeleteInstance(instanceID); err != nil {
+			m.log.Info("Failed to delete instance: %v", err)
+			return m.provideCleanupInstructions(instanceID, provisionErr)
+		}
+
+		m.log.Info("✅ Successfully deleted failed instance %s\n", instanceID)
+		return fmt.Errorf("provisioning failed and instance was deleted: %w", provisionErr)
+	}
+
+	return m.provideCleanupInstructions(instanceID, provisionErr)
+}
+
+func (m *command) provideCleanupInstructions(instanceID string, provisionErr error) error {
+	m.log.Info("\n💡 The instance was created but provisioning failed.")
+	m.log.Info("   You can manually investigate or clean up using the following commands:\n")
+	m.log.Info("   To delete this specific instance:")
+	m.log.Info("     holodeck delete %s\n", instanceID)
+	m.log.Info("   To list all instances:")
+	m.log.Info("     holodeck list\n")
+	m.log.Info("   To see instance details:")
+	m.log.Info("     holodeck status %s\n", instanceID)
+
+	m.log.Info("\n💡 Additional debugging tips:")
+	m.log.Info("   - Review the provisioning logs above for specific errors")
+	m.log.Info("   - Check cloud provider console for instance status")
+	m.log.Info("   - SSH into the instance to investigate further")
+
+	return fmt.Errorf("provisioning failed: %w", provisionErr)
 }
 
 func runProvision(log *logger.FunLogger, opts *options) error {

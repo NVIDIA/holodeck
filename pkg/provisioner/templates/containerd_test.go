@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package templates
 
 import (
@@ -11,8 +26,8 @@ import (
 func TestNewContainerd_Defaults(t *testing.T) {
 	env := v1alpha1.Environment{}
 	c := NewContainerd(env)
-	if c.Version != "1.7.26" {
-		t.Errorf("expected default Version to be '1.7.26', got '%s'", c.Version)
+	if c.Version != "1.7.28" {
+		t.Errorf("expected default Version to be '1.7.28', got '%s'", c.Version)
 	}
 }
 
@@ -39,8 +54,8 @@ func TestNewContainerd_EmptyVersion(t *testing.T) {
 		},
 	}
 	c := NewContainerd(env)
-	if c.Version != "1.7.26" {
-		t.Errorf("expected default Version to be '1.7.26' when empty, got '%s'", c.Version)
+	if c.Version != "1.7.28" {
+		t.Errorf("expected default Version to be '1.7.28' when empty, got '%s'", c.Version)
 	}
 }
 
@@ -74,25 +89,28 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	}
 	out := buf.String()
 
-	// Test version detection
-	if !strings.Contains(out, "MAJOR_VERSION=$(echo $CONTAINERD_VERSION | cut -d. -f1)") {
-		t.Error("template output missing version detection")
+	// Test unified configuration (we now use version = 2 for all containerd versions)
+	if !strings.Contains(out, "version = 2") {
+		t.Error("template output missing version 2 configuration")
 	}
-
-	// Test 1.x specific configuration
-	if !strings.Contains(out, "version = 1") {
-		t.Error("template output missing version 1 configuration")
-	}
-	if !strings.Contains(out, "runtime_type = \"io.containerd.runtime.v1.linux\"") {
-		t.Error("template output missing 1.x runtime configuration")
+	if !strings.Contains(out, "runtime_type = \"io.containerd.runc.v2\"") {
+		t.Error("template output missing runc v2 runtime configuration")
 	}
 
 	// Test common configuration
-	if !strings.Contains(out, "systemd_cgroup = true") {
-		t.Error("template output missing systemd cgroup configuration")
+	if !strings.Contains(out, "SystemdCgroup = true") {
+		t.Error("template output missing SystemdCgroup configuration")
 	}
 	if !strings.Contains(out, "sandbox_image = \"registry.k8s.io/pause:3.9\"") {
 		t.Error("template output missing sandbox image configuration")
+	}
+
+	// Test CNI configuration
+	if !strings.Contains(out, "bin_dir = \"/opt/cni/bin:/usr/libexec/cni\"") {
+		t.Error("template output missing CNI bin_dir configuration")
+	}
+	if !strings.Contains(out, "conf_dir = \"/etc/cni/net.d\"") {
+		t.Error("template output missing CNI conf_dir configuration")
 	}
 }
 
@@ -112,25 +130,28 @@ func TestContainerd_Execute_Version2(t *testing.T) {
 	}
 	out := buf.String()
 
-	// Test version detection
-	if !strings.Contains(out, "MAJOR_VERSION=$(echo $CONTAINERD_VERSION | cut -d. -f1)") {
-		t.Error("template output missing version detection")
-	}
-
-	// Test 2.x specific configuration
+	// Test unified configuration (we now use version = 2 for all containerd versions)
 	if !strings.Contains(out, "version = 2") {
 		t.Error("template output missing version 2 configuration")
 	}
 	if !strings.Contains(out, "runtime_type = \"io.containerd.runc.v2\"") {
-		t.Error("template output missing 2.x runtime configuration")
+		t.Error("template output missing runc v2 runtime configuration")
 	}
 
 	// Test common configuration
-	if !strings.Contains(out, "systemd_cgroup = true") {
-		t.Error("template output missing systemd cgroup configuration")
+	if !strings.Contains(out, "SystemdCgroup = true") {
+		t.Error("template output missing SystemdCgroup configuration")
 	}
 	if !strings.Contains(out, "sandbox_image = \"registry.k8s.io/pause:3.9\"") {
 		t.Error("template output missing sandbox image configuration")
+	}
+
+	// Test CNI configuration
+	if !strings.Contains(out, "bin_dir = \"/opt/cni/bin:/usr/libexec/cni\"") {
+		t.Error("template output missing CNI bin_dir configuration")
+	}
+	if !strings.Contains(out, "conf_dir = \"/etc/cni/net.d\"") {
+		t.Error("template output missing CNI conf_dir configuration")
 	}
 }
 
