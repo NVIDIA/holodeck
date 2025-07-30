@@ -249,22 +249,30 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 	cache.SecurityGroupid = *sgOutput.GroupId
 
 	// Enter the Ingress rules for the security group
+	ipRangeMap := make(map[string]bool)
 	ipRanges := []types.IpRange{}
+
 	// First lookup for the IP address of the user
 	ip, err := utils.GetIPAddress()
 	if err != nil {
 		p.fail()
 		return fmt.Errorf("error getting IP address: %v", err)
 	}
+
+	// Add the auto-detected IP to the map and list
+	ipRangeMap[ip] = true
 	ipRanges = append(ipRanges, types.IpRange{
 		CidrIp: &ip,
 	})
 
-	// Then add the IP ranges from the spec
+	// Then add the IP ranges from the spec, skipping duplicates
 	for _, ip := range p.Spec.IngressIpRanges {
-		ipRanges = append(ipRanges, types.IpRange{
-			CidrIp: &ip,
-		})
+		if !ipRangeMap[ip] {
+			ipRangeMap[ip] = true
+			ipRanges = append(ipRanges, types.IpRange{
+				CidrIp: &ip,
+			})
+		}
 	}
 
 	irInput := &ec2.AuthorizeSecurityGroupIngressInput{
