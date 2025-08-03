@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -38,6 +39,7 @@ import (
 type options struct {
 	provision  bool
 	cachePath  string
+	cacheFile  string
 	envFile    string
 	kubeconfig string
 
@@ -120,7 +122,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 	// Create instance manager and generate unique ID
 	manager := instances.NewManager(m.log, opts.cachePath)
 	instanceID := manager.GenerateInstanceID()
-	opts.cachePath = manager.GetInstanceCacheFile(instanceID)
+	opts.cacheFile = manager.GetInstanceCacheFile(instanceID)
 
 	// Add instance ID to environment metadata
 	if opts.cfg.Labels == nil {
@@ -142,7 +144,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 			// SUSE: ec2-user
 			opts.cfg.Spec.Username = "ubuntu"
 		}
-		provider, err = aws.New(m.log, opts.cfg, opts.cachePath)
+		provider, err = aws.New(m.log, opts.cfg, opts.cacheFile)
 		if err != nil {
 			return err
 		}
@@ -161,7 +163,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 	}
 
 	// Read cache after creating the environment
-	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cachePath)
+	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cacheFile)
 	if err != nil {
 		return fmt.Errorf("failed to read cache file: %v", err)
 	}
@@ -170,15 +172,74 @@ func (m command) run(c *cli.Context, opts *options) error {
 		err := runProvision(m.log, opts)
 		if err != nil {
 			// Handle provisioning failure with user interaction
-			return m.handleProvisionFailure(instanceID, opts.cachePath, err)
+			return m.handleProvisionFailure(instanceID, opts.cacheFile, err)
 		}
 	}
 
-	m.log.Info("\nCreated instance %s", instanceID)
+	// Show helpful success message with connection instructions
+	m.showSuccessMessage(instanceID, opts)
 	return nil
 }
 
-func (m *command) handleProvisionFailure(instanceID, cachePath string, provisionErr error) error {
+func (m *command) showSuccessMessage(instanceID string, opts *options) {
+	m.log.Info("\n✅ Successfully created instance: %s\n", instanceID)
+
+	// Get public DNS name for AWS instances
+	var publicDnsName string
+	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
+		for _, p := range opts.cache.Status.Properties {
+			if p.Name == aws.PublicDnsName {
+				publicDnsName = p.Value
+				break
+			}
+		}
+	} else if opts.cfg.Spec.Provider == v1alpha1.ProviderSSH {
+		publicDnsName = opts.cfg.Spec.HostUrl
+	}
+
+	// Show SSH connection instructions if we have a public DNS name
+	if publicDnsName != "" && opts.cfg.Spec.Username != "" && opts.cfg.Spec.PrivateKey != "" {
+		m.log.Info("📋 SSH Connection:")
+		m.log.Info("   ssh -i %s %s@%s", opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, publicDnsName)
+		m.log.Info("   (If you get permission denied, run: chmod 600 %s)\n", opts.cfg.Spec.PrivateKey)
+	}
+
+	// Show kubeconfig instructions if Kubernetes was installed
+	switch {
+	case opts.cfg.Spec.Kubernetes.Install && opts.provision && opts.kubeconfig != "":
+		// Only show kubeconfig instructions if provisioning was done and kubeconfig was requested
+		absPath, err := filepath.Abs(opts.kubeconfig)
+		if err != nil {
+			absPath = opts.kubeconfig
+		}
+
+		// Check if the kubeconfig file actually exists
+		if _, err := os.Stat(absPath); err == nil {
+			m.log.Info("📋 Kubernetes Access:")
+			m.log.Info("   Kubeconfig saved to: %s\n", absPath)
+			m.log.Info("   Option 1 - Copy to default location:")
+			m.log.Info("   cp %s ~/.kube/config\n", absPath)
+			m.log.Info("   Option 2 - Set KUBECONFIG environment variable:")
+			m.log.Info("   export KUBECONFIG=%s\n", absPath)
+			m.log.Info("   Option 3 - Use with kubectl directly:")
+			m.log.Info("   kubectl --kubeconfig=%s get nodes\n", absPath)
+		}
+	case opts.cfg.Spec.Kubernetes.Install && opts.provision && (opts.cfg.Spec.Kubernetes.KubernetesInstaller == "microk8s" || opts.cfg.Spec.Kubernetes.KubernetesInstaller == "kind"):
+		m.log.Info("📋 Kubernetes Access:")
+		m.log.Info("   Note: For %s, access kubeconfig on the instance after SSH\n", opts.cfg.Spec.Kubernetes.KubernetesInstaller)
+	case opts.cfg.Spec.Kubernetes.Install && !opts.provision:
+		m.log.Info("📋 Kubernetes Access:")
+		m.log.Info("   Note: Run with --provision flag to install Kubernetes and download kubeconfig\n")
+	}
+
+	// Show next steps
+	m.log.Info("📋 Next Steps:")
+	m.log.Info("   - List instances: holodeck list")
+	m.log.Info("   - Get instance status: holodeck status %s\n", instanceID)
+	m.log.Info("   - Delete instance: holodeck delete %s", instanceID)
+}
+
+func (m *command) handleProvisionFailure(instanceID, cacheFile string, provisionErr error) error {
 	m.log.Info("\n❌ Provisioning failed: %v\n", provisionErr)
 
 	// Check if we're in a non-interactive environment
@@ -204,7 +265,9 @@ func (m *command) handleProvisionFailure(instanceID, cachePath string, provision
 
 	if response == "y" || response == "yes" {
 		// Delete the instance
-		manager := instances.NewManager(m.log, cachePath)
+		// Extract the directory path from the cache file path
+		cacheDir := filepath.Dir(cacheFile)
+		manager := instances.NewManager(m.log, cacheDir)
 		if err := manager.DeleteInstance(instanceID); err != nil {
 			m.log.Info("Failed to delete instance: %v", err)
 			return m.provideCleanupInstructions(instanceID, provisionErr)
@@ -275,7 +338,7 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal environment: %v", err)
 		}
-		if err := os.WriteFile(opts.cachePath, data, 0600); err != nil {
+		if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
 			return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
 		}
 		return fmt.Errorf("failed to run provisioner: %v", err)
@@ -287,7 +350,7 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal environment: %v", err)
 	}
-	if err := os.WriteFile(opts.cachePath, data, 0600); err != nil {
+	if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
 		return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
 	}
 

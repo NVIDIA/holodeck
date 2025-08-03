@@ -17,6 +17,8 @@ import (
 // specified when you created each volume. For more information, see [Amazon EBS encryption]in the Amazon
 // EBS User Guide.
 //
+// You can specify the default KMS key for encryption by default using ModifyEbsDefaultKmsKeyId or ResetEbsDefaultKmsKeyId.
+//
 // Enabling encryption by default has no effect on the encryption status of your
 // existing volumes.
 //

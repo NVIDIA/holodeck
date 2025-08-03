@@ -43,11 +43,11 @@ sudo nvidia-ctk runtime configure --runtime={{.ContainerRuntime}} --set-as-defau
 # Verify CNI configuration is preserved after nvidia-ctk
 echo "Verifying CNI configuration after nvidia-ctk..."
 if [ "{{.ContainerRuntime}}" = "containerd" ]; then
-    if ! sudo grep -q 'bin_dir = "/opt/cni/bin:/usr/libexec/cni"' /etc/containerd/config.toml; then
+    if ! sudo grep -q 'bin_dir = "/opt/cni/bin"' /etc/containerd/config.toml; then
         echo "WARNING: CNI bin_dir configuration may have been modified by nvidia-ctk"
         echo "Restoring CNI paths..."
         # This is a safeguard, but nvidia-ctk should preserve existing CNI config
-        sudo sed -i '/\[plugins."io.containerd.grpc.v1.cri".cni\]/,/\[/{s|bin_dir = .*|bin_dir = "/opt/cni/bin:/usr/libexec/cni"|g}' /etc/containerd/config.toml
+        sudo sed -i '/\[plugins."io.containerd.grpc.v1.cri".cni\]/,/\[/{s|bin_dir = .*|bin_dir = "/opt/cni/bin"|g}' /etc/containerd/config.toml
     fi
 fi
 

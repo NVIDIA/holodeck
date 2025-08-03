@@ -15,7 +15,8 @@ import (
 // Availability Zones.
 //
 // You get the full benefit of fast snapshot restores after they enter the enabled
-// state.
+// state. To get the current state of fast snapshot restores, use DescribeFastSnapshotRestores. To disable
+// fast snapshot restores, use DisableFastSnapshotRestores.
 //
 // For more information, see [Amazon EBS fast snapshot restore] in the Amazon EBS User Guide.
 //

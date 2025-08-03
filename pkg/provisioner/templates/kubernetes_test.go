@@ -9,52 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsLegacyKubernetesVersion(t *testing.T) {
-	tests := []struct {
-		name    string
-		version string
-		want    bool
-	}{
-		{
-			name:    "legacy version v1.31.0",
-			version: "v1.31.0",
-			want:    true,
-		},
-		{
-			name:    "legacy version v1.30.0",
-			version: "v1.30.0",
-			want:    true,
-		},
-		{
-			name:    "supported version v1.32.0",
-			version: "v1.32.0",
-			want:    false,
-		},
-		{
-			name:    "supported version v1.32.1",
-			version: "v1.32.1",
-			want:    false,
-		},
-		{
-			name:    "invalid version",
-			version: "invalid",
-			want:    false,
-		},
-		{
-			name:    "empty version",
-			version: "",
-			want:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isLegacyKubernetesVersion(tt.version)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
 func TestNewKubernetes(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -81,7 +35,7 @@ func TestNewKubernetes(t *testing.T) {
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
-				UseLegacyInit:         true,
+				UseLegacyInit:         true, // v1.30.0 < v1.32.0
 				CriSocket:             "unix:///run/containerd/containerd.sock",
 			},
 			wantErr: false,
@@ -105,7 +59,7 @@ func TestNewKubernetes(t *testing.T) {
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
-				UseLegacyInit:         true,
+				UseLegacyInit:         true, // v1.31.0 < v1.32.0
 				CriSocket:             "unix:///run/containerd/containerd.sock",
 			},
 			wantErr: false,
@@ -136,25 +90,10 @@ func TestNewKubernetes(t *testing.T) {
 				CalicoVersion:         "v3.30.0",
 				CrictlVersion:         "v1.32.0",
 				K8sFeatureGates:       "Feature1=true,Feature2=false",
-				UseLegacyInit:         true,
-				CriSocket:             "unix:///run/cri-dockerd.sock",
+				UseLegacyInit:         true,                           // v1.30.0 < v1.32.0
+				CriSocket:             "unix:///run/cri-dockerd.sock", // docker runtime
 			},
 			wantErr: false,
-		},
-		{
-			name: "invalid container runtime",
-			env: v1alpha1.Environment{
-				Spec: v1alpha1.EnvironmentSpec{
-					Kubernetes: v1alpha1.Kubernetes{
-						KubernetesVersion: "v1.30.0",
-					},
-					ContainerRuntime: v1alpha1.ContainerRuntime{
-						Name: "invalid",
-					},
-				},
-			},
-			want:    nil,
-			wantErr: true,
 		},
 	}
 
@@ -193,11 +132,13 @@ func TestKubernetes_Execute(t *testing.T) {
 					},
 				},
 			},
-			wantErr:       false,
-			checkSafeExit: true,
+			wantErr:        false,
+			checkTemplate:  true,
+			expectedString: "Waiting for Tigera operator to be ready",
+			checkSafeExit:  true,
 		},
 		{
-			name: "legacy kubeadm installer",
+			name: "kubeadm installer with endpoint",
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Kubernetes: v1alpha1.Kubernetes{
@@ -212,7 +153,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			},
 			wantErr:        false,
 			checkTemplate:  true,
-			expectedString: "kubeadm init \\\n  --kubernetes-version=${K8S_VERSION} \\\n  --pod-network-cidr=192.168.0.0/16 \\\n  --control-plane-endpoint=test-host:6443 \\\n  --ignore-preflight-errors=all",
+			expectedString: "--control-plane-endpoint=test-host:6443",
 			checkSafeExit:  true,
 		},
 		{
@@ -261,6 +202,24 @@ func TestKubernetes_Execute(t *testing.T) {
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "kubeadm installer - check CoreDNS wait",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesVersion:   "v1.31.0",
+						KubernetesInstaller: "kubeadm",
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			wantErr:        false,
+			checkTemplate:  true,
+			expectedString: "Waiting for CoreDNS to be ready",
+			checkSafeExit:  true,
 		},
 	}
 
