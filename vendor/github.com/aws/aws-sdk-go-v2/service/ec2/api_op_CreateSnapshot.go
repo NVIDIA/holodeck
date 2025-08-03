@@ -218,8 +218,7 @@ type CreateSnapshotOutput struct {
 	TransferType types.TransferType
 
 	// The ID of the volume that was used to create the snapshot. Snapshots created by
-	// a copy snapshot operation have an arbitrary volume ID that you should not use
-	// for any purpose.
+	// the CopySnapshotaction have an arbitrary volume ID that should not be used for any purpose.
 	VolumeId *string
 
 	// The size of the volume, in GiB.
