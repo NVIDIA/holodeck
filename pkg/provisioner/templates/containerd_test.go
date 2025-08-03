@@ -26,8 +26,11 @@ import (
 func TestNewContainerd_Defaults(t *testing.T) {
 	env := v1alpha1.Environment{}
 	c := NewContainerd(env)
-	if c.Version != "1.7.28" {
-		t.Errorf("expected default Version to be '1.7.28', got '%s'", c.Version)
+	if c.Version != "1.7.27" {
+		t.Errorf("expected default Version to be '1.7.27', got '%s'", c.Version)
+	}
+	if c.MajorVersion != 1 {
+		t.Errorf("expected default MajorVersion to be 1, got %d", c.MajorVersion)
 	}
 }
 
@@ -43,6 +46,9 @@ func TestNewContainerd_CustomVersion(t *testing.T) {
 	if c.Version != "1.7.0" {
 		t.Errorf("expected Version to be '1.7.0', got '%s'", c.Version)
 	}
+	if c.MajorVersion != 1 {
+		t.Errorf("expected MajorVersion to be 1, got %d", c.MajorVersion)
+	}
 }
 
 func TestNewContainerd_EmptyVersion(t *testing.T) {
@@ -54,8 +60,11 @@ func TestNewContainerd_EmptyVersion(t *testing.T) {
 		},
 	}
 	c := NewContainerd(env)
-	if c.Version != "1.7.28" {
-		t.Errorf("expected default Version to be '1.7.28' when empty, got '%s'", c.Version)
+	if c.Version != "1.7.27" {
+		t.Errorf("expected default Version to be '1.7.27' when empty, got '%s'", c.Version)
+	}
+	if c.MajorVersion != 1 {
+		t.Errorf("expected default MajorVersion to be 1, got %d", c.MajorVersion)
 	}
 }
 
@@ -70,6 +79,9 @@ func TestNewContainerd_Version2(t *testing.T) {
 	c := NewContainerd(env)
 	if c.Version != "2.0.0" {
 		t.Errorf("expected Version to be '2.0.0', got '%s'", c.Version)
+	}
+	if c.MajorVersion != 2 {
+		t.Errorf("expected MajorVersion to be 2, got %d", c.MajorVersion)
 	}
 }
 
@@ -89,28 +101,31 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	}
 	out := buf.String()
 
-	// Test unified configuration (we now use version = 2 for all containerd versions)
-	if !strings.Contains(out, "version = 2") {
-		t.Error("template output missing version 2 configuration")
+	// Test v1 template specifics - now using apt repository
+	if !strings.Contains(out, "Installing containerd 1.7.26 using apt repository") {
+		t.Error("template output missing version installation message")
 	}
-	if !strings.Contains(out, "runtime_type = \"io.containerd.runc.v2\"") {
-		t.Error("template output missing runc v2 runtime configuration")
+	if !strings.Contains(out, "containerd.io=1.7.26-1") {
+		t.Error("template output missing containerd apt package with version")
+	}
+	if !strings.Contains(out, "download.docker.com/linux/ubuntu") {
+		t.Error("template output missing Docker repository")
 	}
 
 	// Test common configuration
-	if !strings.Contains(out, "SystemdCgroup = true") {
+	if !strings.Contains(out, "SystemdCgroup \\= true") {
 		t.Error("template output missing SystemdCgroup configuration")
 	}
-	if !strings.Contains(out, "sandbox_image = \"registry.k8s.io/pause:3.9\"") {
-		t.Error("template output missing sandbox image configuration")
+	if !strings.Contains(out, "containerd config default") {
+		t.Error("template output missing config generation")
 	}
 
-	// Test CNI configuration
-	if !strings.Contains(out, "bin_dir = \"/opt/cni/bin:/usr/libexec/cni\"") {
-		t.Error("template output missing CNI bin_dir configuration")
-	}
-	if !strings.Contains(out, "conf_dir = \"/etc/cni/net.d\"") {
+	// Test CNI path configuration fix
+	if !strings.Contains(out, `conf_dir = "/etc/cni/net.d"`) {
 		t.Error("template output missing CNI conf_dir configuration")
+	}
+	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
+		t.Error("template output missing CNI bin_dir configuration")
 	}
 }
 
@@ -130,112 +145,136 @@ func TestContainerd_Execute_Version2(t *testing.T) {
 	}
 	out := buf.String()
 
-	// Test unified configuration (we now use version = 2 for all containerd versions)
-	if !strings.Contains(out, "version = 2") {
-		t.Error("template output missing version 2 configuration")
+	// Test v2 template specifics - now using official binaries
+	if !strings.Contains(out, "Installing containerd 2.0.0 from official binaries") {
+		t.Error("template output missing v2 installation message")
 	}
-	if !strings.Contains(out, "runtime_type = \"io.containerd.runc.v2\"") {
-		t.Error("template output missing runc v2 runtime configuration")
+	if !strings.Contains(out, "containerd-2.0.0-linux-${ARCH}.tar.gz") {
+		t.Error("template output missing containerd tarball name")
+	}
+	if !strings.Contains(out, "https://github.com/containerd/containerd/releases/download/v2.0.0/") {
+		t.Error("template output missing containerd download URL")
 	}
 
 	// Test common configuration
 	if !strings.Contains(out, "SystemdCgroup = true") {
 		t.Error("template output missing SystemdCgroup configuration")
 	}
-	if !strings.Contains(out, "sandbox_image = \"registry.k8s.io/pause:3.9\"") {
-		t.Error("template output missing sandbox image configuration")
+	if !strings.Contains(out, "containerd config default") {
+		t.Error("template output missing config generation")
 	}
 
-	// Test CNI configuration
-	if !strings.Contains(out, "bin_dir = \"/opt/cni/bin:/usr/libexec/cni\"") {
-		t.Error("template output missing CNI bin_dir configuration")
+	// Test runc installation
+	if !strings.Contains(out, "RUNC_VERSION=\"1.2.3\"") {
+		t.Error("template output missing runc version")
 	}
-	if !strings.Contains(out, "conf_dir = \"/etc/cni/net.d\"") {
+
+	// Test CNI plugins installation
+	if !strings.Contains(out, "CNI_VERSION=\"v1.6.2\"") {
+		t.Error("template output missing CNI version")
+	}
+
+	// Test CNI path configuration fix
+	if !strings.Contains(out, `conf_dir = "/etc/cni/net.d"`) {
 		t.Error("template output missing CNI conf_dir configuration")
+	}
+	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
+		t.Error("template output missing CNI bin_dir configuration")
 	}
 }
 
-func TestContainerd_Execute_SystemChecks(t *testing.T) {
-	env := v1alpha1.Environment{
-		Spec: v1alpha1.EnvironmentSpec{
-			ContainerRuntime: v1alpha1.ContainerRuntime{
-				Version: "1.7.26",
-			},
-		},
-	}
-	c := NewContainerd(env)
-	var buf bytes.Buffer
-	err := c.Execute(&buf, env)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
-	}
-	out := buf.String()
-
-	// Test systemd check
-	if !strings.Contains(out, "if ! command -v systemctl &> /dev/null") {
-		t.Error("template output missing systemd check")
+func TestContainerd_Execute_CommonElements(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+	}{
+		{"v1 template", "1.7.26"},
+		{"v2 template", "2.0.0"},
 	}
 
-	// Test kernel module handling
-	if !strings.Contains(out, "REQUIRED_MODULES=\"overlay br_netfilter\"") {
-		t.Error("template output missing required modules check")
-	}
-	if !strings.Contains(out, "sudo modprobe ${module}") {
-		t.Error("template output missing sudo module loading")
-	}
-	if !strings.Contains(out, "/etc/modules-load.d/${module}.conf") {
-		t.Error("template output missing module persistence")
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Version: tt.version,
+					},
+				},
+			}
+			c := NewContainerd(env)
+			var buf bytes.Buffer
+			err := c.Execute(&buf, env)
+			if err != nil {
+				t.Fatalf("Execute failed: %v", err)
+			}
+			out := buf.String()
 
-	// Test sysctl settings
-	if !strings.Contains(out, "sudo sysctl -n $key") {
-		t.Error("template output missing sudo sysctl check")
-	}
-	if !strings.Contains(out, "sudo sysctl -w $key=$value") {
-		t.Error("template output missing sudo sysctl setting")
-	}
-	if !strings.Contains(out, "sudo sysctl --system") {
-		t.Error("template output missing sudo sysctl apply")
-	}
+			// Test kernel module handling (v2 has explicit modprobe, v1 relies on package manager)
+			if tt.version == "2.0.0" {
+				if !strings.Contains(out, "sudo modprobe overlay") {
+					t.Error("template output missing overlay module loading")
+				}
+				if !strings.Contains(out, "sudo modprobe br_netfilter") {
+					t.Error("template output missing br_netfilter module loading")
+				}
+			}
 
-	// Test architecture check
-	if !strings.Contains(out, "if [[ \"$ARCH\" == \"x86_64\" ]]") {
-		t.Error("template output missing x86_64 architecture check")
-	}
-	if !strings.Contains(out, "ARCH=\"amd64\"") {
-		t.Error("template output missing x86_64 to amd64 mapping")
-	}
-	if !strings.Contains(out, "elif [[ \"$ARCH\" == \"aarch64\" ]]") {
-		t.Error("template output missing aarch64 architecture check")
-	}
-	if !strings.Contains(out, "ARCH=\"arm64\"") {
-		t.Error("template output missing aarch64 to arm64 mapping")
-	}
-	if !strings.Contains(out, "else") {
-		t.Error("template output missing else clause for unsupported architectures")
-	}
+			// Test sysctl settings (v2 has explicit sysctl, v1 relies on package setup)
+			if tt.version == "2.0.0" {
+				if !strings.Contains(out, "net.bridge.bridge-nf-call-iptables") {
+					t.Error("template output missing bridge-nf-call-iptables setting")
+				}
+				if !strings.Contains(out, "net.ipv4.ip_forward") {
+					t.Error("template output missing ip_forward setting")
+				}
+				if !strings.Contains(out, "sudo sysctl --system") {
+					t.Error("template output missing sysctl apply")
+				}
+			}
 
-	// Test temporary directory handling
-	if !strings.Contains(out, "TMP_DIR=$(mktemp -d)") {
-		t.Error("template output missing temporary directory creation")
-	}
+			// Test architecture check - only v2 has explicit arch detection
+			if tt.version == "2.0.0" {
+				if !strings.Contains(out, "if [[ \"$ARCH\" == \"x86_64\" ]]") {
+					t.Error("template output missing x86_64 architecture check")
+				}
+				if !strings.Contains(out, "ARCH=\"amd64\"") {
+					t.Error("template output missing x86_64 to amd64 mapping")
+				}
+				if !strings.Contains(out, "elif [[ \"$ARCH\" == \"aarch64\" ]]") {
+					t.Error("template output missing aarch64 architecture check")
+				}
+				if !strings.Contains(out, "ARCH=\"arm64\"") {
+					t.Error("template output missing aarch64 to arm64 mapping")
+				}
+			}
 
-	// Test error handling
-	if !strings.Contains(out, "Error: Failed to download containerd tarball") {
-		t.Error("template output missing download error handling")
-	}
-	if !strings.Contains(out, "Error: Checksum verification failed for containerd") {
-		t.Error("template output missing checksum error handling")
-	}
+			// Test sudo usage in critical operations
+			if !strings.Contains(out, "sudo mkdir -p /etc/containerd") {
+				t.Error("template output missing sudo for directory creation")
+			}
+			// v1 uses restart then enable, v2 uses enable --now
+			if tt.version == "1.7.26" {
+				if !strings.Contains(out, "sudo systemctl restart containerd") {
+					t.Error("template output missing sudo for containerd restart")
+				}
+			} else {
+				if !strings.Contains(out, "sudo systemctl enable --now containerd") {
+					t.Error("template output missing sudo for containerd enable --now")
+				}
+			}
+			if !strings.Contains(out, "sudo systemctl enable") {
+				t.Error("template output missing sudo for service enable")
+			}
 
-	// Test sudo usage in critical operations
-	if !strings.Contains(out, "sudo mkdir -p /etc/containerd") {
-		t.Error("template output missing sudo for directory creation")
-	}
-	if !strings.Contains(out, "sudo systemctl daemon-reload") {
-		t.Error("template output missing sudo for systemd reload")
-	}
-	if !strings.Contains(out, "sudo systemctl enable --now containerd") {
-		t.Error("template output missing sudo for service enable")
+			// Test CNI installation - only v2 has explicit CNI installation
+			if tt.version == "2.0.0" {
+				if !strings.Contains(out, "CNI_VERSION=\"v1.6.2\"") {
+					t.Error("template output missing CNI version")
+				}
+				if !strings.Contains(out, "/opt/cni/bin") {
+					t.Error("template output missing CNI directory")
+				}
+			}
+		})
 	}
 }

@@ -75,4 +75,16 @@ func TestContainerToolkit_Execute(t *testing.T) {
 	if !strings.Contains(out, "nvidia-ctk runtime configure --runtime=containerd --set-as-default --enable-cdi=true") {
 		t.Errorf("template output missing expected runtime config: %s", out)
 	}
+
+	// Test CNI path verification after nvidia-ctk
+	if !strings.Contains(out, "Verifying CNI configuration after nvidia-ctk") {
+		t.Error("template output missing CNI verification message")
+	}
+	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
+		t.Error("template output missing correct CNI bin_dir check")
+	}
+	// Should NOT contain the old path with /usr/libexec/cni
+	if strings.Contains(out, "/usr/libexec/cni") {
+		t.Error("template output should not contain /usr/libexec/cni path")
+	}
 }

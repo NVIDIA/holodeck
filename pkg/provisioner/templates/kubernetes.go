@@ -65,7 +65,27 @@ sudo sysctl --system
 # Install CNI plugins (required for most pod network):
 DEST="/opt/cni/bin"
 sudo mkdir -p "$DEST"
-curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | sudo tar -C "$DEST" -xz
+
+# Force install CNI plugins to ensure correct version
+echo "Installing CNI plugins version ${CNI_PLUGINS_VERSION}..."
+echo "Downloading from: https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz"
+
+# Download and extract CNI plugins, overwriting any existing ones
+with_retry 3 10s curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | sudo tar -C "$DEST" -xz
+
+# Ensure correct permissions
+sudo chmod -R 755 $DEST
+
+# Verify CNI plugins were installed
+echo "Verifying CNI plugins installation..."
+if [ -f "$DEST/bridge" ] && [ -f "$DEST/loopback" ] && [ -f "$DEST/portmap" ]; then
+    echo "✓ CNI plugins ${CNI_PLUGINS_VERSION} installed successfully"
+    echo "Installed CNI plugins:"
+    ls -la $DEST/ | head -15
+else
+    echo "ERROR: CNI plugins installation failed!"
+    exit 1
+fi
 
 # Install crictl (required for kubeadm / Kubelet Container Runtime Interface (CRI))
 DOWNLOAD_DIR="/usr/local/bin"
@@ -106,26 +126,37 @@ with_retry 10 30s kubectl --kubeconfig $KUBECONFIG version
 
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+echo "Installing Calico ${CALICO_VERSION}..."
+with_retry 3 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
 
 # Wait for Tigera operator to be ready
+echo "Waiting for Tigera operator to be ready..."
 with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
 
-# Wait for all necessary CRDs to be established
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/installations.operator.tigera.io
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/apiservers.operator.tigera.io
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=established --timeout=300s crd/tigerastatuses.operator.tigera.io
+# Install Calico custom resources
+echo "Installing Calico custom resources..."
+with_retry 3 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 
-# Apply custom resources with increased retry attempts
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+# Wait for Calico to be ready
+echo "Waiting for Calico to be ready..."
+# Wait for calico-node daemonset to be ready - this is critical for CNI
+with_retry 20 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s pod -l k8s-app=calico-node -n calico-system
+# Also wait for calico-kube-controllers
+with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s pod -l k8s-app=calico-kube-controllers -n calico-system
 
 # Make single-node cluster schedulable
+echo "Configuring node for scheduling..."
 with_retry 10 30s kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
 with_retry 10 30s kubectl label node --all node-role.kubernetes.io/worker=
 with_retry 10 30s kubectl label node --all nvidia.com/holodeck.managed=true
 
 # Wait for cluster to be ready
+echo "Waiting for cluster nodes to be ready..."
 with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
+
+# Wait for CoreDNS to be ready (this depends on CNI)
+echo "Waiting for CoreDNS to be ready..."
+with_retry 20 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s pod -l k8s-app=kube-dns -n kube-system
 `
 
 const KindTemplate = `
@@ -238,11 +269,11 @@ featureGates:
 // Default Versions
 const (
 	defaultArch                  = "amd64"
-	defaultKubernetesVersion     = "v1.32.1"
-	defaultKubeletReleaseVersion = "v0.17.1"
-	defaultCNIPluginsVersion     = "v1.6.2"
-	defaultCRIVersion            = "v1.31.1"
-	defaultCalicoVersion         = "v3.29.1"
+	defaultKubernetesVersion     = "v1.33.3"
+	defaultKubeletReleaseVersion = "v0.18.0"
+	defaultCNIPluginsVersion     = "v1.7.1"
+	defaultCRIVersion            = "v1.33.0"
+	defaultCalicoVersion         = "v3.30.2"
 )
 
 type Kubernetes struct {
