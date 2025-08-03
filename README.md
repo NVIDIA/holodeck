@@ -2,6 +2,8 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/NVIDIA/holodeck?label=latest%20release)](https://github.com/NVIDIA/holodeck/releases/latest)
 
+[![CI Pipeline](https://github.com/NVIDIA/holodeck/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/NVIDIA/holodeck/actions/workflows/ci.yaml)
+
 A tool for creating and managing GPU-ready Cloud test environments.
 
 ---
