@@ -217,6 +217,68 @@ type NVIDIAContainerToolkit struct {
 	// container runtime.
 	// +optional
 	EnableCDI bool `json:"enableCDI"`
+	// Source specifies how to install the NVIDIA Container Toolkit
+	// +kubebuilder:validation:Enum=package;git;latest
+	// +optional
+	Source NCTSource `json:"source,omitempty"`
+	// Package configuration for package-based installation
+	// +optional
+	Package *NCTPackageConfig `json:"package,omitempty"`
+	// Git configuration for git-based installation
+	// +optional
+	Git *NCTGitConfig `json:"git,omitempty"`
+	// Latest configuration for latest-tracking installation
+	// +optional
+	Latest *NCTLatestConfig `json:"latest,omitempty"`
+}
+
+type NCTSource string
+
+const (
+	// NCTSourcePackage installs from distro packages (default)
+	NCTSourcePackage NCTSource = "package"
+	// NCTSourceGit installs from a specific git ref
+	NCTSourceGit NCTSource = "git"
+	// NCTSourceLatest installs from latest commit of a branch
+	NCTSourceLatest NCTSource = "latest"
+)
+
+type NCTPackageConfig struct {
+	// Channel specifies the package channel
+	// +kubebuilder:validation:Enum=stable;experimental
+	// +optional
+	Channel string `json:"channel,omitempty"`
+	// Version specifies a specific version to pin
+	// +optional
+	Version string `json:"version,omitempty"`
+}
+
+type NCTGitConfig struct {
+	// Repo is the git repository URL
+	// +optional
+	Repo string `json:"repo,omitempty"`
+	// Ref is the git reference (commit SHA, tag, branch, or PR ref)
+	Ref string `json:"ref"`
+	// Build configuration for git-based installation
+	// +optional
+	Build *NCTBuildConfig `json:"build,omitempty"`
+}
+
+type NCTLatestConfig struct {
+	// Track specifies the branch to track
+	Track string `json:"track"`
+	// Repo is the git repository URL
+	// +optional
+	Repo string `json:"repo,omitempty"`
+}
+
+type NCTBuildConfig struct {
+	// MakeTargets specifies the make targets to build
+	// +optional
+	MakeTargets []string `json:"makeTargets,omitempty"`
+	// ExtraEnv provides additional environment variables for the build
+	// +optional
+	ExtraEnv map[string]string `json:"extraEnv,omitempty"`
 }
 
 // Kernel defines the kernel configuration
