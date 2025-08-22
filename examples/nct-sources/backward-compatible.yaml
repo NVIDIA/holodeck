@@ -1,0 +1,21 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: nct-backward-compatible
+spec:
+  provider: ssh
+  auth:
+    keyName: my-key
+    username: ubuntu
+    publicKey: /path/to/public.key
+    privateKey: /path/to/private.key
+  instance:
+    hostUrl: "my-host.example.com"
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+    enableCDI: true
+    # Legacy configuration - still works!
+    version: "1.17.6-1"

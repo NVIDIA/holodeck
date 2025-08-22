@@ -1,0 +1,28 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: nct-git-commit
+spec:
+  provider: ssh
+  auth:
+    keyName: my-key
+    username: ubuntu
+    publicKey: /path/to/public.key
+    privateKey: /path/to/private.key
+  instance:
+    hostUrl: "my-host.example.com"
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+    enableCDI: true
+    source: git
+    git:
+      # repo defaults to https://github.com/NVIDIA/nvidia-container-toolkit.git
+      ref: abc123def456  # specific commit SHA
+      build:
+        makeTargets: ["all", "test"]
+        extraEnv:
+          CGO_ENABLED: "1"
+          GOFLAGS: "-buildvcs=true"
