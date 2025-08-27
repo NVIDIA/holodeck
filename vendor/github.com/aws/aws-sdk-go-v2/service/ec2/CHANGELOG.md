@@ -1,3 +1,11 @@
+# v1.247.0 (2025-08-26)
+
+* **Feature**: Add new APIs for viewing how your shared AMIs are used by other accounts, and identify resources in your account that are dependent on particular AMIs
+
+# v1.246.0 (2025-08-25)
+
+* **Feature**: Added IPv6 support for AWS Client VPN.
+
 # v1.245.2 (2025-08-21)
 
 * **Dependency Update**: Updated to the latest SDK module versions
