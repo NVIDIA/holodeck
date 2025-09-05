@@ -47,7 +47,7 @@ jobs:
       name: Checkout code
 
     - name: Install Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
@@ -71,7 +71,7 @@ jobs:
       uses: actions/checkout@v5
 
     - name: Install Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
@@ -93,7 +93,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
