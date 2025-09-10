@@ -127,7 +127,7 @@ with_retry 10 30s kubectl --kubeconfig $KUBECONFIG version
 # Install Calico
 # based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
 echo "Installing Calico ${CALICO_VERSION}..."
-with_retry 3 10s kubectl get installation default -n tigera-operator || kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+with_retry 3 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
 
 # Wait for Tigera operator to be ready
 echo "Waiting for Tigera operator to be ready..."
@@ -135,7 +135,7 @@ with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=availabl
 
 # Install Calico custom resources
 echo "Installing Calico custom resources..."
-with_retry 3 10s kubectl get installation default -n tigera-operator || kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+with_retry 3 10s kubectl --kubeconfig $KUBECONFIG get installations.operator.tigera.io default -n tigera-operator || kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
 
 # Wait for Calico to be ready
 echo "Waiting for Calico to be ready..."
