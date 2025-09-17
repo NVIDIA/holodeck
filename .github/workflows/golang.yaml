@@ -30,7 +30,7 @@ jobs:
     outputs:
       GOLANG_VERSION: ${{ steps.go_version.outputs.GOLANG_VERSION }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       name: Checkout code
 
     - name: Get Golang version
@@ -43,11 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: variables
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       name: Checkout code
 
     - name: Install Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
@@ -68,10 +68,10 @@ jobs:
     needs: variables
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Install Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
@@ -90,10 +90,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
