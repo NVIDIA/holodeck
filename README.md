@@ -41,6 +41,17 @@ See [docs/prerequisites.md](docs/prerequisites.md) for details.
 
 ---
 
+## ⚠️ Important: Kernel Compatibility
+
+When installing NVIDIA drivers, Holodeck requires kernel headers matching your running kernel
+version. If exact headers are unavailable, Holodeck will attempt to find compatible ones,
+though this may cause driver compilation issues.
+
+For kernel compatibility details and troubleshooting, see
+[Kernel Compatibility](docs/prerequisites.md#kernel-compatibility) in the prerequisites documentation.
+
+---
+
 ## 📝 How to Contribute
 
 See [docs/contributing/](docs/contributing/) for full details.
@@ -78,6 +89,12 @@ holodeck list
 
 ```bash
 holodeck delete <instance-id>
+```
+
+### Example: Clean up AWS VPC resources
+
+```bash
+holodeck cleanup vpc-12345678
 ```
 
 ### Example: Check status
