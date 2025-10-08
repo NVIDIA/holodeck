@@ -68,6 +68,9 @@ type Instance struct {
 	IngressIpRanges []string `json:"ingressIpRanges"`
 	// +optional
 	HostUrl string `json:"hostUrl"`
+	// +optional
+	// if not set, the default size is 64GB
+	RootVolumeSizeGB *int32 `json:"rootVolumeSizeGB"`
 }
 
 // Describes an image or vm template.

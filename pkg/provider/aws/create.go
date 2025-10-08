@@ -320,6 +320,11 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		return fmt.Errorf("error getting AMI: %w", err)
 	}
 
+	// if the root volume size is not set, use the default size
+	if p.Spec.RootVolumeSizeGB != nil {
+		storageSizeGB = *p.Spec.RootVolumeSizeGB
+	}
+
 	instanceIn := &ec2.RunInstancesInput{
 		ImageId:                           p.Spec.Image.ImageId,
 		InstanceType:                      types.InstanceType(p.Spec.Type),
