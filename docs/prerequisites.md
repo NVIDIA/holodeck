@@ -87,5 +87,40 @@ spec:
   for the list)
 - CUDA toolkit (optional, only if your workloads require it)
 
+### Kernel Compatibility
+
+When installing NVIDIA drivers, Holodeck requires kernel headers that match your
+running kernel version.
+
+**Important Notes:**
+
+- The NVIDIA driver needs to compile kernel modules, which requires exact kernel
+  headers
+- If exact kernel headers are not available, Holodeck will attempt to find
+  compatible headers
+- Using non-exact kernel headers may cause driver compilation issues
+
+**Kernel Version Support:**
+
+- Ubuntu 22.04: Kernels 5.15.x through 6.8.x (check repository availability)
+- Ubuntu 24.04: Kernels 6.8.x and newer
+- Custom kernels: Ensure corresponding headers are available in your package repositories
+
+**Troubleshooting Kernel Header Issues:**
+
+1. Check available kernel headers:
+
+   ```bash
+   apt-cache search linux-headers | grep $(uname -r)
+   ```
+
+1. Install specific kernel headers manually:
+
+   ```bash
+   sudo apt-get install linux-headers-$(uname -r)
+   ```
+
+1. If using a custom kernel, consider switching to a standard Ubuntu kernel
+
 For more information, see the [Quick Start Guide](quick-start.md)
 or the [Command Reference](commands/).
