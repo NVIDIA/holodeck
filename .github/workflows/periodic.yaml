@@ -1,5 +1,8 @@
 name: Periodic actions
 
+# This workflow performs periodic cleanup of AWS resources
+# It uses the holodeck cleanup command to remove VPCs tagged with Project=holodeck and Environment=cicd
+
 on:
   schedule:
     - cron: '0 0,12 * * *' # Runs daily at 12AM and 12PM
@@ -14,6 +17,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build holodeck CLI
+        run: make build-cli
 
       - name: Set up AWS CLI
         uses: aws-actions/configure-aws-credentials@v6
@@ -38,9 +50,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for vpcid in $AWS_VPC_IDS; do
-            scripts/awscleanup.sh $vpcid
-          done
+          # Use the new holodeck cleanup command
+          # The AWS_REGION is already set by aws-actions/configure-aws-credentials
+          echo "Cleaning up VPCs in region ${{ matrix.aws-region }}: $AWS_VPC_IDS"
+          if [ -n "$AWS_VPC_IDS" ]; then
+            # The cleanup command can handle multiple VPCs at once
+            ./bin/holodeck cleanup $AWS_VPC_IDS || {
+              echo "::warning::Some VPCs failed to cleanup in region ${{ matrix.aws-region }}"
+              exit 0  # Don't fail the workflow if some cleanups fail
+            }
+          else
+            echo "No VPCs to clean up in region ${{ matrix.aws-region }}"
+          fi
 
       - name: Post cleanup
         run: |
