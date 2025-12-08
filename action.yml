@@ -56,7 +56,7 @@ inputs:
     required: false
   holodeck_config:
     description: 'Holodeck configuration file'
-    required: true
+    required: false
 
 branding:
   icon: 'cloud'
