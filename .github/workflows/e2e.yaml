@@ -35,7 +35,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Install Go
       uses: actions/setup-go@v6
@@ -66,7 +66,7 @@ jobs:
         fi
 
     - name: Archive Ginkgo logs
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: ginkgo-logs-${{ matrix.label }}
         path: ginkgo.json
@@ -77,7 +77,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
     - name: Set up Holodeck
       uses: NVIDIA/holodeck@main
       with:

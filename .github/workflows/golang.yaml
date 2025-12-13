@@ -30,7 +30,7 @@ jobs:
     outputs:
       GOLANG_VERSION: ${{ steps.go_version.outputs.GOLANG_VERSION }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       name: Checkout code
 
     - name: Get Golang version
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: variables
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       name: Checkout code
 
     - name: Install Go
@@ -52,7 +52,7 @@ jobs:
         go-version: ${{ needs.variables.outputs.GOLANG_VERSION }}
 
     - name: Lint
-      uses: golangci/golangci-lint-action@v8
+      uses: golangci/golangci-lint-action@v9
       with:
         version: latest
         args: -v --timeout 5m
@@ -68,7 +68,7 @@ jobs:
     needs: variables
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Install Go
       uses: actions/setup-go@v6
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Go
         uses: actions/setup-go@v6
