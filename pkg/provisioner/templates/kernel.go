@@ -31,6 +31,9 @@ export DEBIAN_FRONTEND=noninteractive
 export EDITOR=/bin/true
 echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
 
+# Ensure cloud-init's status is "done" before beginning any setup operations
+/usr/bin/cloud-init status --wait
+
 # Get current kernel version
 CURRENT_KERNEL=$(uname -r)
 echo "Current kernel version: $CURRENT_KERNEL"
