@@ -115,7 +115,7 @@ sudo systemctl enable containerd
 holodeck_progress "$COMPONENT" 4 4 "Verifying installation"
 
 # Wait for containerd to be ready with timeout
-timeout=30
+timeout=60
 while ! sudo ctr version &>/dev/null; do
     if [[ $timeout -le 0 ]]; then
         holodeck_error 11 "$COMPONENT" \
@@ -290,7 +290,7 @@ sudo systemctl enable --now containerd
 holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
 
 # Wait for containerd to be ready with timeout
-timeout=30
+timeout=60
 while ! sudo ctr version &>/dev/null; do
     if [[ $timeout -le 0 ]]; then
         holodeck_error 11 "$COMPONENT" \

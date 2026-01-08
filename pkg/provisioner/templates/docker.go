@@ -196,7 +196,7 @@ sudo systemctl start cri-docker.service
 holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
 
 # Wait for Docker to be ready
-timeout=30
+timeout=60
 while ! docker info &>/dev/null; do
     if [[ $timeout -le 0 ]]; then
         holodeck_error 11 "$COMPONENT" \
