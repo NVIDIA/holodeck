@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.5
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.276.1
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.279.0
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.67.7
 	github.com/mattn/go-isatty v0.0.20
 	github.com/onsi/ginkgo/v2 v2.27.3
