@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -30,6 +31,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
 	"github.com/NVIDIA/holodeck/internal/logger"
+)
+
+// Validation patterns for GitHub API parameters
+var (
+	repoPattern  = regexp.MustCompile(`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`)
+	runIDPattern = regexp.MustCompile(`^\d+$`)
 )
 
 // safeString safely dereferences a string pointer, returning "<nil>" if the pointer is nil
@@ -95,6 +102,14 @@ type GitHubJobsResponse struct {
 
 // CheckGitHubJobsCompleted checks if all GitHub jobs are completed
 func (c *Cleaner) CheckGitHubJobsCompleted(repository, runID, token string) (bool, error) {
+	// Validate input parameters to prevent URL injection
+	if !repoPattern.MatchString(repository) {
+		return false, fmt.Errorf("invalid repository format: %s", repository)
+	}
+	if !runIDPattern.MatchString(runID) {
+		return false, fmt.Errorf("invalid runID format: %s", runID)
+	}
+
 	url := fmt.Sprintf("https://api.github.com/repos/%s/actions/runs/%s/jobs", repository, runID)
 
 	req, err := http.NewRequest("GET", url, nil)
