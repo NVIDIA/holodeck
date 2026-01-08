@@ -101,6 +101,14 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	}
 	out := buf.String()
 
+	// Test idempotency framework
+	if !strings.Contains(out, `COMPONENT="containerd"`) {
+		t.Error("template output missing COMPONENT definition")
+	}
+	if !strings.Contains(out, "holodeck_progress") {
+		t.Error("template output missing holodeck_progress calls")
+	}
+
 	// Test v1 template specifics - now using apt repository
 	if !strings.Contains(out, "Installing containerd 1.7.26 using apt repository") {
 		t.Error("template output missing version installation message")
@@ -127,6 +135,14 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
 		t.Error("template output missing CNI bin_dir configuration")
 	}
+
+	// Test verification
+	if !strings.Contains(out, "holodeck_verify_containerd") {
+		t.Error("template output missing containerd verification")
+	}
+	if !strings.Contains(out, "holodeck_mark_installed") {
+		t.Error("template output missing mark installed call")
+	}
 }
 
 func TestContainerd_Execute_Version2(t *testing.T) {
@@ -144,6 +160,14 @@ func TestContainerd_Execute_Version2(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 	out := buf.String()
+
+	// Test idempotency framework
+	if !strings.Contains(out, `COMPONENT="containerd"`) {
+		t.Error("template output missing COMPONENT definition")
+	}
+	if !strings.Contains(out, "holodeck_progress") {
+		t.Error("template output missing holodeck_progress calls")
+	}
 
 	// Test v2 template specifics - now using official binaries
 	if !strings.Contains(out, "Installing containerd 2.0.0 from official binaries") {
@@ -180,6 +204,14 @@ func TestContainerd_Execute_Version2(t *testing.T) {
 	}
 	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
 		t.Error("template output missing CNI bin_dir configuration")
+	}
+
+	// Test verification
+	if !strings.Contains(out, "holodeck_verify_containerd") {
+		t.Error("template output missing containerd verification")
+	}
+	if !strings.Contains(out, "holodeck_mark_installed") {
+		t.Error("template output missing mark installed call")
 	}
 }
 

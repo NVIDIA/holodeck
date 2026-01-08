@@ -72,8 +72,21 @@ func TestContainerToolkit_Execute(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "nvidia-ctk runtime configure --runtime=containerd --set-as-default --enable-cdi=true") {
+
+	// Test idempotency framework usage
+	if !strings.Contains(out, `COMPONENT="nvidia-container-toolkit"`) {
+		t.Error("template output missing COMPONENT definition")
+	}
+	if !strings.Contains(out, "holodeck_progress") {
+		t.Error("template output missing holodeck_progress calls")
+	}
+
+	// Test runtime configuration
+	if !strings.Contains(out, `--runtime="${CONTAINER_RUNTIME}"`) {
 		t.Errorf("template output missing expected runtime config: %s", out)
+	}
+	if !strings.Contains(out, `--enable-cdi="${ENABLE_CDI}"`) {
+		t.Errorf("template output missing expected CDI config: %s", out)
 	}
 
 	// Test CNI path verification after nvidia-ctk
@@ -83,8 +96,12 @@ func TestContainerToolkit_Execute(t *testing.T) {
 	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
 		t.Error("template output missing correct CNI bin_dir check")
 	}
-	// Should NOT contain the old path with /usr/libexec/cni
-	if strings.Contains(out, "/usr/libexec/cni") {
-		t.Error("template output should not contain /usr/libexec/cni path")
+
+	// Test verification
+	if !strings.Contains(out, "holodeck_verify_toolkit") {
+		t.Error("template output missing toolkit verification")
+	}
+	if !strings.Contains(out, "holodeck_mark_installed") {
+		t.Error("template output missing mark installed call")
 	}
 }

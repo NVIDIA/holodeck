@@ -25,33 +25,91 @@ import (
 )
 
 const containerToolkitTemplate = `
+COMPONENT="nvidia-container-toolkit"
+CONTAINER_RUNTIME="{{.ContainerRuntime}}"
+ENABLE_CDI="{{.EnableCDI}}"
 
-# Install container toolkit
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
-  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list \
-  && \
-	with_retry 3 10s sudo apt-get update
+holodeck_progress "$COMPONENT" 1 4 "Checking existing installation"
 
-install_packages_with_retry nvidia-container-toolkit nvidia-container-toolkit-base \
-						libnvidia-container-tools libnvidia-container1
+# Check if NVIDIA Container Toolkit is already installed and functional
+if command -v nvidia-ctk &>/dev/null; then
+    INSTALLED_VERSION=$(nvidia-ctk --version 2>/dev/null | head -1 || true)
+    if [[ -n "$INSTALLED_VERSION" ]]; then
+        holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
 
-# Configure container runtime
-sudo nvidia-ctk runtime configure --runtime={{.ContainerRuntime}} --set-as-default --enable-cdi={{.EnableCDI}}
-
-# Verify CNI configuration is preserved after nvidia-ctk
-echo "Verifying CNI configuration after nvidia-ctk..."
-if [ "{{.ContainerRuntime}}" = "containerd" ]; then
-    if ! sudo grep -q 'bin_dir = "/opt/cni/bin"' /etc/containerd/config.toml; then
-        echo "WARNING: CNI bin_dir configuration may have been modified by nvidia-ctk"
-        echo "Restoring CNI paths..."
-        # This is a safeguard, but nvidia-ctk should preserve existing CNI config
-        sudo sed -i '/\[plugins."io.containerd.grpc.v1.cri".cni\]/,/\[/{s|bin_dir = .*|bin_dir = "/opt/cni/bin"|g}' /etc/containerd/config.toml
+        if holodeck_verify_toolkit; then
+            holodeck_log "INFO" "$COMPONENT" "Toolkit verified functional"
+            # Still need to ensure configuration is correct
+            holodeck_log "INFO" "$COMPONENT" "Verifying runtime configuration"
+        else
+            holodeck_log "WARN" "$COMPONENT" \
+                "Toolkit installed but not functional, attempting repair"
+        fi
     fi
 fi
 
-sudo systemctl restart {{.ContainerRuntime}}
+holodeck_progress "$COMPONENT" 2 4 "Adding NVIDIA Container Toolkit repository"
+
+# Add repository (idempotent)
+if [[ ! -f /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg ]]; then
+    holodeck_retry 3 "$COMPONENT" curl -fsSL \
+        https://nvidia.github.io/libnvidia-container/gpgkey | \
+        sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+else
+    holodeck_log "INFO" "$COMPONENT" "NVIDIA Container Toolkit GPG key already present"
+fi
+
+if [[ ! -f /etc/apt/sources.list.d/nvidia-container-toolkit.list ]]; then
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null
+else
+    holodeck_log "INFO" "$COMPONENT" "NVIDIA Container Toolkit repository already configured"
+fi
+
+holodeck_retry 3 "$COMPONENT" sudo apt-get update
+
+holodeck_progress "$COMPONENT" 3 4 "Installing NVIDIA Container Toolkit"
+
+holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+    nvidia-container-toolkit nvidia-container-toolkit-base \
+    libnvidia-container-tools libnvidia-container1
+
+holodeck_progress "$COMPONENT" 4 4 "Configuring runtime"
+
+# Configure container runtime
+holodeck_log "INFO" "$COMPONENT" \
+    "Configuring ${CONTAINER_RUNTIME} with CDI=${ENABLE_CDI}"
+sudo nvidia-ctk runtime configure \
+    --runtime="${CONTAINER_RUNTIME}" \
+    --set-as-default \
+    --enable-cdi="${ENABLE_CDI}"
+
+# Verify CNI configuration is preserved after nvidia-ctk
+if [[ "${CONTAINER_RUNTIME}" == "containerd" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Verifying CNI configuration after nvidia-ctk"
+    if ! sudo grep -q 'bin_dir = "/opt/cni/bin"' /etc/containerd/config.toml 2>/dev/null; then
+        holodeck_log "WARN" "$COMPONENT" \
+            "CNI bin_dir configuration may have been modified by nvidia-ctk"
+        holodeck_log "INFO" "$COMPONENT" "Restoring CNI paths"
+        sudo sed -i '/\[plugins."io.containerd.grpc.v1.cri".cni\]/,/\[/{s|bin_dir = .*|bin_dir = "/opt/cni/bin"|g}' \
+            /etc/containerd/config.toml
+    fi
+fi
+
+sudo systemctl restart "${CONTAINER_RUNTIME}"
+
+# Verify toolkit is functional
+if ! holodeck_verify_toolkit; then
+    holodeck_error 12 "$COMPONENT" \
+        "NVIDIA Container Toolkit verification failed" \
+        "Run 'nvidia-ctk --version' and check ${CONTAINER_RUNTIME} logs"
+fi
+
+FINAL_VERSION=$(nvidia-ctk --version 2>/dev/null | head -1 || echo "installed")
+holodeck_mark_installed "$COMPONENT" "$FINAL_VERSION"
+holodeck_log "INFO" "$COMPONENT" \
+    "Successfully installed NVIDIA Container Toolkit for ${CONTAINER_RUNTIME}"
 `
 
 type ContainerToolkit struct {
