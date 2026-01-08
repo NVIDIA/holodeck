@@ -180,7 +180,7 @@ func (c *Cleaner) CleanupVPC(vpcID string) error {
 		if err != nil {
 			c.log.Warning("Failed to check GitHub job status: %v", err)
 		} else if !completed {
-			return fmt.Errorf("GitHub jobs are still running for VPC %s", vpcID)
+			return fmt.Errorf("github jobs are still running for vpc %s", vpcID)
 		}
 	}
 
