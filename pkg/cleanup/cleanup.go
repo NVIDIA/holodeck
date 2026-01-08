@@ -55,7 +55,8 @@ type Cleaner struct {
 
 // New creates a new AWS resource cleaner
 func New(log *logger.FunLogger, region string) (*Cleaner, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+	// Use Background here because New is a top-level initializer without caller-provided context.
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
