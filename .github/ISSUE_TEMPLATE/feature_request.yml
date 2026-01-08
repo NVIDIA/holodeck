@@ -1,0 +1,135 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for Holodeck
+title: "[Feature]: "
+labels: ["kind/feature", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Help us understand your use case.
+        
+        Before submitting, please search existing issues to avoid duplicates.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: A clear and concise description of the feature you're proposing.
+      placeholder: I would like Holodeck to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: |
+        What problem does this feature solve? 
+        Is this related to a frustration with Holodeck?
+      placeholder: |
+        Currently, I have to manually... which is time-consuming because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe your preferred solution or approach.
+      placeholder: |
+        Add a new flag `--auto-cleanup` that automatically...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: |
+        Have you considered any alternative solutions or workarounds?
+      placeholder: |
+        I considered using X, but it doesn't work because...
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of Holodeck would this feature affect?
+      multiple: true
+      options:
+        - CLI Commands
+        - AWS Provider
+        - SSH Provider
+        - Environment API
+        - NVIDIA Driver Installation
+        - Container Runtime (docker/containerd/crio)
+        - Kubernetes Installation
+        - NVIDIA Container Toolkit
+        - GitHub Action
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Suggested Priority
+      description: How important is this feature to your workflow?
+      options:
+        - P0 - Blocker (cannot use Holodeck without this)
+        - P1 - High (significant impact on workflow)
+        - P2 - Medium (nice to have, would improve experience)
+        - P3 - Low (minor improvement)
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example Usage
+      description: |
+        If applicable, show how you'd expect to use this feature.
+        Include example commands, YAML configurations, or code.
+      placeholder: |
+        ```bash
+        holodeck create -f env.yaml --auto-cleanup
+        ```
+        
+        Or in YAML:
+        ```yaml
+        spec:
+          autoCleanup:
+            enabled: true
+            ttl: 24h
+        ```
+      render: markdown
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: |
+        What would need to be true for this feature to be considered complete?
+      placeholder: |
+        - [ ] New flag `--auto-cleanup` added to create command
+        - [ ] Documentation updated
+        - [ ] Unit tests added
+        - [ ] E2E test covering the feature
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: |
+        Add any other context, screenshots, or references here.
+        Links to similar features in other tools are helpful.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to contribute this feature
+        - label: I have searched existing issues for duplicates
+          required: true

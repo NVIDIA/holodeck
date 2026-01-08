@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/NVIDIA/holodeck/tree/main/docs
+    about: Check the documentation before opening an issue
+  - name: 💬 Discussions
+    url: https://github.com/NVIDIA/holodeck/discussions
+    about: Ask questions or discuss features in GitHub Discussions
+  - name: 🔒 Security Vulnerabilities
+    url: https://github.com/NVIDIA/holodeck/security/advisories/new
+    about: Report security vulnerabilities privately via Security Advisories
