@@ -32,6 +32,14 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
+// safeString safely dereferences a string pointer, returning "<nil>" if the pointer is nil
+func safeString(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
+}
+
 // Cleaner handles cleanup of AWS resources
 type Cleaner struct {
 	ec2 *ec2.Client
@@ -276,8 +284,10 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 	var defaultSGID string
 	var nonDefaultSGs []types.SecurityGroup
 	for _, sg := range result.SecurityGroups {
-		if *sg.GroupName == "default" {
-			defaultSGID = *sg.GroupId
+		if sg.GroupName != nil && *sg.GroupName == "default" {
+			if sg.GroupId != nil {
+				defaultSGID = *sg.GroupId
+			}
 		} else {
 			nonDefaultSGs = append(nonDefaultSGs, sg)
 		}
@@ -297,7 +307,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 
 		eniResult, err := c.ec2.DescribeNetworkInterfaces(context.Background(), eniInput)
 		if err != nil {
-			c.log.Warning("Failed to describe ENIs for security group %s: %v", *sg.GroupId, err)
+			c.log.Warning("Failed to describe ENIs for security group %s: %v", safeString(sg.GroupId), err)
 			continue
 		}
 
@@ -311,7 +321,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 
 				_, err = c.ec2.ModifyNetworkInterfaceAttribute(context.Background(), modifyInput)
 				if err != nil {
-					c.log.Warning("Failed to modify ENI %s: %v", *eni.NetworkInterfaceId, err)
+					c.log.Warning("Failed to modify ENI %s: %v", safeString(eni.NetworkInterfaceId), err)
 				}
 			}
 		}
@@ -325,7 +335,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 
 		_, err = c.ec2.DeleteSecurityGroup(context.Background(), deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete security group %s: %v", *sg.GroupId, err)
+			c.log.Warning("Failed to delete security group %s: %v", safeString(sg.GroupId), err)
 		}
 	}
 
@@ -357,7 +367,7 @@ func (c *Cleaner) deleteSubnets(vpcID string) error {
 
 		_, err = c.ec2.DeleteSubnet(context.Background(), deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete subnet %s: %v", *subnet.SubnetId, err)
+			c.log.Warning("Failed to delete subnet %s: %v", safeString(subnet.SubnetId), err)
 		}
 	}
 
@@ -390,7 +400,9 @@ func (c *Cleaner) deleteRouteTables(vpcID string) error {
 		for _, assoc := range rt.Associations {
 			if assoc.Main != nil && *assoc.Main {
 				isMain = true
-				mainRouteTableID = *rt.RouteTableId
+				if rt.RouteTableId != nil {
+					mainRouteTableID = *rt.RouteTableId
+				}
 				break
 			}
 		}
@@ -426,7 +438,7 @@ func (c *Cleaner) deleteRouteTables(vpcID string) error {
 
 		_, err = c.ec2.DeleteRouteTable(context.Background(), deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete route table %s: %v", *rt.RouteTableId, err)
+			c.log.Warning("Failed to delete route table %s: %v", safeString(rt.RouteTableId), err)
 		}
 	}
 
@@ -460,7 +472,7 @@ func (c *Cleaner) deleteInternetGateways(vpcID string) error {
 
 		_, err = c.ec2.DetachInternetGateway(context.Background(), detachInput)
 		if err != nil {
-			c.log.Warning("Failed to detach internet gateway %s: %v", *igw.InternetGatewayId, err)
+			c.log.Warning("Failed to detach internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
 		}
 
 		// Delete internet gateway
@@ -470,7 +482,7 @@ func (c *Cleaner) deleteInternetGateways(vpcID string) error {
 
 		_, err = c.ec2.DeleteInternetGateway(context.Background(), deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete internet gateway %s: %v", *igw.InternetGatewayId, err)
+			c.log.Warning("Failed to delete internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
 		}
 	}
 
