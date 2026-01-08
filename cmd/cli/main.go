@@ -19,6 +19,7 @@ package main
 import (
 	"os"
 
+	"github.com/NVIDIA/holodeck/cmd/cli/cleanup"
 	"github.com/NVIDIA/holodeck/cmd/cli/create"
 	"github.com/NVIDIA/holodeck/cmd/cli/delete"
 	"github.com/NVIDIA/holodeck/cmd/cli/dryrun"
@@ -34,14 +35,13 @@ const (
 	ProgramName = "holodeck"
 )
 
-var log = logger.NewLogger()
-
 type config struct {
 	Debug bool
 }
 
 func main() {
 	config := config{}
+	log := logger.NewLogger()
 
 	// Create the top-level CLI
 	c := cli.NewApp()
@@ -68,6 +68,9 @@ Examples:
   # Delete an environment
   holodeck delete <instance-id>
 
+  # Clean up AWS VPC resources
+  holodeck cleanup vpc-12345678
+
   # Use a custom cache directory
   holodeck --cachepath /path/to/cache create -f env.yaml`
 	c.Version = "0.2.18"
@@ -86,6 +89,7 @@ Examples:
 
 	// Define the subcommands
 	c.Commands = []*cli.Command{
+		cleanup.NewCommand(log),
 		create.NewCommand(log),
 		delete.NewCommand(log),
 		dryrun.NewCommand(log),
@@ -128,6 +132,9 @@ EXAMPLES:
 
    # Delete an environment
    {{.Name}} delete <instance-id>
+
+   # Clean up AWS VPC resources
+   {{.Name}} cleanup vpc-12345678
 
    # Use a custom cache directory
    {{.Name}} --cachepath /path/to/cache create -f env.yaml

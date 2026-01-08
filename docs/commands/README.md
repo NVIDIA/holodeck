@@ -6,6 +6,7 @@ commands.
 ## Basic Commands
 
 - [create](create.md) - Create a new environment
+- [cleanup](cleanup.md) - Clean up AWS VPC resources
 - [delete](delete.md) - Delete an existing environment
 - [list](list.md) - List all environments
 - [status](status.md) - Check the status of an environment

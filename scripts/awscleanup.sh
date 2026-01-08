@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# DEPRECATED: This script has been replaced by the 'holodeck cleanup' command.
+# Please use: holodeck cleanup <vpc-id> [vpc-id...]
+# This script will be removed in a future release.
+
+echo "WARNING: This script is deprecated. Please use 'holodeck cleanup' command instead." >&2
+
 if [[ $# -ne 1 ]]; then
     echo " vpcid required for deletion"
     exit 1

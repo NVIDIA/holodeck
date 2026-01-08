@@ -17,6 +17,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/NVIDIA/holodeck/cmd/action/ci"
@@ -32,7 +33,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := ci.Run(log); err != nil {
+	// Determine action mode from INPUT_ACTION (default: create)
+	action := os.Getenv("INPUT_ACTION")
+	if action == "" {
+		action = "create"
+	}
+
+	var err error
+	switch action {
+	case "create":
+		err = ci.Run(log)
+	case "cleanup":
+		err = ci.RunCleanup(log)
+	default:
+		log.Error(fmt.Errorf("unknown action: %s. Valid actions: create, cleanup", action))
+		os.Exit(1)
+	}
+
+	if err != nil {
 		log.Error(err)
 		os.Exit(1)
 	}
