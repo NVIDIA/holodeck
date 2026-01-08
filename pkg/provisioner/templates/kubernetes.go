@@ -29,198 +29,398 @@ import (
 )
 
 const KubeadmTemplate = `
-# Install kubeadm, kubectl, and k8s-cni
-: ${K8S_VERSION:={{.Version}}}
-: ${CNI_PLUGINS_VERSION:={{.CniPluginsVersion}}}
-: ${CALICO_VERSION:={{.CalicoVersion}}}
-: ${CRICTL_VERSION:={{.CrictlVersion}}}
-: ${ARCH:={{.Arch}}} # amd64, arm64, ppc64le, s390x
-: ${KUBELET_RELEASE_VERSION:={{.KubeletReleaseVersion}}} # v0.17.1
+COMPONENT="kubernetes-kubeadm"
+K8S_VERSION="{{.Version}}"
+CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
+CALICO_VERSION="{{.CalicoVersion}}"
+CRICTL_VERSION="{{.CrictlVersion}}"
+ARCH="{{.Arch}}"
+KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
+K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
 
-# Disable swap
-# see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#before-you-begin
+holodeck_progress "$COMPONENT" 1 8 "Checking existing installation"
+
+# Check if Kubernetes is already installed and functional
+if [[ -f /etc/kubernetes/admin.conf ]]; then
+    if kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes &>/dev/null; then
+        holodeck_log "INFO" "$COMPONENT" "Kubernetes cluster already running"
+
+        if holodeck_verify_kubernetes "/etc/kubernetes/admin.conf"; then
+            # Verify all nodes are ready
+            if kubectl --kubeconfig=/etc/kubernetes/admin.conf wait \
+                --for=condition=ready --timeout=10s nodes --all &>/dev/null; then
+                holodeck_log "INFO" "$COMPONENT" "Cluster verified functional"
+                holodeck_mark_installed "$COMPONENT" "$K8S_VERSION"
+                exit 0
+            fi
+        fi
+        holodeck_log "WARN" "$COMPONENT" \
+            "Cluster exists but not fully functional, attempting repair"
+    fi
+fi
+
+holodeck_progress "$COMPONENT" 2 8 "Configuring system prerequisites"
+
+# Disable swap (idempotent)
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
-# Configure persistent loading of modules
-sudo tee /etc/modules-load.d/k8s.conf <<EOF
+# Configure persistent loading of modules (idempotent)
+if [[ ! -f /etc/modules-load.d/k8s.conf ]]; then
+    sudo tee /etc/modules-load.d/k8s.conf > /dev/null <<EOF
 overlay
 br_netfilter
 EOF
+fi
 
-# Ensure you load modules
+# Load modules
 sudo modprobe overlay
 sudo modprobe br_netfilter
 
-# Set up required sysctl params
-sudo tee /etc/sysctl.d/kubernetes.conf<<EOF
+# Set up required sysctl params (idempotent)
+if [[ ! -f /etc/sysctl.d/kubernetes.conf ]]; then
+    sudo tee /etc/sysctl.d/kubernetes.conf > /dev/null <<EOF
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 EOF
+    sudo sysctl --system
+fi
 
-# Reload sysctl
-sudo sysctl --system
+holodeck_progress "$COMPONENT" 3 8 "Installing CNI plugins"
 
-# Install CNI plugins (required for most pod network):
+# Install CNI plugins (idempotent)
 DEST="/opt/cni/bin"
 sudo mkdir -p "$DEST"
 
-# Force install CNI plugins to ensure correct version
-echo "Installing CNI plugins version ${CNI_PLUGINS_VERSION}..."
-echo "Downloading from: https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz"
-
-# Download and extract CNI plugins, overwriting any existing ones
-with_retry 3 10s curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | sudo tar -C "$DEST" -xz
-
-# Ensure correct permissions
-sudo chmod -R 755 $DEST
-
-# Verify CNI plugins were installed
-echo "Verifying CNI plugins installation..."
-if [ -f "$DEST/bridge" ] && [ -f "$DEST/loopback" ] && [ -f "$DEST/portmap" ]; then
-    echo "✓ CNI plugins ${CNI_PLUGINS_VERSION} installed successfully"
-    echo "Installed CNI plugins:"
-    ls -la $DEST/ | head -15
+if [[ ! -f "$DEST/bridge" ]] || [[ ! -f "$DEST/loopback" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing CNI plugins ${CNI_PLUGINS_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -L \
+        "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | \
+        sudo tar -C "$DEST" -xz
+    sudo chmod -R 755 "$DEST"
 else
-    echo "ERROR: CNI plugins installation failed!"
-    exit 1
+    holodeck_log "INFO" "$COMPONENT" "CNI plugins already installed"
 fi
 
-# Install crictl (required for kubeadm / Kubelet Container Runtime Interface (CRI))
+# Verify CNI plugins
+if [[ ! -f "$DEST/bridge" ]] || [[ ! -f "$DEST/loopback" ]] || [[ ! -f "$DEST/portmap" ]]; then
+    holodeck_error 4 "$COMPONENT" \
+        "CNI plugins installation failed" \
+        "Check network connectivity and try again"
+fi
+
+holodeck_progress "$COMPONENT" 4 8 "Installing Kubernetes binaries"
+
 DOWNLOAD_DIR="/usr/local/bin"
 sudo mkdir -p "$DOWNLOAD_DIR"
-curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${ARCH}.tar.gz" | sudo tar -C $DOWNLOAD_DIR -xz
 
-# Install kubeadm, kubelet, kubectl and add a kubelet systemd service:
-# see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl
-cd $DOWNLOAD_DIR
-sudo curl -L --remote-name-all https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/{kubeadm,kubelet,kubectl}
-sudo chmod +x {kubeadm,kubelet,kubectl}
+# Install crictl (idempotent)
+if [[ ! -f "$DOWNLOAD_DIR/crictl" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing crictl ${CRICTL_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -L \
+        "https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${ARCH}.tar.gz" | \
+        sudo tar -C "$DOWNLOAD_DIR" -xz
+else
+    holodeck_log "INFO" "$COMPONENT" "crictl already installed"
+fi
 
-curl -sSL "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubelet/kubelet.service" | sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | sudo tee /etc/systemd/system/kubelet.service
+# Install kubeadm, kubelet, kubectl (idempotent)
+if [[ ! -f "$DOWNLOAD_DIR/kubeadm" ]] || [[ ! -f "$DOWNLOAD_DIR/kubelet" ]] || \
+   [[ ! -f "$DOWNLOAD_DIR/kubectl" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing kubeadm, kubelet, kubectl ${K8S_VERSION}"
+    cd "$DOWNLOAD_DIR"
+    sudo curl -L --remote-name-all \
+        "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/{kubeadm,kubelet,kubectl}"
+    sudo chmod +x kubeadm kubelet kubectl
+else
+    holodeck_log "INFO" "$COMPONENT" "Kubernetes binaries already installed"
+fi
+
+# Configure kubelet service (idempotent)
+if [[ ! -f /etc/systemd/system/kubelet.service ]]; then
+    curl -sSL \
+        "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubelet/kubelet.service" | \
+        sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | \
+        sudo tee /etc/systemd/system/kubelet.service > /dev/null
+fi
+
 sudo mkdir -p /etc/systemd/system/kubelet.service.d
-curl -sSL "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubeadm/10-kubeadm.conf" | sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | sudo tee /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+if [[ ! -f /etc/systemd/system/kubelet.service.d/10-kubeadm.conf ]]; then
+    curl -sSL \
+        "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubeadm/10-kubeadm.conf" | \
+        sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | \
+        sudo tee /etc/systemd/system/kubelet.service.d/10-kubeadm.conf > /dev/null
+fi
+
+sudo systemctl daemon-reload
 sudo systemctl enable --now kubelet
 
-# Start kubernetes
-{{- if .UseLegacyInit }}
-# Using legacy kubeadm init for older Kubernetes versions
-with_retry 3 10s sudo kubeadm init \
-  --kubernetes-version=${K8S_VERSION} \
-  --pod-network-cidr=192.168.0.0/16 \
-  --control-plane-endpoint={{.K8sEndpointHost}}:6443 \
-  --ignore-preflight-errors=all
-{{- else }}
-# Using kubeadm config file for newer Kubernetes versions
-with_retry 3 10s sudo kubeadm init --config /etc/kubernetes/kubeadm-config.yaml --ignore-preflight-errors=all
-{{- end }}
+holodeck_progress "$COMPONENT" 5 8 "Initializing Kubernetes cluster"
 
-mkdir -p $HOME/.kube
-sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-sudo chown $(id -u):$(id -g) $HOME/.kube/config
+# Initialize cluster only if not already initialized
+if [[ ! -f /etc/kubernetes/admin.conf ]]; then
+{{- if .UseLegacyInit }}
+    # Using legacy kubeadm init for older Kubernetes versions
+    holodeck_log "INFO" "$COMPONENT" "Using legacy kubeadm init"
+    holodeck_retry 3 "$COMPONENT" sudo kubeadm init \
+        --kubernetes-version="${K8S_VERSION}" \
+        --pod-network-cidr=192.168.0.0/16 \
+        --control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443" \
+        --ignore-preflight-errors=all
+{{- else }}
+    # Using kubeadm config file for newer Kubernetes versions
+    holodeck_log "INFO" "$COMPONENT" "Using kubeadm config file"
+    holodeck_retry 3 "$COMPONENT" sudo kubeadm init \
+        --config /etc/kubernetes/kubeadm-config.yaml \
+        --ignore-preflight-errors=all
+{{- end }}
+else
+    holodeck_log "INFO" "$COMPONENT" "Cluster already initialized"
+fi
+
+# Setup kubeconfig
+mkdir -p "$HOME/.kube"
+sudo cp -f /etc/kubernetes/admin.conf "$HOME/.kube/config"
+sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
 export KUBECONFIG="${HOME}/.kube/config"
 
-# Wait explicitly for kube-apiserver availability
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG version
+holodeck_progress "$COMPONENT" 6 8 "Waiting for API server"
 
-# Install Calico
-# based on https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
-echo "Installing Calico ${CALICO_VERSION}..."
-with_retry 3 10s kubectl --kubeconfig $KUBECONFIG create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+# Wait for kube-apiserver availability
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" version
 
-# Wait for Tigera operator to be ready
-echo "Waiting for Tigera operator to be ready..."
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+holodeck_progress "$COMPONENT" 7 8 "Installing Calico CNI"
 
-# Install Calico custom resources
-echo "Installing Calico custom resources..."
-with_retry 3 10s kubectl --kubeconfig $KUBECONFIG get installations.operator.tigera.io default -n tigera-operator || kubectl --kubeconfig $KUBECONFIG apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml
+# Install Calico (idempotent)
+if ! kubectl --kubeconfig "$KUBECONFIG" get namespace tigera-operator &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Installing Calico ${CALICO_VERSION}"
+    holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" create -f \
+        "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
+else
+    holodeck_log "INFO" "$COMPONENT" "Tigera operator already installed"
+fi
 
-# Wait for Calico to be ready
-echo "Waiting for Calico to be ready..."
-# Wait for calico-node daemonset to be ready - this is critical for CNI
-with_retry 20 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s pod -l k8s-app=calico-node -n calico-system
-# Also wait for calico-kube-controllers
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s pod -l k8s-app=calico-kube-controllers -n calico-system
+# Wait for Tigera operator
+holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator"
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
 
-# Make single-node cluster schedulable
-echo "Configuring node for scheduling..."
-with_retry 10 30s kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
-with_retry 10 30s kubectl label node --all node-role.kubernetes.io/worker=
-with_retry 10 30s kubectl label node --all nvidia.com/holodeck.managed=true
+# Install Calico custom resources (idempotent)
+if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
+    -n tigera-operator &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Installing Calico custom resources"
+    holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" apply -f \
+        "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml"
+fi
 
-# Wait for cluster to be ready
-echo "Waiting for cluster nodes to be ready..."
-with_retry 10 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s nodes --all
+# Wait for Calico
+holodeck_log "INFO" "$COMPONENT" "Waiting for Calico"
+holodeck_retry 20 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=calico-node -n calico-system
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=calico-kube-controllers -n calico-system
 
-# Wait for CoreDNS to be ready (this depends on CNI)
-echo "Waiting for CoreDNS to be ready..."
-with_retry 20 30s kubectl --kubeconfig $KUBECONFIG wait --for=condition=ready --timeout=300s pod -l k8s-app=kube-dns -n kube-system
+holodeck_progress "$COMPONENT" 8 8 "Finalizing cluster configuration"
+
+# Configure node for scheduling (idempotent - tolerates errors)
+kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- 2>/dev/null || true
+kubectl label node --all node-role.kubernetes.io/worker= --overwrite 2>/dev/null || true
+kubectl label node --all nvidia.com/holodeck.managed=true --overwrite 2>/dev/null || true
+
+# Wait for cluster ready
+holodeck_log "INFO" "$COMPONENT" "Waiting for cluster nodes"
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s nodes --all
+
+# Wait for CoreDNS
+holodeck_log "INFO" "$COMPONENT" "Waiting for CoreDNS"
+holodeck_retry 20 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=kube-dns -n kube-system
+
+if ! holodeck_verify_kubernetes "$KUBECONFIG"; then
+    holodeck_error 13 "$COMPONENT" \
+        "Kubernetes cluster verification failed" \
+        "Run 'kubectl get nodes' and 'kubectl get pods -A' to diagnose"
+fi
+
+holodeck_mark_installed "$COMPONENT" "$K8S_VERSION"
+holodeck_log "INFO" "$COMPONENT" "Successfully installed Kubernetes ${K8S_VERSION}"
 `
 
 const KindTemplate = `
-: ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
+COMPONENT="kubernetes-kind"
+K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
 
-KIND_CONFIG=""
-if [ -n "{{.KindConfig}}" ]; then
-  KIND_CONFIG="--config /etc/kubernetes/kind.yaml"
+holodeck_progress "$COMPONENT" 1 5 "Checking existing installation"
+
+# Check if KIND cluster already exists
+if kind get clusters 2>/dev/null | grep -q "^holodeck$"; then
+    holodeck_log "INFO" "$COMPONENT" "KIND cluster 'holodeck' already exists"
+
+    # Verify cluster is functional
+    export KUBECONFIG="${HOME}/.kube/config"
+    if kubectl --kubeconfig "$KUBECONFIG" get nodes &>/dev/null; then
+        holodeck_log "INFO" "$COMPONENT" "Cluster verified functional"
+        holodeck_mark_installed "$COMPONENT" "kind"
+        exit 0
+    else
+        holodeck_log "WARN" "$COMPONENT" \
+            "Cluster exists but not functional, recreating"
+        kind delete cluster --name holodeck || true
+    fi
 fi
 
-# Download kind
-[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-arm64
-chmod +x ./kind
-sudo install ./kind /usr/local/bin/kind
+holodeck_progress "$COMPONENT" 2 5 "Installing KIND"
 
-# Install crictl (required for kubeadm / Kubelet Container Runtime Interface (CRI))
+# Download kind (idempotent)
+if [[ ! -f /usr/local/bin/kind ]]; then
+    ARCH_KIND=""
+    if [[ "$(uname -m)" == "x86_64" ]]; then
+        ARCH_KIND="amd64"
+    elif [[ "$(uname -m)" == "aarch64" ]]; then
+        ARCH_KIND="arm64"
+    fi
+    holodeck_retry 3 "$COMPONENT" curl -Lo ./kind \
+        "https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-${ARCH_KIND}"
+    chmod +x ./kind
+    sudo install ./kind /usr/local/bin/kind
+    rm -f ./kind
+else
+    holodeck_log "INFO" "$COMPONENT" "KIND already installed"
+fi
+
+holodeck_progress "$COMPONENT" 3 5 "Installing kubectl"
+
 DOWNLOAD_DIR="/usr/local/bin"
 sudo mkdir -p "$DOWNLOAD_DIR"
 
-# Install kubectl 
-# see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl
-cd $DOWNLOAD_DIR
-sudo curl -L --remote-name-all https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/kubectl
-sudo chmod +x kubectl
-cd $HOME
+# Detect architecture
+ARCH=$(uname -m)
+if [[ "$ARCH" == "x86_64" ]]; then
+    ARCH="amd64"
+elif [[ "$ARCH" == "aarch64" ]]; then
+    ARCH="arm64"
+fi
 
-# Enable NVIDIA GPU support
-sudo nvidia-ctk runtime configure --set-as-default
-sudo systemctl restart docker
-sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts --in-place
+# Install kubectl (idempotent)
+if [[ ! -f "$DOWNLOAD_DIR/kubectl" ]]; then
+    K8S_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+    holodeck_log "INFO" "$COMPONENT" "Installing kubectl ${K8S_VERSION}"
+    cd "$DOWNLOAD_DIR"
+    sudo curl -L --remote-name-all \
+        "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/kubectl"
+    sudo chmod +x kubectl
+    cd "$HOME"
+else
+    holodeck_log "INFO" "$COMPONENT" "kubectl already installed"
+fi
 
-# Create a cluster with the config file
+holodeck_progress "$COMPONENT" 4 5 "Configuring NVIDIA GPU support"
+
+# Enable NVIDIA GPU support (idempotent)
+if command -v nvidia-ctk &>/dev/null; then
+    sudo nvidia-ctk runtime configure --set-as-default
+    sudo systemctl restart docker
+    sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts --in-place
+else
+    holodeck_log "WARN" "$COMPONENT" \
+        "nvidia-ctk not found, skipping GPU configuration"
+fi
+
+holodeck_progress "$COMPONENT" 5 5 "Creating KIND cluster"
+
+# Setup kubeconfig directory
+mkdir -p "$HOME/.kube"
+sudo chown -R "$(id -u):$(id -g)" "$HOME/.kube/"
 export KUBECONFIG="${HOME}/.kube/config:/var/run/kubernetes/admin.kubeconfig"
-mkdir -p $HOME/.kube
-sudo chown -R $(id -u):$(id -g) $HOME/.kube/
-with_retry 3 10s kind create cluster --name holodeck $KIND_CONFIG --kubeconfig="${HOME}/.kube/config"
 
-echo "KIND installed successfully"
-echo "you can now access the cluster with:"
-echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
+# Prepare KIND config argument
+KIND_CONFIG_ARGS=()
+if [[ -n "{{.KindConfig}}" ]]; then
+    KIND_CONFIG_ARGS=(--config /etc/kubernetes/kind.yaml)
+fi
+
+# Create cluster
+holodeck_retry 3 "$COMPONENT" kind create cluster \
+    --name holodeck \
+    "${KIND_CONFIG_ARGS[@]}" \
+    --kubeconfig="${HOME}/.kube/config"
+
+# Verify cluster
+if ! kubectl --kubeconfig "${HOME}/.kube/config" get nodes &>/dev/null; then
+    holodeck_error 13 "$COMPONENT" \
+        "KIND cluster creation verification failed" \
+        "Run 'kind get clusters' and 'kubectl get nodes' to diagnose"
+fi
+
+holodeck_mark_installed "$COMPONENT" "kind"
+holodeck_log "INFO" "$COMPONENT" "KIND cluster 'holodeck' installed successfully"
+holodeck_log "INFO" "$COMPONENT" \
+    "Access the cluster with: ssh -i <your-private-key> ubuntu@${K8S_ENDPOINT_HOST}"
 `
 
 const microk8sTemplate = `
-: ${INSTANCE_ENDPOINT_HOST:={{.K8sEndpointHost}}}
-: ${K8S_VERSION:={{.Version}}}
+COMPONENT="kubernetes-microk8s"
+K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
+K8S_VERSION="{{.Version}}"
 
 # Remove leading 'v' from version if present for microk8s snap channel
 MICROK8S_VERSION="${K8S_VERSION#v}"
 
-# Install microk8s
-sudo apt-get update
-sudo snap install microk8s --classic --channel=${MICROK8S_VERSION}
-sudo microk8s enable gpu dashboard dns registry
-sudo usermod -a -G microk8s ubuntu
+holodeck_progress "$COMPONENT" 1 4 "Checking existing installation"
+
+# Check if MicroK8s is already installed
+if snap list microk8s &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "MicroK8s already installed"
+
+    # Verify cluster is functional
+    if sudo microk8s status --wait-ready &>/dev/null; then
+        holodeck_log "INFO" "$COMPONENT" "MicroK8s cluster verified functional"
+        holodeck_mark_installed "$COMPONENT" "$MICROK8S_VERSION"
+        exit 0
+    else
+        holodeck_log "WARN" "$COMPONENT" \
+            "MicroK8s installed but not functional, attempting repair"
+    fi
+fi
+
+holodeck_progress "$COMPONENT" 2 4 "Installing MicroK8s"
+
+holodeck_retry 3 "$COMPONENT" sudo apt-get update
+holodeck_retry 3 "$COMPONENT" sudo snap install microk8s \
+    --classic --channel="${MICROK8S_VERSION}"
+
+holodeck_progress "$COMPONENT" 3 4 "Enabling MicroK8s addons"
+
+# Enable addons
+holodeck_retry 3 "$COMPONENT" sudo microk8s enable gpu dashboard dns registry
+
+holodeck_progress "$COMPONENT" 4 4 "Configuring access"
+
+# Configure user access
+sudo usermod -a -G microk8s ubuntu || true
 mkdir -p ~/.kube
 sudo chown -f -R ubuntu ~/.kube
 sudo microk8s config > ~/.kube/config
 sudo chown -f -R ubuntu ~/.kube
-sudo snap alias microk8s.kubectl kubectl
+sudo snap alias microk8s.kubectl kubectl || true
 
-echo "Microk8s ${MICROK8S_VERSION} installed successfully"
-echo "you can now access the cluster with:"
-echo "ssh -i <your-private-key> ubuntu@${INSTANCE_ENDPOINT_HOST}"
+# Wait for cluster to be ready
+holodeck_log "INFO" "$COMPONENT" "Waiting for MicroK8s to be ready"
+sudo microk8s status --wait-ready
+
+# Verify installation
+if ! sudo microk8s kubectl get nodes &>/dev/null; then
+    holodeck_error 13 "$COMPONENT" \
+        "MicroK8s installation verification failed" \
+        "Run 'sudo microk8s status' and 'sudo microk8s kubectl get nodes' to diagnose"
+fi
+
+holodeck_mark_installed "$COMPONENT" "$MICROK8S_VERSION"
+holodeck_log "INFO" "$COMPONENT" "MicroK8s ${MICROK8S_VERSION} installed successfully"
+holodeck_log "INFO" "$COMPONENT" \
+    "Access the cluster with: ssh -i <your-private-key> ubuntu@${K8S_ENDPOINT_HOST}"
 `
 
 const kubeadmTemplate = `apiVersion: kubeadm.k8s.io/v1beta4

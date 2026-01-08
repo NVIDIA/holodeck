@@ -64,17 +64,17 @@ func TestNewKernelTemplate(t *testing.T) {
 					"debconf debconf/frontend select Noninteractive",
 					"CURRENT_KERNEL=$(uname -r)",
 					"KERNEL_VERSION=\"6.1.0\"",
-					"sudo apt-get update -y",
-					"sudo rm -rf /boot/*${CURRENT_KERNEL}*",
-					"sudo rm -rf /lib/modules/*${CURRENT_KERNEL}*",
-					"sudo rm -rf /boot/*.old",
 					"sudo apt-get install --allow-downgrades",
 					"linux-image-${KERNEL_VERSION}",
 					"linux-headers-${KERNEL_VERSION}",
 					"linux-modules-${KERNEL_VERSION}",
 					"sudo update-grub",
-					"sudo update-initramfs -u -k ${KERNEL_VERSION}",
+					"sudo update-initramfs -u -k",
 					"nohup sudo reboot",
+					// New idempotency framework elements
+					`COMPONENT="kernel"`,
+					"holodeck_progress",
+					"holodeck_log",
 				}
 
 				for _, element := range requiredElements {
@@ -83,9 +83,9 @@ func TestNewKernelTemplate(t *testing.T) {
 					}
 				}
 
-				// Check for version comparison logic
-				if !strings.Contains(output, "if [ \"${CURRENT_KERNEL}\" != \"${KERNEL_VERSION}\" ]") {
-					t.Error("expected output to contain kernel version comparison")
+				// Check for idempotent version check
+				if !strings.Contains(output, `"${CURRENT_KERNEL}" == "${KERNEL_VERSION}"`) {
+					t.Error("expected output to contain idempotent kernel version check")
 				}
 			},
 		},
@@ -136,8 +136,8 @@ func TestKernelTemplateContent(t *testing.T) {
 			contains: "KERNEL_VERSION=\"6.1.0\"",
 		},
 		{
-			name:     "apt update",
-			contains: "sudo apt-get update -y",
+			name:     "apt update via retry",
+			contains: "holodeck_retry 3",
 		},
 		{
 			name:     "kernel package installation",
@@ -149,7 +149,7 @@ func TestKernelTemplateContent(t *testing.T) {
 		},
 		{
 			name:     "initramfs update",
-			contains: "sudo update-initramfs -u -k ${KERNEL_VERSION}",
+			contains: "sudo update-initramfs -u -k",
 		},
 		{
 			name:     "reboot command",

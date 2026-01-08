@@ -61,12 +61,20 @@ func TestDocker_Execute(t *testing.T) {
 	}
 	out := buf.String()
 
-	// Test Docker installation
-	if !strings.Contains(out, "docker-ce=$DOCKER_VERSION") {
-		t.Errorf("template output missing expected docker version install command: %s", out)
+	// Test idempotency framework usage
+	if !strings.Contains(out, `COMPONENT="docker"`) {
+		t.Error("template output missing COMPONENT definition")
 	}
-	if !strings.Contains(out, ": ${DOCKER_VERSION:=20.10.7}") {
+	if !strings.Contains(out, `DESIRED_VERSION="20.10.7"`) {
 		t.Errorf("template output missing version assignment: %s", out)
+	}
+	if !strings.Contains(out, "holodeck_progress") {
+		t.Error("template output missing holodeck_progress calls")
+	}
+
+	// Test Docker installation
+	if !strings.Contains(out, "docker-ce=$DESIRED_VERSION") {
+		t.Errorf("template output missing expected docker version install command: %s", out)
 	}
 	if !strings.Contains(out, "systemctl enable docker") {
 		t.Errorf("template output missing enable docker: %s", out)
@@ -76,7 +84,7 @@ func TestDocker_Execute(t *testing.T) {
 	if !strings.Contains(out, "CRI_DOCKERD_VERSION=\"0.3.17\"") {
 		t.Errorf("template output missing cri-dockerd version: %s", out)
 	}
-	if !strings.Contains(out, "curl -L ${CRI_DOCKERD_URL} | sudo tar xzv -C /usr/local/bin --strip-components=1") {
+	if !strings.Contains(out, "sudo tar xzv -C /usr/local/bin --strip-components=1") {
 		t.Errorf("template output missing cri-dockerd installation command: %s", out)
 	}
 	if !strings.Contains(out, "systemctl enable cri-docker.service") {
@@ -87,5 +95,13 @@ func TestDocker_Execute(t *testing.T) {
 	}
 	if !strings.Contains(out, "systemctl start cri-docker.service") {
 		t.Errorf("template output missing start cri-docker service: %s", out)
+	}
+
+	// Test verification
+	if !strings.Contains(out, "holodeck_verify_docker") {
+		t.Error("template output missing docker verification")
+	}
+	if !strings.Contains(out, "holodeck_mark_installed") {
+		t.Error("template output missing mark installed call")
 	}
 }

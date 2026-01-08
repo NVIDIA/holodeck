@@ -134,7 +134,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			},
 			wantErr:        false,
 			checkTemplate:  true,
-			expectedString: "Waiting for Tigera operator to be ready",
+			expectedString: "Waiting for Tigera operator",
 			checkSafeExit:  true,
 		},
 		{
@@ -153,7 +153,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			},
 			wantErr:        false,
 			checkTemplate:  true,
-			expectedString: "--control-plane-endpoint=test-host:6443",
+			expectedString: `--control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443"`,
 			checkSafeExit:  true,
 		},
 		{
@@ -218,7 +218,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			},
 			wantErr:        false,
 			checkTemplate:  true,
-			expectedString: "Waiting for CoreDNS to be ready",
+			expectedString: "Waiting for CoreDNS",
 			checkSafeExit:  true,
 		},
 	}
