@@ -1,0 +1,173 @@
+name: 🔧 Technical Debt
+description: Track technical debt, refactoring needs, or code quality improvements
+title: "[Tech Debt]: "
+labels: ["kind/refactor", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to track technical debt, code quality issues, 
+        or refactoring opportunities.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the technical debt or improvement opportunity.
+      placeholder: |
+        The current implementation of X uses a pattern that...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current State
+      description: |
+        What is the current implementation? 
+        Include relevant code paths or file locations.
+      placeholder: |
+        Currently in `pkg/provider/aws/create.go`, the function...
+        
+        ```go
+        // Current implementation
+        func createInstance(...) {
+          // ...
+        }
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-state
+    attributes:
+      label: Proposed Improvement
+      description: What should the improved implementation look like?
+      placeholder: |
+        Refactor to use the interface pattern:
+        
+        ```go
+        type InstanceCreator interface {
+          Create(ctx context.Context, spec InstanceSpec) (*Instance, error)
+        }
+        ```
+    validations:
+      required: true
+
+  - type: dropdown
+    id: debt-type
+    attributes:
+      label: Type of Debt
+      description: What category of technical debt is this?
+      options:
+        - Code Duplication
+        - Missing Tests
+        - Poor Error Handling
+        - Performance Issue
+        - Outdated Dependencies
+        - Missing Documentation
+        - Inconsistent Patterns
+        - Security Hardening
+        - Logging/Observability
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of the codebase is affected?
+      multiple: true
+      options:
+        - pkg/provider/aws
+        - pkg/provider (interface)
+        - pkg/provisioner
+        - pkg/provisioner/templates
+        - cmd/cli
+        - cmd/action
+        - api/holodeck
+        - pkg/jyaml
+        - pkg/utils
+        - tests
+        - CI/CD workflows
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact Assessment
+      description: |
+        What is the impact of this debt?
+        Consider: maintainability, performance, security, developer experience.
+      placeholder: |
+        - **Maintainability**: Hard to add new providers because...
+        - **Performance**: N/A
+        - **Security**: N/A
+        - **Developer Experience**: New contributors struggle with...
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Estimated Effort
+      description: Rough estimate of the work involved.
+      options:
+        - XS (< 1 hour)
+        - S (1-4 hours)
+        - M (1-2 days)
+        - L (3-5 days)
+        - XL (> 1 week)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk Level
+      description: What is the risk of making this change?
+      options:
+        - Low (isolated change, well-tested)
+        - Medium (moderate scope, may affect related areas)
+        - High (wide-reaching change, careful review needed)
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to Update
+      description: List the files that would need to be modified.
+      placeholder: |
+        - [ ] `pkg/provider/aws/create.go`
+        - [ ] `pkg/provider/provider.go`
+        - [ ] `pkg/provider/aws/aws_test.go`
+
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blockers or Dependencies
+      description: |
+        Are there any blockers or dependencies that need to be addressed first?
+      placeholder: |
+        - Depends on #123 being merged first
+        - Blocked by upstream library update
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: |
+        Add any other context, references, or notes here.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues for duplicates
+          required: true
+        - label: This debt impacts current development velocity
+        - label: I would be willing to work on this improvement
