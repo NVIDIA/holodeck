@@ -36,9 +36,6 @@ echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selecti
 
 holodeck_progress "$COMPONENT" 1 4 "Checking current kernel"
 
-# Ensure cloud-init's status is "done" before beginning any setup operations
-/usr/bin/cloud-init status --wait || true
-
 # Get current kernel version
 CURRENT_KERNEL=$(uname -r)
 holodeck_log "INFO" "$COMPONENT" "Current kernel: ${CURRENT_KERNEL}"

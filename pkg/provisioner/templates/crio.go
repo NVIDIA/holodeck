@@ -87,15 +87,15 @@ sudo systemctl start crio.service
 
 holodeck_progress "$COMPONENT" 4 4 "Verifying installation"
 
-# Wait for CRI-O to be ready
-timeout=60
+# Wait for CRI-O to be ready (120s for slow VMs)
+timeout=120
 while ! systemctl is-active --quiet crio; do
     if [[ $timeout -le 0 ]]; then
         holodeck_error 11 "$COMPONENT" \
             "Timeout waiting for CRI-O to become ready" \
             "Check 'systemctl status crio' and 'journalctl -u crio'"
     fi
-    if (( timeout % 10 == 0 )); then
+    if (( timeout % 15 == 0 )); then
         holodeck_log "INFO" "$COMPONENT" \
             "Waiting for CRI-O to become ready (${timeout}s remaining)"
     fi

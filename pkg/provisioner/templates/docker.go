@@ -195,15 +195,15 @@ sudo systemctl start cri-docker.service
 
 holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
 
-# Wait for Docker to be ready
-timeout=60
+# Wait for Docker to be ready (120s timeout for slow VMs)
+timeout=120
 while ! docker info &>/dev/null; do
     if [[ $timeout -le 0 ]]; then
         holodeck_error 11 "$COMPONENT" \
             "Timeout waiting for Docker to become ready" \
             "Check 'systemctl status docker' and 'journalctl -u docker'"
     fi
-    if (( timeout % 10 == 0 )); then
+    if (( timeout % 15 == 0 )); then
         holodeck_log "INFO" "$COMPONENT" \
             "Waiting for Docker to become ready (${timeout}s remaining)"
     fi

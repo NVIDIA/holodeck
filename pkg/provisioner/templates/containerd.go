@@ -114,15 +114,15 @@ sudo systemctl enable containerd
 
 holodeck_progress "$COMPONENT" 4 4 "Verifying installation"
 
-# Wait for containerd to be ready with timeout
-timeout=60
+# Wait for containerd to be ready with timeout (120s for slow VMs)
+timeout=120
 while ! sudo ctr version &>/dev/null; do
     if [[ $timeout -le 0 ]]; then
         holodeck_error 11 "$COMPONENT" \
             "Timeout waiting for containerd to become ready" \
             "Check 'systemctl status containerd' and 'journalctl -u containerd'"
     fi
-    if (( timeout % 10 == 0 )); then
+    if (( timeout % 15 == 0 )); then
         holodeck_log "INFO" "$COMPONENT" \
             "Waiting for containerd to become ready (${timeout}s remaining)"
     fi
@@ -289,15 +289,15 @@ sudo systemctl enable --now containerd
 
 holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
 
-# Wait for containerd to be ready with timeout
-timeout=60
+# Wait for containerd to be ready with timeout (120s for slow VMs)
+timeout=120
 while ! sudo ctr version &>/dev/null; do
     if [[ $timeout -le 0 ]]; then
         holodeck_error 11 "$COMPONENT" \
             "Timeout waiting for containerd to become ready" \
             "Check 'systemctl status containerd' and 'journalctl -u containerd'"
     fi
-    if (( timeout % 10 == 0 )); then
+    if (( timeout % 15 == 0 )); then
         holodeck_log "INFO" "$COMPONENT" \
             "Waiting for containerd to become ready (${timeout}s remaining)"
     fi

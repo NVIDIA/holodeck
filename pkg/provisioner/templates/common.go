@@ -27,6 +27,15 @@ const CommonFunctions = `
 export DEBIAN_FRONTEND=noninteractive
 export HOLODECK_ENVIRONMENT=true
 
+# === CLOUD-INIT SYNCHRONIZATION ===
+# Wait for cloud-init to complete before any provisioning (PR #552)
+# This prevents race conditions with apt, systemd, and network configuration
+if command -v cloud-init &>/dev/null; then
+    echo "[holodeck] Waiting for cloud-init to complete..."
+    /usr/bin/cloud-init status --wait || true
+    echo "[holodeck] cloud-init completed, proceeding with provisioning"
+fi
+
 echo "APT::Get::AllowUnauthenticated 1;" | sudo tee /etc/apt/apt.conf.d/99allow-unauthenticated
 
 # === HOLODECK IDEMPOTENCY FRAMEWORK ===
