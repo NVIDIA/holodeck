@@ -236,7 +236,7 @@ func (c *Cleaner) deleteInstances(vpcID string) error {
 			},
 			{
 				Name:   aws.String("instance-state-name"),
-				Values: []string{"running", "stopped", "stopping", "pending"},
+				Values: []string{"running", "stopped", "stopping", "pending", "shutting-down"},
 			},
 		},
 	}
