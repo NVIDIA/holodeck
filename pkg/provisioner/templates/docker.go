@@ -32,7 +32,7 @@ holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
 
 # Check if Docker is already installed and functional
 if systemctl is-active --quiet docker 2>/dev/null; then
-    INSTALLED_VERSION=$(docker version --format '{{"{{"}}{{".Server.Version"}}{{"}}"}}' 2>/dev/null || true)
+    INSTALLED_VERSION=$(sudo docker version --format '{{"{{"}}{{".Server.Version"}}{{"}}"}}' 2>/dev/null || true)
     if [[ -n "$INSTALLED_VERSION" ]]; then
         if [[ "$DESIRED_VERSION" == "latest" ]] || \
            [[ -z "$DESIRED_VERSION" ]] || \
@@ -119,6 +119,25 @@ sudo systemctl daemon-reload
 sudo systemctl enable docker
 sudo systemctl restart docker
 
+# Wait for Docker to be ready BEFORE installing cri-dockerd (cri-dockerd depends on Docker)
+# Note: Use 'sudo docker info' because usermod -aG docker doesn't apply to current session
+holodeck_log "INFO" "$COMPONENT" "Waiting for Docker daemon to be ready..."
+timeout=120
+while ! sudo docker info &>/dev/null; do
+    if [[ $timeout -le 0 ]]; then
+        holodeck_error 11 "$COMPONENT" \
+            "Timeout waiting for Docker to become ready after restart" \
+            "Check 'systemctl status docker' and 'journalctl -u docker'"
+    fi
+    if (( timeout % 15 == 0 )); then
+        holodeck_log "INFO" "$COMPONENT" \
+            "Waiting for Docker to become ready (${timeout}s remaining)"
+    fi
+    sleep 1
+    ((timeout--))
+done
+holodeck_log "INFO" "$COMPONENT" "Docker daemon is ready"
+
 # Post-installation steps for Linux
 sudo usermod -aG docker "$USER" || true
 # Note: newgrp docker would spawn a new shell, skip for idempotency
@@ -195,29 +214,14 @@ sudo systemctl start cri-docker.service
 
 holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
 
-# Wait for Docker to be ready (120s timeout for slow VMs)
-timeout=120
-while ! docker info &>/dev/null; do
-    if [[ $timeout -le 0 ]]; then
-        holodeck_error 11 "$COMPONENT" \
-            "Timeout waiting for Docker to become ready" \
-            "Check 'systemctl status docker' and 'journalctl -u docker'"
-    fi
-    if (( timeout % 15 == 0 )); then
-        holodeck_log "INFO" "$COMPONENT" \
-            "Waiting for Docker to become ready (${timeout}s remaining)"
-    fi
-    sleep 1
-    ((timeout--))
-done
-
+# Docker should already be ready from earlier wait, just verify
 if ! holodeck_verify_docker; then
     holodeck_error 5 "$COMPONENT" \
         "Docker installation verification failed" \
         "Run 'systemctl status docker' to diagnose"
 fi
 
-FINAL_VERSION=$(docker version --format '{{"{{"}}{{".Server.Version"}}{{"}}"}}')
+FINAL_VERSION=$(sudo docker version --format '{{"{{"}}{{".Server.Version"}}{{"}}"}}')
 holodeck_mark_installed "$COMPONENT" "$FINAL_VERSION"
 holodeck_log "INFO" "$COMPONENT" "Successfully installed Docker ${FINAL_VERSION}"
 `

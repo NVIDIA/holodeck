@@ -196,7 +196,8 @@ holodeck_verify_containerd() {
 
 holodeck_verify_docker() {
     systemctl is-active --quiet docker || return 1
-    docker info &>/dev/null || return 1
+    # Use sudo because usermod -aG docker doesn't apply to current session
+    sudo docker info &>/dev/null || return 1
     return 0
 }
 
