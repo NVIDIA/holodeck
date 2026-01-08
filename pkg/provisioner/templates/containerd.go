@@ -37,7 +37,9 @@ holodeck_progress "$COMPONENT" 1 4 "Checking existing installation"
 if systemctl is-active --quiet containerd 2>/dev/null; then
     INSTALLED_VERSION=$(containerd --version 2>/dev/null | awk '{print $3}' || true)
     if [[ -n "$INSTALLED_VERSION" ]]; then
-        if [[ -z "$DESIRED_VERSION" ]] || [[ "$INSTALLED_VERSION" == *"$DESIRED_VERSION"* ]]; then
+        if [[ -z "$DESIRED_VERSION" ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION" ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION."* ]]; then
             holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
 
             if holodeck_verify_containerd; then
@@ -120,6 +122,10 @@ while ! sudo ctr version &>/dev/null; do
             "Timeout waiting for containerd to become ready" \
             "Check 'systemctl status containerd' and 'journalctl -u containerd'"
     fi
+    if (( timeout % 10 == 0 )); then
+        holodeck_log "INFO" "$COMPONENT" \
+            "Waiting for containerd to become ready (${timeout}s remaining)"
+    fi
     sleep 1
     ((timeout--))
 done
@@ -147,7 +153,9 @@ holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
 if systemctl is-active --quiet containerd 2>/dev/null; then
     INSTALLED_VERSION=$(containerd --version 2>/dev/null | awk '{print $3}' || true)
     if [[ -n "$INSTALLED_VERSION" ]]; then
-        if [[ -z "$DESIRED_VERSION" ]] || [[ "$INSTALLED_VERSION" == *"$DESIRED_VERSION"* ]]; then
+        if [[ -z "$DESIRED_VERSION" ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION" ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION."* ]]; then
             holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
 
             if holodeck_verify_containerd; then
@@ -288,6 +296,10 @@ while ! sudo ctr version &>/dev/null; do
         holodeck_error 11 "$COMPONENT" \
             "Timeout waiting for containerd to become ready" \
             "Check 'systemctl status containerd' and 'journalctl -u containerd'"
+    fi
+    if (( timeout % 10 == 0 )); then
+        holodeck_log "INFO" "$COMPONENT" \
+            "Waiting for containerd to become ready (${timeout}s remaining)"
     fi
     sleep 1
     ((timeout--))

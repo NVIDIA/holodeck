@@ -39,7 +39,7 @@ if command -v nvidia-smi &>/dev/null; then
     INSTALLED_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || true)
     if [[ -n "$INSTALLED_VERSION" ]]; then
         # Check if version matches (if specified)
-        if [[ -z "$DESIRED_VERSION" ]] || [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION"* ]]; then
+        if [[ -z "$DESIRED_VERSION" ]] || [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION" ]]; then
             holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
 
             # Verify driver is functional
@@ -100,8 +100,8 @@ sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
 
 holodeck_progress "$COMPONENT" 3 5 "Adding CUDA repository"
 
-# Add CUDA repository (idempotent - checks if already added)
-if [[ ! -f /etc/apt/sources.list.d/cuda*.list ]] && \
+# Add CUDA repository (idempotent - install if either list or keyring is missing)
+if [[ ! -f /etc/apt/sources.list.d/cuda*.list ]] || \
    [[ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ]]; then
     distribution=$(. /etc/os-release; echo "${ID}${VERSION_ID}" | sed -e 's/\.//g')
     holodeck_retry 3 "$COMPONENT" wget -q \

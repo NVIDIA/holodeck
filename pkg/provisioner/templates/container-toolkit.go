@@ -32,6 +32,7 @@ ENABLE_CDI="{{.EnableCDI}}"
 holodeck_progress "$COMPONENT" 1 4 "Checking existing installation"
 
 # Check if NVIDIA Container Toolkit is already installed and functional
+TOOLKIT_NEEDS_CONFIG=true
 if command -v nvidia-ctk &>/dev/null; then
     INSTALLED_VERSION=$(nvidia-ctk --version 2>/dev/null | head -1 || true)
     if [[ -n "$INSTALLED_VERSION" ]]; then
@@ -39,8 +40,33 @@ if command -v nvidia-ctk &>/dev/null; then
 
         if holodeck_verify_toolkit; then
             holodeck_log "INFO" "$COMPONENT" "Toolkit verified functional"
-            # Still need to ensure configuration is correct
-            holodeck_log "INFO" "$COMPONENT" "Verifying runtime configuration"
+
+            # Check if runtime configuration is already correct
+            if [[ "${CONTAINER_RUNTIME}" == "containerd" ]]; then
+                if sudo grep -q "nvidia-container-runtime" /etc/containerd/config.toml 2>/dev/null; then
+                    holodeck_log "INFO" "$COMPONENT" \
+                        "Runtime ${CONTAINER_RUNTIME} already configured for NVIDIA"
+                    holodeck_mark_installed "$COMPONENT" "$INSTALLED_VERSION"
+                    exit 0
+                fi
+            elif [[ "${CONTAINER_RUNTIME}" == "docker" ]]; then
+                if sudo grep -q "nvidia-container-runtime" /etc/docker/daemon.json 2>/dev/null; then
+                    holodeck_log "INFO" "$COMPONENT" \
+                        "Runtime ${CONTAINER_RUNTIME} already configured for NVIDIA"
+                    holodeck_mark_installed "$COMPONENT" "$INSTALLED_VERSION"
+                    exit 0
+                fi
+            elif [[ "${CONTAINER_RUNTIME}" == "crio" ]]; then
+                if [[ -f /etc/crio/crio.conf.d/nvidia.conf ]]; then
+                    holodeck_log "INFO" "$COMPONENT" \
+                        "Runtime ${CONTAINER_RUNTIME} already configured for NVIDIA"
+                    holodeck_mark_installed "$COMPONENT" "$INSTALLED_VERSION"
+                    exit 0
+                fi
+            fi
+            holodeck_log "INFO" "$COMPONENT" \
+                "Toolkit installed but runtime configuration needed"
+            TOOLKIT_NEEDS_CONFIG=true
         else
             holodeck_log "WARN" "$COMPONENT" \
                 "Toolkit installed but not functional, attempting repair"

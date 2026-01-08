@@ -251,7 +251,6 @@ holodeck_log "INFO" "$COMPONENT" "Successfully installed Kubernetes ${K8S_VERSIO
 const KindTemplate = `
 COMPONENT="kubernetes-kind"
 K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
-KIND_CONFIG_ARG=""
 
 holodeck_progress "$COMPONENT" 1 5 "Checking existing installation"
 
@@ -337,14 +336,15 @@ sudo chown -R "$(id -u):$(id -g)" "$HOME/.kube/"
 export KUBECONFIG="${HOME}/.kube/config:/var/run/kubernetes/admin.kubeconfig"
 
 # Prepare KIND config argument
+KIND_CONFIG_ARGS=()
 if [[ -n "{{.KindConfig}}" ]]; then
-    KIND_CONFIG_ARG="--config /etc/kubernetes/kind.yaml"
+    KIND_CONFIG_ARGS=(--config /etc/kubernetes/kind.yaml)
 fi
 
 # Create cluster
 holodeck_retry 3 "$COMPONENT" kind create cluster \
     --name holodeck \
-    $KIND_CONFIG_ARG \
+    "${KIND_CONFIG_ARGS[@]}" \
     --kubeconfig="${HOME}/.kube/config"
 
 # Verify cluster

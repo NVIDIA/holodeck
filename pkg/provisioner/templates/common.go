@@ -72,12 +72,11 @@ holodeck_mark_installed() {
     local component="$1"
     local version="$2"
     local state_file="${HOLODECK_STATE_DIR}/${component}.state"
+    local installed_at
+    installed_at=$(date -Iseconds)
 
-    sudo tee "$state_file" > /dev/null <<EOF
-status=installed
-version=${version}
-installed_at=$(date -Iseconds)
-EOF
+    printf 'status=installed\nversion=%s\ninstalled_at=%s\n' \
+        "$version" "$installed_at" | sudo tee "$state_file" > /dev/null
 }
 
 # Log with structure
@@ -89,8 +88,11 @@ holodeck_log() {
     timestamp=$(date -Iseconds)
 
     if [[ "$HOLODECK_LOG_FORMAT" == "json" ]]; then
+        # Escape special characters for JSON
+        local escaped_message
+        escaped_message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g')
         printf '{"timestamp":"%s","level":"%s","component":"%s","message":"%s"}\n' \
-            "$timestamp" "$level" "$component" "$message"
+            "$timestamp" "$level" "$component" "$escaped_message"
     else
         printf "[%s] [%-5s] [%s] %s\n" "$timestamp" "$level" "$component" "$message"
     fi
@@ -150,8 +152,12 @@ holodeck_retry() {
             "Attempt ${attempt}/${max_attempts} failed, retrying in ${delay}s"
         sleep "$delay"
         ((attempt++))
-        ((delay *= 2))
-        [[ $delay -gt 60 ]] && delay=60
+        if (( delay < 60 )); then
+            delay=$((delay * 2))
+            if (( delay > 60 )); then
+                delay=60
+            fi
+        fi
     done
 }
 

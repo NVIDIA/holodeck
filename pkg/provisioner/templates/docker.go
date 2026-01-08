@@ -36,7 +36,9 @@ if systemctl is-active --quiet docker 2>/dev/null; then
     if [[ -n "$INSTALLED_VERSION" ]]; then
         if [[ "$DESIRED_VERSION" == "latest" ]] || \
            [[ -z "$DESIRED_VERSION" ]] || \
-           [[ "$INSTALLED_VERSION" == *"$DESIRED_VERSION"* ]]; then
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION" ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION."* ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION-"* ]]; then
             holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
 
             if holodeck_verify_docker; then
@@ -200,6 +202,10 @@ while ! docker info &>/dev/null; do
         holodeck_error 11 "$COMPONENT" \
             "Timeout waiting for Docker to become ready" \
             "Check 'systemctl status docker' and 'journalctl -u docker'"
+    fi
+    if (( timeout % 10 == 0 )); then
+        holodeck_log "INFO" "$COMPONENT" \
+            "Waiting for Docker to become ready (${timeout}s remaining)"
     fi
     sleep 1
     ((timeout--))

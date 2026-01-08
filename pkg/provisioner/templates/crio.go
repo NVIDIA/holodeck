@@ -34,7 +34,9 @@ holodeck_progress "$COMPONENT" 1 4 "Checking existing installation"
 if systemctl is-active --quiet crio 2>/dev/null; then
     INSTALLED_VERSION=$(crio --version 2>/dev/null | head -1 | awk '{print $3}' || true)
     if [[ -n "$INSTALLED_VERSION" ]]; then
-        if [[ -z "$DESIRED_VERSION" ]] || [[ "$INSTALLED_VERSION" == *"$DESIRED_VERSION"* ]]; then
+        if [[ -z "$DESIRED_VERSION" ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION" ]] || \
+           [[ "$INSTALLED_VERSION" == "$DESIRED_VERSION."* ]]; then
             holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
 
             if holodeck_verify_crio; then
@@ -92,6 +94,10 @@ while ! systemctl is-active --quiet crio; do
         holodeck_error 11 "$COMPONENT" \
             "Timeout waiting for CRI-O to become ready" \
             "Check 'systemctl status crio' and 'journalctl -u crio'"
+    fi
+    if (( timeout % 10 == 0 )); then
+        holodeck_log "INFO" "$COMPONENT" \
+            "Waiting for CRI-O to become ready (${timeout}s remaining)"
     fi
     sleep 1
     ((timeout--))

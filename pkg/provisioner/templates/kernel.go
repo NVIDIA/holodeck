@@ -92,11 +92,9 @@ sudo update-grub || true
 sudo update-initramfs -u -k "${KERNEL_VERSION}" || true
 
 # Mark as pending reboot
-sudo tee "$STATE_FILE" > /dev/null <<EOF
-status=pending_reboot
-version=${KERNEL_VERSION}
-installed_at=$(date -Iseconds)
-EOF
+installed_at="$(date -Iseconds)"
+printf 'status=pending_reboot\nversion=%s\ninstalled_at=%s\n' \
+    "${KERNEL_VERSION}" "${installed_at}" | sudo tee "$STATE_FILE" > /dev/null
 
 holodeck_log "INFO" "$COMPONENT" "Kernel ${KERNEL_VERSION} installed, rebooting..."
 
