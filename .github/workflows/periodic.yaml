@@ -38,7 +38,7 @@ jobs:
 
       - name: Clean up VPCs
         if: steps.identify-resources.outputs.AWS_VPC_IDS != ''
-        uses: NVIDIA/holodeck@main
+        uses: NVIDIA/holodeck@v0.2.18
         with:
           action: cleanup
           vpc_ids: ${{ steps.identify-resources.outputs.AWS_VPC_IDS }}
