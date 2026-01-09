@@ -18,8 +18,11 @@ package provisioner
 
 import (
 	"bytes"
+	"context"
+	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/pkg/gitref"
 	"github.com/NVIDIA/holodeck/pkg/provisioner/templates"
 )
 
@@ -72,11 +75,32 @@ func criO(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 }
 
 func containerToolkit(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	containerToolkit, err := templates.NewContainerToolkit(env)
+	ctk, err := templates.NewContainerToolkit(env)
 	if err != nil {
 		return err
 	}
-	return containerToolkit.Execute(tpl, env)
+
+	// Resolve git ref if using git or latest source
+	if ctk.Source == "git" || ctk.Source == "latest" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		resolver := gitref.NewGitHubResolver()
+		var ref string
+		if ctk.Source == "git" {
+			ref = ctk.GitRef
+		} else {
+			ref = ctk.TrackBranch
+		}
+
+		_, shortSHA, err := resolver.Resolve(ctx, ctk.GitRepo, ref)
+		if err != nil {
+			return err
+		}
+		ctk.SetResolvedCommit(shortSHA)
+	}
+
+	return ctk.Execute(tpl, env)
 }
 
 func kubeadm(tpl *bytes.Buffer, env v1alpha1.Environment) error {
