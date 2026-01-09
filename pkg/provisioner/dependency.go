@@ -72,7 +72,10 @@ func criO(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 }
 
 func containerToolkit(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	containerToolkit := templates.NewContainerToolkit(env)
+	containerToolkit, err := templates.NewContainerToolkit(env)
+	if err != nil {
+		return err
+	}
 	return containerToolkit.Execute(tpl, env)
 }
 
