@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 
@@ -71,14 +72,29 @@ type AWS struct {
 
 type Provider struct {
 	Tags      []types.Tag
-	ec2       *ec2.Client
+	ec2       internalaws.EC2Client
 	cacheFile string
 
 	*v1alpha1.Environment
 	log *logger.FunLogger
 }
 
-func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Provider, error) {
+// Option is a functional option for configuring the Provider.
+type Option func(*Provider)
+
+// WithEC2Client sets a custom EC2 client for the Provider.
+// This is primarily used for testing to inject mock clients.
+func WithEC2Client(client internalaws.EC2Client) Option {
+	return func(p *Provider) {
+		p.ec2 = client
+	}
+}
+
+// New creates a new AWS Provider with the given configuration.
+// Optional functional options can be provided to customize the provider,
+// such as injecting a mock EC2 client for testing.
+func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string,
+	opts ...Option) (*Provider, error) {
 	// Create an AWS session and configure the EC2 client
 	region := env.Spec.Region
 	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
@@ -97,14 +113,8 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Pr
 	gitHubJob := os.Getenv("GITHUB_JOB")
 	gitHubRunAttempt := os.Getenv("GITHUB_RUN_ATTEMPT")
 
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-	if err != nil {
-		return nil, err
-	}
-
-	client := ec2.NewFromConfig(cfg)
 	p := &Provider{
-		[]types.Tag{
+		Tags: []types.Tag{
 			{Key: aws.String("Product"), Value: aws.String("Cloud Native")},
 			{Key: aws.String("Name"), Value: aws.String(env.Name)},
 			{Key: aws.String("Project"), Value: aws.String("holodeck")},
@@ -118,10 +128,23 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Pr
 			{Key: aws.String("GitHubJob"), Value: aws.String(gitHubJob)},
 			{Key: aws.String("GitHubRunAttempt"), Value: aws.String(gitHubRunAttempt)},
 		},
-		client,
-		cacheFile,
-		&env,
-		log,
+		cacheFile:   cacheFile,
+		Environment: &env,
+		log:         log,
+	}
+
+	// Apply functional options
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	// If no EC2 client was injected, create the real one
+	if p.ec2 == nil {
+		cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+		if err != nil {
+			return nil, err
+		}
+		p.ec2 = ec2.NewFromConfig(cfg)
 	}
 
 	return p, nil

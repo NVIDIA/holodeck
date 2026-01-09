@@ -26,6 +26,80 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
+func TestNewNvDriver(t *testing.T) {
+	testCases := []struct {
+		description    string
+		env            v1alpha1.Environment
+		expectedBranch string
+		expectedVer    string
+	}{
+		{
+			description:    "empty spec defaults to default branch",
+			env:            v1alpha1.Environment{},
+			expectedBranch: defaultNVBranch,
+			expectedVer:    "",
+		},
+		{
+			description: "custom branch is used",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					NVIDIADriver: v1alpha1.NVIDIADriver{
+						Branch: "550",
+					},
+				},
+			},
+			expectedBranch: "550",
+			expectedVer:    "",
+		},
+		{
+			description: "custom version is used",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					NVIDIADriver: v1alpha1.NVIDIADriver{
+						Version: "535.129.03",
+					},
+				},
+			},
+			expectedBranch: "",
+			expectedVer:    "535.129.03",
+		},
+		{
+			description: "version takes precedence over default branch",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					NVIDIADriver: v1alpha1.NVIDIADriver{
+						Version: "535.129.03",
+						Branch:  "",
+					},
+				},
+			},
+			expectedBranch: "",
+			expectedVer:    "535.129.03",
+		},
+		{
+			description: "both version and branch are preserved",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					NVIDIADriver: v1alpha1.NVIDIADriver{
+						Version: "535.129.03",
+						Branch:  "535",
+					},
+				},
+			},
+			expectedBranch: "535",
+			expectedVer:    "535.129.03",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			driver := NewNvDriver(tc.env)
+			require.Equal(t, tc.expectedBranch, driver.Branch)
+			require.Equal(t, tc.expectedVer, driver.Version)
+		})
+	}
+}
+
 func TestNVDriverTemplate(t *testing.T) {
 	testCases := []struct {
 		description       string

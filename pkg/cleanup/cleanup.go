@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
+	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
@@ -49,22 +50,48 @@ func safeString(s *string) string {
 
 // Cleaner handles cleanup of AWS resources
 type Cleaner struct {
-	ec2 *ec2.Client
+	ec2 internalaws.EC2Client
 	log *logger.FunLogger
 }
 
-// New creates a new AWS resource cleaner
-func New(log *logger.FunLogger, region string) (*Cleaner, error) {
-	// Use Background here because New is a top-level initializer without caller-provided context.
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+// CleanerOption is a functional option for configuring the Cleaner.
+type CleanerOption func(*Cleaner)
+
+// WithEC2Client sets a custom EC2 client for the Cleaner.
+// This is primarily used for testing to inject mock clients.
+func WithEC2Client(client internalaws.EC2Client) CleanerOption {
+	return func(c *Cleaner) {
+		c.ec2 = client
+	}
+}
+
+// New creates a new AWS resource cleaner.
+// Optional functional options can be provided to customize the cleaner,
+// such as injecting a mock EC2 client for testing.
+func New(log *logger.FunLogger, region string,
+	opts ...CleanerOption) (*Cleaner, error) {
+	c := &Cleaner{
+		log: log,
 	}
 
-	return &Cleaner{
-		ec2: ec2.NewFromConfig(cfg),
-		log: log,
-	}, nil
+	// Apply functional options
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	// If no EC2 client was injected, create the real one
+	if c.ec2 == nil {
+		// Use Background here because New is a top-level initializer
+		// without caller-provided context.
+		cfg, err := config.LoadDefaultConfig(context.Background(),
+			config.WithRegion(region))
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		}
+		c.ec2 = ec2.NewFromConfig(cfg)
+	}
+
+	return c, nil
 }
 
 // GetTagValue retrieves a tag value for a given VPC
