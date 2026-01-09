@@ -34,11 +34,12 @@ func validateCTKConfig(log *logger.FunLogger, env v1alpha1.Environment) error {
 
 	switch source {
 	case v1alpha1.CTKSourcePackage:
-		if nct.Package != nil && nct.Package.Version != "" {
+		switch {
+		case nct.Package != nil && nct.Package.Version != "":
 			log.Info("CTK source: package (version: %s)", nct.Package.Version)
-		} else if nct.Version != "" {
+		case nct.Version != "":
 			log.Info("CTK source: package (version: %s, legacy field)", nct.Version)
-		} else {
+		default:
 			log.Info("CTK source: package (latest)")
 		}
 

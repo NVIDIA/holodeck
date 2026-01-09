@@ -21,9 +21,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
 func TestNewContainerToolkit_Defaults(t *testing.T) {
