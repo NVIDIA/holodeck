@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package utils_test
+package cleanup_test
 
 import (
 	"testing"
@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestUtils(t *testing.T) {
+func TestCleanup(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Utils Suite")
+	RunSpecs(t, "Cleanup Suite")
 }
