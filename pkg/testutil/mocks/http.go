@@ -26,7 +26,7 @@ import (
 func HTTPServer(statusCode int, body string) (*httptest.Server, func()) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(statusCode)
-		w.Write([]byte(body)) // nolint:errcheck
+		_, _ = w.Write([]byte(body)) //nolint:errcheck // mock
 	}))
 	return server, server.Close
 }
@@ -53,7 +53,7 @@ func GitHubJobsServer(jobsJSON string) (*httptest.Server, func()) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(jobsJSON)) // nolint:errcheck
+		_, _ = w.Write([]byte(jobsJSON)) //nolint:errcheck // mock
 	}))
 	return server, server.Close
 }

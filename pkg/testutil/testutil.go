@@ -33,7 +33,7 @@ func TempDir(t testing.TB) (string, func()) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	return dir, func() { os.RemoveAll(dir) } // nolint:errcheck
+	return dir, func() { _ = os.RemoveAll(dir) } //nolint:errcheck // cleanup function
 }
 
 // TempFile creates a temporary file with the given content and returns its
@@ -71,7 +71,7 @@ func MustWriteFile(t testing.TB, path, content string) {
 // error occurs.
 func MustReadFile(t testing.TB, path string) string {
 	t.Helper()
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) //nolint:gosec // test utility, path comes from test
 	if err != nil {
 		t.Fatalf("failed to read file %s: %v", path, err)
 	}
@@ -88,9 +88,9 @@ func SetEnv(t testing.TB, key, value string) func() {
 	}
 	return func() {
 		if existed {
-			os.Setenv(key, original) // nolint:errcheck
+			_ = os.Setenv(key, original) //nolint:errcheck // cleanup function
 		} else {
-			os.Unsetenv(key) // nolint:errcheck
+			_ = os.Unsetenv(key) //nolint:errcheck // cleanup function
 		}
 	}
 }
@@ -105,7 +105,7 @@ func UnsetEnv(t testing.TB, key string) func() {
 	}
 	return func() {
 		if existed {
-			os.Setenv(key, original) // nolint:errcheck
+			_ = os.Setenv(key, original) //nolint:errcheck // cleanup function
 		}
 	}
 }

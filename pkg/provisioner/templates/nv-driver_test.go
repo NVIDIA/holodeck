@@ -34,8 +34,8 @@ func TestNewNvDriver(t *testing.T) {
 		expectedVer    string
 	}{
 		{
-			description: "empty spec defaults to default branch",
-			env:         v1alpha1.Environment{},
+			description:    "empty spec defaults to default branch",
+			env:            v1alpha1.Environment{},
 			expectedBranch: defaultNVBranch,
 			expectedVer:    "",
 		},

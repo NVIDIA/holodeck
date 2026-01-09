@@ -24,9 +24,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("AWS Provider", func() {
@@ -127,13 +128,13 @@ var _ = Describe("AWS Provider", func() {
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
 		})
 
 		Context("when cache file doesn't exist", func() {
 			It("should fail to read status", func() {
 				// Provider would fail to read non-existent cache
-				_, err := os.ReadFile(cachePath)
+				_, err := os.ReadFile(cachePath) //nolint:gosec // test file path
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -161,7 +162,7 @@ status:
 			})
 
 			It("should be readable", func() {
-				data, err := os.ReadFile(cachePath)
+				data, err := os.ReadFile(cachePath) //nolint:gosec // test file path
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(data)).To(ContainSubstring("vpc-12345"))
 				Expect(string(data)).To(ContainSubstring("i-12345"))

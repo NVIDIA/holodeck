@@ -24,11 +24,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/cmd/cli/create"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Create Command", func() {
@@ -96,7 +97,7 @@ var _ = Describe("Create Command", func() {
 			})
 
 			AfterEach(func() {
-				os.RemoveAll(tmpDir)
+				Expect(os.RemoveAll(tmpDir)).To(Succeed())
 			})
 
 			It("should handle valid environment file", func() {
@@ -118,7 +119,7 @@ spec:
 				Expect(err).NotTo(HaveOccurred())
 
 				// File should be readable
-				_, err = os.ReadFile(envFile)
+				_, err = os.ReadFile(envFile) //nolint:gosec // test file path
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -179,7 +180,7 @@ spec:
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
 		})
 
 		It("should handle cache file with status properties", func() {
@@ -204,7 +205,7 @@ status:
 			err := os.WriteFile(cacheFile, []byte(cacheContent), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
-			content, err := os.ReadFile(cacheFile)
+			content, err := os.ReadFile(cacheFile) //nolint:gosec // test file path
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(ContainSubstring("vpc-12345"))
 			Expect(string(content)).To(ContainSubstring("i-12345"))

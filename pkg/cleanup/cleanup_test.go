@@ -248,7 +248,7 @@ var _ = Describe("Cleanup", func() {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
 						response := `{"jobs": [{"status": "completed"}]}`
-						w.Write([]byte(response)) // nolint:errcheck
+						_, _ = w.Write([]byte(response)) //nolint:errcheck // test
 					}))
 			})
 
@@ -257,7 +257,7 @@ var _ = Describe("Cleanup", func() {
 				resp, err := http.Get(server.URL)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
-				resp.Body.Close()
+				Expect(resp.Body.Close()).To(Succeed())
 			})
 		})
 	})

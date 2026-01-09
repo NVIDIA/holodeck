@@ -26,9 +26,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("AWS Provider", func() {
@@ -62,7 +63,7 @@ var _ = Describe("AWS Provider", func() {
 
 			tmpDir, err := os.MkdirTemp("", "aws-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			cacheFile := filepath.Join(tmpDir, "cache.yaml")
 
@@ -109,7 +110,7 @@ var _ = Describe("AWS Provider", func() {
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
 		})
 
 		Context("with valid cache file", func() {
@@ -330,7 +331,7 @@ status:
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
 		})
 
 		It("should succeed when instance type is available", func() {
@@ -381,7 +382,7 @@ status:
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
 		})
 
 		Context("when image ID is not specified", func() {
@@ -430,13 +431,13 @@ status:
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
 					Spec: v1alpha1.EnvironmentSpec{
 						Provider: v1alpha1.ProviderAWS,
-					Instance: v1alpha1.Instance{
-						Type:   "t3.medium",
-						Region: "us-east-1",
-						Image: v1alpha1.Image{
-							ImageId: strPtr("ami-specific-12345"),
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image: v1alpha1.Image{
+								ImageId: strPtr("ami-specific-12345"),
+							},
 						},
-					},
 					},
 				}
 
@@ -508,7 +509,7 @@ status:
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
 		})
 
 		It("should succeed when instance type and images are valid", func() {

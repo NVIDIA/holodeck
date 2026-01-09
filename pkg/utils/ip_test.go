@@ -77,7 +77,7 @@ var _ = Describe("IP Utilities", func() {
 				server = httptest.NewServer(http.HandlerFunc(
 					func(w http.ResponseWriter, r *http.Request) {
 						w.WriteHeader(http.StatusOK)
-						w.Write([]byte("203.0.113.1")) // nolint:errcheck
+						_, _ = w.Write([]byte("203.0.113.1")) //nolint:errcheck // test
 					}))
 			})
 
@@ -93,7 +93,7 @@ var _ = Describe("IP Utilities", func() {
 				server = httptest.NewServer(http.HandlerFunc(
 					func(w http.ResponseWriter, r *http.Request) {
 						w.WriteHeader(http.StatusOK)
-						w.Write([]byte("  203.0.113.1\n")) // nolint:errcheck
+						_, _ = w.Write([]byte("  203.0.113.1\n")) //nolint:errcheck // test
 					}))
 			})
 
@@ -140,7 +140,7 @@ var _ = Describe("IP Utilities", func() {
 				server = httptest.NewServer(http.HandlerFunc(
 					func(w http.ResponseWriter, r *http.Request) {
 						w.WriteHeader(http.StatusOK)
-						w.Write([]byte("   \n  ")) // nolint:errcheck
+						_, _ = w.Write([]byte("   \n  ")) //nolint:errcheck // test
 					}))
 			})
 
@@ -160,7 +160,7 @@ var _ = Describe("IP Utilities", func() {
 					func(w http.ResponseWriter, r *http.Request) {
 						time.Sleep(100 * time.Millisecond)
 						w.WriteHeader(http.StatusOK)
-						w.Write([]byte("203.0.113.1")) // nolint:errcheck
+						_, _ = w.Write([]byte("203.0.113.1")) //nolint:errcheck // test
 					}))
 
 				_, err := getIPFromHTTPService(cancelledCtx, server.URL, 5*time.Second)
@@ -193,7 +193,7 @@ var _ = Describe("IP Utilities", func() {
 					func(w http.ResponseWriter, r *http.Request) {
 						receivedUserAgent = r.Header.Get("User-Agent")
 						w.WriteHeader(http.StatusOK)
-						w.Write([]byte("203.0.113.1")) // nolint:errcheck
+						_, _ = w.Write([]byte("203.0.113.1")) //nolint:errcheck // test
 					}))
 			})
 

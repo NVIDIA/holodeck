@@ -213,7 +213,7 @@ var _ = Describe("JYaml", func() {
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
 		})
 
 		Context("with valid file", func() {
