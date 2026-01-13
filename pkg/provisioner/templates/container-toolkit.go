@@ -124,12 +124,16 @@ holodeck_progress "$COMPONENT" 1 5 "Checking existing installation"
 # Check if already installed with this commit
 if command -v nvidia-ctk &>/dev/null; then
     if [[ -f /etc/nvidia-container-toolkit/PROVENANCE.json ]]; then
-        INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/nvidia-container-toolkit/PROVENANCE.json)
-        if [[ "$INSTALLED_COMMIT" == "$GIT_COMMIT" ]]; then
-            if holodeck_verify_toolkit; then
-                holodeck_log "INFO" "$COMPONENT" "Already installed from commit: ${GIT_COMMIT}"
-                exit 0
+        if command -v jq &>/dev/null; then
+            INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/nvidia-container-toolkit/PROVENANCE.json)
+            if [[ "$INSTALLED_COMMIT" == "$GIT_COMMIT" ]]; then
+                if holodeck_verify_toolkit; then
+                    holodeck_log "INFO" "$COMPONENT" "Already installed from commit: ${GIT_COMMIT}"
+                    exit 0
+                fi
             fi
+        else
+            holodeck_log "WARN" "$COMPONENT" "jq not found; skipping provenance check"
         fi
     fi
 fi
@@ -163,16 +167,20 @@ if [[ "$GHCR_AVAILABLE" == "true" ]]; then
     # Extract packages from image
     CONTAINER_ID=$(sudo docker create "${GHCR_IMAGE}" 2>/dev/null || \
                    sudo podman create "${GHCR_IMAGE}" 2>/dev/null)
-    sudo docker cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null || \
-    sudo podman cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null
+    if ! sudo docker cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null && \
+       ! sudo podman cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to copy artifacts from container ${CONTAINER_ID}"
+        exit 1
+    fi
     sudo docker rm "${CONTAINER_ID}" 2>/dev/null || \
     sudo podman rm "${CONTAINER_ID}" 2>/dev/null
 
     holodeck_progress "$COMPONENT" 4 5 "Installing extracted packages"
 
     # Install packages
-    for pkg in ${WORK_DIR}/artifacts/${PKG_PATTERN}; do
-        holodeck_log "INFO" "$COMPONENT" "Installing: $(basename $pkg)"
+    for pkg in "${WORK_DIR}"/artifacts/${PKG_PATTERN}; do
+        [[ -e "$pkg" ]] || continue
+        holodeck_log "INFO" "$COMPONENT" "Installing: $(basename "$pkg")"
         ${INSTALL_CMD} "$pkg"
     done
 
@@ -183,28 +191,68 @@ else
 
     holodeck_progress "$COMPONENT" 3 5 "Cloning repository"
 
-    git clone --depth 1 "${GIT_REPO}" "${WORK_DIR}/src"
-    cd "${WORK_DIR}/src"
-    git fetch --depth 1 origin "${GIT_REF}"
-    git checkout FETCH_HEAD
+    # Validate repository URL (security: only allow GitHub URLs)
+    if [[ -z "${GIT_REPO}" ]]; then
+        holodeck_log "ERROR" "$COMPONENT" "GIT_REPO is empty; refusing to clone"
+        exit 1
+    fi
+    if [[ "${GIT_REPO}" != https://github.com/* && "${GIT_REPO}" != git@github.com:* ]]; then
+        holodeck_log "ERROR" "$COMPONENT" "GIT_REPO must be a GitHub URL: ${GIT_REPO}"
+        exit 1
+    fi
+
+    if ! git clone --depth 1 "${GIT_REPO}" "${WORK_DIR}/src"; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to clone repository ${GIT_REPO}"
+        exit 1
+    fi
+    cd "${WORK_DIR}/src" || {
+        holodeck_log "ERROR" "$COMPONENT" "Failed to enter source directory"
+        exit 1
+    }
+    if ! git fetch --depth 1 origin "${GIT_REF}"; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to fetch git ref ${GIT_REF}"
+        exit 1
+    fi
+    if ! git checkout FETCH_HEAD; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to checkout FETCH_HEAD"
+        exit 1
+    fi
 
     holodeck_progress "$COMPONENT" 4 5 "Building from source"
 
     # Install build dependencies - need recent Go version
     install_packages_with_retry make curl
 
+    # Allow override via env var; default to known-good version
+    GO_VERSION="${NVIDIA_CTK_GO_VERSION:-1.23.4}"
+
+    # Detect architecture for Go download
+    GO_ARCH="$(uname -m)"
+    case "${GO_ARCH}" in
+        x86_64|amd64)  GO_ARCH="amd64" ;;
+        aarch64|arm64) GO_ARCH="arm64" ;;
+        ppc64le)       GO_ARCH="ppc64le" ;;
+        s390x)         GO_ARCH="s390x" ;;
+        *)
+            holodeck_log "ERROR" "$COMPONENT" "Unsupported architecture: ${GO_ARCH}"
+            exit 1
+            ;;
+    esac
+
     # Install Go from official tarball (apt version is too old)
-    GO_VERSION="1.23.4"
     if ! command -v /usr/local/go/bin/go &>/dev/null; then
-        holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION}"
-        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | \
+        holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION} (${GO_ARCH})"
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" | \
             sudo tar -C /usr/local -xzf -
     fi
     export PATH="/usr/local/go/bin:$PATH"
     export GOTOOLCHAIN=auto
 
     # Build command binaries
-    make cmds
+    if ! make cmds; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to build command binaries with 'make cmds'"
+        exit 1
+    fi
 
     # Install binaries
     sudo install -m 755 nvidia-ctk /usr/local/bin/
@@ -271,8 +319,25 @@ ENABLE_CDI="{{.EnableCDI}}"
 
 holodeck_progress "$COMPONENT" 1 5 "Resolving latest commit on ${TRACK_BRANCH}"
 
+# Validate repository URL (security: only allow GitHub URLs)
+if [[ -z "${GIT_REPO}" ]]; then
+    holodeck_log "ERROR" "$COMPONENT" "GIT_REPO is empty; refusing to continue"
+    exit 1
+fi
+if [[ "${GIT_REPO}" != https://github.com/* && "${GIT_REPO}" != git@github.com:* ]]; then
+    holodeck_log "ERROR" "$COMPONENT" "GIT_REPO must be a GitHub URL: ${GIT_REPO}"
+    exit 1
+fi
+
 # Resolve branch to latest commit
-LATEST_COMMIT=$(git ls-remote "${GIT_REPO}" "refs/heads/${TRACK_BRANCH}" | cut -f1)
+if ! LATEST_COMMIT=$(git ls-remote "${GIT_REPO}" "refs/heads/${TRACK_BRANCH}" | cut -f1); then
+    holodeck_log "ERROR" "$COMPONENT" "Failed to resolve latest commit from ${GIT_REPO} branch ${TRACK_BRANCH}"
+    exit 1
+fi
+if [[ -z "$LATEST_COMMIT" ]]; then
+    holodeck_log "ERROR" "$COMPONENT" "No commit found for branch ${TRACK_BRANCH} in ${GIT_REPO}"
+    exit 1
+fi
 SHORT_COMMIT="${LATEST_COMMIT:0:8}"
 
 holodeck_log "INFO" "$COMPONENT" "Tracking ${TRACK_BRANCH} at ${SHORT_COMMIT}"
@@ -280,12 +345,16 @@ holodeck_log "INFO" "$COMPONENT" "Tracking ${TRACK_BRANCH} at ${SHORT_COMMIT}"
 # Check if already at latest
 if command -v nvidia-ctk &>/dev/null; then
     if [[ -f /etc/nvidia-container-toolkit/PROVENANCE.json ]]; then
-        INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/nvidia-container-toolkit/PROVENANCE.json)
-        if [[ "$INSTALLED_COMMIT" == "$SHORT_COMMIT" ]]; then
-            if holodeck_verify_toolkit; then
-                holodeck_log "INFO" "$COMPONENT" "Already at latest: ${SHORT_COMMIT}"
-                exit 0
+        if command -v jq &>/dev/null; then
+            INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/nvidia-container-toolkit/PROVENANCE.json)
+            if [[ "$INSTALLED_COMMIT" == "$SHORT_COMMIT" ]]; then
+                if holodeck_verify_toolkit; then
+                    holodeck_log "INFO" "$COMPONENT" "Already at latest: ${SHORT_COMMIT}"
+                    exit 0
+                fi
             fi
+        else
+            holodeck_log "WARN" "$COMPONENT" "jq not found; skipping provenance check"
         fi
     fi
 fi
@@ -317,15 +386,19 @@ if [[ "$GHCR_AVAILABLE" == "true" ]]; then
 
     CONTAINER_ID=$(sudo docker create "${GHCR_IMAGE}" 2>/dev/null || \
                    sudo podman create "${GHCR_IMAGE}" 2>/dev/null)
-    sudo docker cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null || \
-    sudo podman cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null
+    if ! sudo docker cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null && \
+       ! sudo podman cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to copy artifacts from container ${CONTAINER_ID}"
+        exit 1
+    fi
     sudo docker rm "${CONTAINER_ID}" 2>/dev/null || \
     sudo podman rm "${CONTAINER_ID}" 2>/dev/null
 
     holodeck_progress "$COMPONENT" 4 5 "Installing extracted packages"
 
-    for pkg in ${WORK_DIR}/artifacts/${PKG_PATTERN}; do
-        holodeck_log "INFO" "$COMPONENT" "Installing: $(basename $pkg)"
+    for pkg in "${WORK_DIR}"/artifacts/${PKG_PATTERN}; do
+        [[ -e "$pkg" ]] || continue
+        holodeck_log "INFO" "$COMPONENT" "Installing: $(basename "$pkg")"
         ${INSTALL_CMD} "$pkg"
     done
 
@@ -336,26 +409,50 @@ else
 
     holodeck_progress "$COMPONENT" 3 5 "Cloning repository"
 
-    git clone --depth 1 --branch "${TRACK_BRANCH}" "${GIT_REPO}" "${WORK_DIR}/src"
-    cd "${WORK_DIR}/src"
+    if ! git clone --depth 1 --branch "${TRACK_BRANCH}" "${GIT_REPO}" "${WORK_DIR}/src"; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to clone ${GIT_REPO} branch ${TRACK_BRANCH}"
+        exit 1
+    fi
+    cd "${WORK_DIR}/src" || {
+        holodeck_log "ERROR" "$COMPONENT" "Failed to enter source directory"
+        exit 1
+    }
 
     holodeck_progress "$COMPONENT" 4 5 "Building from source"
 
     # Install build dependencies - need recent Go version
     install_packages_with_retry make curl
 
+    # Allow override via env var; default to known-good version
+    GO_VERSION="${NVIDIA_CTK_GO_VERSION:-1.23.4}"
+
+    # Detect architecture for Go download
+    GO_ARCH="$(uname -m)"
+    case "${GO_ARCH}" in
+        x86_64|amd64)  GO_ARCH="amd64" ;;
+        aarch64|arm64) GO_ARCH="arm64" ;;
+        ppc64le)       GO_ARCH="ppc64le" ;;
+        s390x)         GO_ARCH="s390x" ;;
+        *)
+            holodeck_log "ERROR" "$COMPONENT" "Unsupported architecture: ${GO_ARCH}"
+            exit 1
+            ;;
+    esac
+
     # Install Go from official tarball (apt version is too old)
-    GO_VERSION="1.23.4"
     if ! command -v /usr/local/go/bin/go &>/dev/null; then
-        holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION}"
-        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | \
+        holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION} (${GO_ARCH})"
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" | \
             sudo tar -C /usr/local -xzf -
     fi
     export PATH="/usr/local/go/bin:$PATH"
     export GOTOOLCHAIN=auto
 
     # Build command binaries
-    make cmds
+    if ! make cmds; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to build command binaries with 'make cmds'"
+        exit 1
+    fi
 
     # Install binaries
     sudo install -m 755 nvidia-ctk /usr/local/bin/

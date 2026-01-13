@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -100,8 +101,14 @@ func (r *GitHubResolver) Resolve(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		// Read response body for better error context (rate limits, auth issues)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		errMsg := strings.TrimSpace(string(body))
+		if errMsg == "" {
+			errMsg = "no additional details"
+		}
 		return "", "", fmt.Errorf(
-			"ref not found: %s (status %d)", ref, resp.StatusCode,
+			"ref not found: %s (status %d: %s)", ref, resp.StatusCode, errMsg,
 		)
 	}
 

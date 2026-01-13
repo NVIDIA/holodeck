@@ -82,7 +82,8 @@ func containerToolkit(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 
 	// Resolve git ref if using git or latest source
 	if ctk.Source == "git" || ctk.Source == "latest" {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// Use 35s context to ensure HTTP client timeout (30s) fires first
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 		defer cancel()
 
 		resolver := gitref.NewGitHubResolver()
