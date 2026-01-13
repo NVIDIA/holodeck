@@ -94,10 +94,10 @@ var _ = Describe("Dryrun Command", func() {
 			// Create temp file with invalid YAML
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			envFile := filepath.Join(tempDir, "invalid.yaml")
-			err = os.WriteFile(envFile, []byte("invalid: [yaml"), 0644)
+			err = os.WriteFile(envFile, []byte("invalid: [yaml"), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
@@ -114,7 +114,7 @@ var _ = Describe("Dryrun Command", func() {
 			// Create temp file with unknown provider
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			envFile := filepath.Join(tempDir, "unknown-provider.yaml")
 			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
@@ -123,7 +123,7 @@ var _ = Describe("Dryrun Command", func() {
 				"  name: test-env\n" +
 				"spec:\n" +
 				"  provider: unknown\n"
-			err = os.WriteFile(envFile, []byte(envContent), 0644)
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
@@ -142,7 +142,7 @@ var _ = Describe("Dryrun Command", func() {
 			// Create temp file with SSH provider but missing key
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			envFile := filepath.Join(tempDir, "ssh-env.yaml")
 			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
@@ -155,7 +155,7 @@ var _ = Describe("Dryrun Command", func() {
 				"    privateKey: /nonexistent/key\n" +
 				"  instance:\n" +
 				"    hostUrl: localhost\n"
-			err = os.WriteFile(envFile, []byte(envContent), 0644)
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
@@ -172,7 +172,7 @@ var _ = Describe("Dryrun Command", func() {
 			// Create temp file with invalid key
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			keyFile := filepath.Join(tempDir, "invalid_key")
 			err = os.WriteFile(keyFile, []byte("not a valid key"), 0600)
@@ -189,7 +189,7 @@ var _ = Describe("Dryrun Command", func() {
 				"    privateKey: " + keyFile + "\n" +
 				"  instance:\n" +
 				"    hostUrl: localhost\n"
-			err = os.WriteFile(envFile, []byte(envContent), 0644)
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)

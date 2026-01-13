@@ -106,14 +106,14 @@ var _ = Describe("Cleanup Command", func() {
 			// Clear AWS region env vars
 			oldRegion := os.Getenv("AWS_REGION")
 			oldDefaultRegion := os.Getenv("AWS_DEFAULT_REGION")
-			os.Unsetenv("AWS_REGION")
-			os.Unsetenv("AWS_DEFAULT_REGION")
+			Expect(os.Unsetenv("AWS_REGION")).To(Succeed())
+			Expect(os.Unsetenv("AWS_DEFAULT_REGION")).To(Succeed())
 			defer func() {
 				if oldRegion != "" {
-					os.Setenv("AWS_REGION", oldRegion)
+					Expect(os.Setenv("AWS_REGION", oldRegion)).To(Succeed())
 				}
 				if oldDefaultRegion != "" {
-					os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
+					Expect(os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)).To(Succeed())
 				}
 			}()
 
@@ -131,12 +131,12 @@ var _ = Describe("Cleanup Command", func() {
 		It("should accept region from AWS_REGION env var", func() {
 			// Set AWS region env var
 			oldRegion := os.Getenv("AWS_REGION")
-			os.Setenv("AWS_REGION", "us-west-2")
+			Expect(os.Setenv("AWS_REGION", "us-west-2")).To(Succeed())
 			defer func() {
 				if oldRegion != "" {
-					os.Setenv("AWS_REGION", oldRegion)
+					_ = os.Setenv("AWS_REGION", oldRegion)
 				} else {
-					os.Unsetenv("AWS_REGION")
+					_ = os.Unsetenv("AWS_REGION")
 				}
 			}()
 
@@ -156,16 +156,16 @@ var _ = Describe("Cleanup Command", func() {
 			// Set AWS_DEFAULT_REGION env var
 			oldRegion := os.Getenv("AWS_REGION")
 			oldDefaultRegion := os.Getenv("AWS_DEFAULT_REGION")
-			os.Unsetenv("AWS_REGION")
-			os.Setenv("AWS_DEFAULT_REGION", "us-east-1")
+			Expect(os.Unsetenv("AWS_REGION")).To(Succeed())
+			Expect(os.Setenv("AWS_DEFAULT_REGION", "us-east-1")).To(Succeed())
 			defer func() {
 				if oldRegion != "" {
-					os.Setenv("AWS_REGION", oldRegion)
+					_ = os.Setenv("AWS_REGION", oldRegion)
 				}
 				if oldDefaultRegion != "" {
-					os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
+					_ = os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
 				} else {
-					os.Unsetenv("AWS_DEFAULT_REGION")
+					_ = os.Unsetenv("AWS_DEFAULT_REGION")
 				}
 			}()
 
@@ -185,14 +185,14 @@ var _ = Describe("Cleanup Command", func() {
 			// Clear AWS region env vars
 			oldRegion := os.Getenv("AWS_REGION")
 			oldDefaultRegion := os.Getenv("AWS_DEFAULT_REGION")
-			os.Unsetenv("AWS_REGION")
-			os.Unsetenv("AWS_DEFAULT_REGION")
+			Expect(os.Unsetenv("AWS_REGION")).To(Succeed())
+			Expect(os.Unsetenv("AWS_DEFAULT_REGION")).To(Succeed())
 			defer func() {
 				if oldRegion != "" {
-					os.Setenv("AWS_REGION", oldRegion)
+					_ = os.Setenv("AWS_REGION", oldRegion)
 				}
 				if oldDefaultRegion != "" {
-					os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
+					_ = os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
 				}
 			}()
 
