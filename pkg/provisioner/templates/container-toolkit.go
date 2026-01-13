@@ -41,9 +41,9 @@ if command -v nvidia-ctk &>/dev/null; then
     if [[ -n "$INSTALLED_VERSION" ]]; then
         if [[ -z "$VERSION" ]] || echo "$INSTALLED_VERSION" | grep -q "$VERSION"; then
             if holodeck_verify_toolkit; then
-        holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
-                    holodeck_mark_installed "$COMPONENT" "$INSTALLED_VERSION"
-                    exit 0
+                holodeck_log "INFO" "$COMPONENT" "Already installed: ${INSTALLED_VERSION}"
+                holodeck_mark_installed "$COMPONENT" "$INSTALLED_VERSION"
+                exit 0
             fi
         fi
     fi
@@ -167,13 +167,17 @@ if [[ "$GHCR_AVAILABLE" == "true" ]]; then
     # Extract packages from image
     CONTAINER_ID=$(sudo docker create "${GHCR_IMAGE}" 2>/dev/null || \
                    sudo podman create "${GHCR_IMAGE}" 2>/dev/null)
+    if [[ -z "${CONTAINER_ID}" ]]; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to create container from image ${GHCR_IMAGE}"
+        exit 1
+    fi
     if ! sudo docker cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null && \
        ! sudo podman cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null; then
         holodeck_log "ERROR" "$COMPONENT" "Failed to copy artifacts from container ${CONTAINER_ID}"
         exit 1
     fi
     sudo docker rm "${CONTAINER_ID}" 2>/dev/null || \
-    sudo podman rm "${CONTAINER_ID}" 2>/dev/null
+    sudo podman rm "${CONTAINER_ID}" 2>/dev/null || true
 
     holodeck_progress "$COMPONENT" 4 5 "Installing extracted packages"
 
@@ -386,13 +390,17 @@ if [[ "$GHCR_AVAILABLE" == "true" ]]; then
 
     CONTAINER_ID=$(sudo docker create "${GHCR_IMAGE}" 2>/dev/null || \
                    sudo podman create "${GHCR_IMAGE}" 2>/dev/null)
+    if [[ -z "${CONTAINER_ID}" ]]; then
+        holodeck_log "ERROR" "$COMPONENT" "Failed to create container from image ${GHCR_IMAGE}"
+        exit 1
+    fi
     if ! sudo docker cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null && \
        ! sudo podman cp "${CONTAINER_ID}:/artifacts" "${WORK_DIR}/" 2>/dev/null; then
         holodeck_log "ERROR" "$COMPONENT" "Failed to copy artifacts from container ${CONTAINER_ID}"
         exit 1
     fi
     sudo docker rm "${CONTAINER_ID}" 2>/dev/null || \
-    sudo podman rm "${CONTAINER_ID}" 2>/dev/null
+    sudo podman rm "${CONTAINER_ID}" 2>/dev/null || true
 
     holodeck_progress "$COMPONENT" 4 5 "Installing extracted packages"
 
