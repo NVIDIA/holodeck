@@ -172,6 +172,11 @@ var _ = DescribeTable("AWS Environment E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_kernel.yml"),
 		description: "Tests AWS environment with kernel features enabled",
 	}, Label("kernel")),
+	Entry("CTK Git Source Test", testConfig{
+		name:        "CTK Git Source Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_ctk_git.yml"),
+		description: "Tests AWS environment with CTK installed from git source",
+	}, Label("ctk-git")),
 )
 
 // Mark the table as parallel

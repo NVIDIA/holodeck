@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const (
@@ -41,10 +42,12 @@ type GitHubResolver struct {
 	client *http.Client
 }
 
-// NewGitHubResolver creates a new GitHubResolver.
+// NewGitHubResolver creates a new GitHubResolver with a default 30s timeout.
 func NewGitHubResolver() *GitHubResolver {
 	return &GitHubResolver{
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 

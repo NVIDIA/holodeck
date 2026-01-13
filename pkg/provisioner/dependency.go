@@ -152,6 +152,7 @@ type DependencyConfigurator interface {
 	Resolve() []ProvisionFunc
 }
 
+// NewDependencies creates a new DependencyResolver for the given environment.
 func NewDependencies(env v1alpha1.Environment) *DependencyResolver {
 	return &DependencyResolver{
 		Dependencies: []ProvisionFunc{},

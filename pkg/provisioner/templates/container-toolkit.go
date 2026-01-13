@@ -190,15 +190,31 @@ else
 
     holodeck_progress "$COMPONENT" 4 5 "Building from source"
 
-    # Install build dependencies
-    install_packages_with_retry golang-go make
+    # Install build dependencies - need recent Go version
+    install_packages_with_retry make curl
 
-    # Build
-    make build
+    # Install Go from official tarball (apt version is too old)
+    GO_VERSION="1.23.4"
+    if ! command -v /usr/local/go/bin/go &>/dev/null; then
+        holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION}"
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | \
+            sudo tar -C /usr/local -xzf -
+    fi
+    export PATH="/usr/local/go/bin:$PATH"
+    export GOTOOLCHAIN=auto
+
+    # Build command binaries
+    make cmds
 
     # Install binaries
     sudo install -m 755 nvidia-ctk /usr/local/bin/
     sudo install -m 755 nvidia-cdi-hook /usr/local/bin/
+    # Install additional binaries if they exist
+    for bin in nvidia-container-runtime nvidia-container-runtime-hook; do
+        if [[ -f "$bin" ]]; then
+            sudo install -m 755 "$bin" /usr/local/bin/
+        fi
+    done
 
     GHCR_DIGEST="source-build"
 fi
@@ -325,11 +341,31 @@ else
 
     holodeck_progress "$COMPONENT" 4 5 "Building from source"
 
-    install_packages_with_retry golang-go make
-    make build
+    # Install build dependencies - need recent Go version
+    install_packages_with_retry make curl
 
+    # Install Go from official tarball (apt version is too old)
+    GO_VERSION="1.23.4"
+    if ! command -v /usr/local/go/bin/go &>/dev/null; then
+        holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION}"
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | \
+            sudo tar -C /usr/local -xzf -
+    fi
+    export PATH="/usr/local/go/bin:$PATH"
+    export GOTOOLCHAIN=auto
+
+    # Build command binaries
+    make cmds
+
+    # Install binaries
     sudo install -m 755 nvidia-ctk /usr/local/bin/
     sudo install -m 755 nvidia-cdi-hook /usr/local/bin/
+    # Install additional binaries if they exist
+    for bin in nvidia-container-runtime nvidia-container-runtime-hook; do
+        if [[ -f "$bin" ]]; then
+            sudo install -m 755 "$bin" /usr/local/bin/
+        fi
+    done
 
     GHCR_DIGEST="source-build"
 fi

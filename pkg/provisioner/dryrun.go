@@ -76,6 +76,7 @@ func validateCTKConfig(log *logger.FunLogger, env v1alpha1.Environment) error {
 	return nil
 }
 
+// Dryrun validates the environment configuration without making changes.
 func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 	// Resolve dependencies from top to bottom
 	log.Wg.Add(1)
