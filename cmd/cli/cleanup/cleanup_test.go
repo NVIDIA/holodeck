@@ -18,10 +18,12 @@ package cleanup_test
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	cli "github.com/urfave/cli/v2"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/cleanup"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -84,6 +86,126 @@ var _ = Describe("Cleanup Command", func() {
 			cmd := cleanup.NewCommand(log)
 			Expect(cmd.Description).NotTo(BeEmpty())
 			Expect(cmd.Description).To(ContainSubstring("VPC"))
+		})
+	})
+
+	Describe("Command action", func() {
+		It("should require at least one VPC ID argument", func() {
+			cmd := cleanup.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Run without VPC ID argument
+			err := app.Run([]string{"holodeck", "cleanup"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("VPC ID is required"))
+		})
+
+		It("should require region when AWS_REGION is not set", func() {
+			// Clear AWS region env vars
+			oldRegion := os.Getenv("AWS_REGION")
+			oldDefaultRegion := os.Getenv("AWS_DEFAULT_REGION")
+			os.Unsetenv("AWS_REGION")
+			os.Unsetenv("AWS_DEFAULT_REGION")
+			defer func() {
+				if oldRegion != "" {
+					os.Setenv("AWS_REGION", oldRegion)
+				}
+				if oldDefaultRegion != "" {
+					os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
+				}
+			}()
+
+			cmd := cleanup.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Run with VPC ID but no region
+			err := app.Run([]string{"holodeck", "cleanup", "vpc-12345"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("AWS region must be specified"))
+		})
+
+		It("should accept region from AWS_REGION env var", func() {
+			// Set AWS region env var
+			oldRegion := os.Getenv("AWS_REGION")
+			os.Setenv("AWS_REGION", "us-west-2")
+			defer func() {
+				if oldRegion != "" {
+					os.Setenv("AWS_REGION", oldRegion)
+				} else {
+					os.Unsetenv("AWS_REGION")
+				}
+			}()
+
+			cmd := cleanup.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Run with VPC ID - will fail at AWS connection but validates region handling
+			err := app.Run([]string{"holodeck", "cleanup", "vpc-12345"})
+			Expect(err).To(HaveOccurred())
+			// Should fail at AWS connection, not at region validation
+			Expect(err.Error()).NotTo(ContainSubstring("AWS region must be specified"))
+		})
+
+		It("should accept region from AWS_DEFAULT_REGION env var", func() {
+			// Set AWS_DEFAULT_REGION env var
+			oldRegion := os.Getenv("AWS_REGION")
+			oldDefaultRegion := os.Getenv("AWS_DEFAULT_REGION")
+			os.Unsetenv("AWS_REGION")
+			os.Setenv("AWS_DEFAULT_REGION", "us-east-1")
+			defer func() {
+				if oldRegion != "" {
+					os.Setenv("AWS_REGION", oldRegion)
+				}
+				if oldDefaultRegion != "" {
+					os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
+				} else {
+					os.Unsetenv("AWS_DEFAULT_REGION")
+				}
+			}()
+
+			cmd := cleanup.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Run with VPC ID - will fail at AWS connection but validates region handling
+			err := app.Run([]string{"holodeck", "cleanup", "vpc-12345"})
+			Expect(err).To(HaveOccurred())
+			// Should fail at AWS connection, not at region validation
+			Expect(err.Error()).NotTo(ContainSubstring("AWS region must be specified"))
+		})
+
+		It("should accept region from --region flag", func() {
+			// Clear AWS region env vars
+			oldRegion := os.Getenv("AWS_REGION")
+			oldDefaultRegion := os.Getenv("AWS_DEFAULT_REGION")
+			os.Unsetenv("AWS_REGION")
+			os.Unsetenv("AWS_DEFAULT_REGION")
+			defer func() {
+				if oldRegion != "" {
+					os.Setenv("AWS_REGION", oldRegion)
+				}
+				if oldDefaultRegion != "" {
+					os.Setenv("AWS_DEFAULT_REGION", oldDefaultRegion)
+				}
+			}()
+
+			cmd := cleanup.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Run with --region flag - will fail at AWS connection
+			err := app.Run([]string{"holodeck", "cleanup", "--region", "eu-west-1", "vpc-12345"})
+			Expect(err).To(HaveOccurred())
+			// Should fail at AWS connection, not at region validation
+			Expect(err.Error()).NotTo(ContainSubstring("AWS region must be specified"))
 		})
 	})
 })

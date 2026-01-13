@@ -18,10 +18,13 @@ package list_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	cli "github.com/urfave/cli/v2"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/list"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -81,6 +84,76 @@ var _ = Describe("List Command", func() {
 		It("should have an action", func() {
 			cmd := list.NewCommand(log)
 			Expect(cmd.Action).NotTo(BeNil())
+		})
+
+		It("should handle non-existent cache directory", func() {
+			cmd := list.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Use a non-existent directory
+			err := app.Run([]string{"holodeck", "list", "--cachepath", "/nonexistent/cache"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to list instances"))
+		})
+
+		It("should handle empty cache directory", func() {
+			// Create empty temp cache directory
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer os.RemoveAll(tempDir)
+
+			cmd := list.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+			Expect(err).NotTo(HaveOccurred())
+			// Should output "No instances found"
+			Expect(buf.String()).To(ContainSubstring("No instances found"))
+		})
+
+		It("should skip non-YAML files in cache directory", func() {
+			// Create temp cache directory with non-YAML file
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer os.RemoveAll(tempDir)
+
+			// Create a non-YAML file
+			err = os.WriteFile(filepath.Join(tempDir, "not-yaml.txt"), []byte("test"), 0644)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := list.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+			Expect(err).NotTo(HaveOccurred())
+			// Should output "No instances found" since txt file is skipped
+			Expect(buf.String()).To(ContainSubstring("No instances found"))
+		})
+
+		It("should handle invalid cache files gracefully", func() {
+			// Create temp cache directory with invalid YAML
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer os.RemoveAll(tempDir)
+
+			// Create an invalid YAML file
+			err = os.WriteFile(filepath.Join(tempDir, "invalid.yaml"), []byte("invalid: [yaml"), 0644)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := list.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Should not fail, just skip invalid file and show warning
+			err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
