@@ -89,7 +89,7 @@ var _ = Describe("Status Command", func() {
 			// Create temp cache directory
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			cmd := status.NewCommand(log)
 			app := &cli.App{
@@ -107,11 +107,11 @@ var _ = Describe("Status Command", func() {
 			// Create temp cache directory with invalid cache file
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			// Create an invalid cache file
 			cacheFile := filepath.Join(tempDir, "test-instance.yaml")
-			err = os.WriteFile(cacheFile, []byte("invalid: [yaml"), 0644)
+			err = os.WriteFile(cacheFile, []byte("invalid: [yaml"), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := status.NewCommand(log)

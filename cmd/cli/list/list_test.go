@@ -102,7 +102,7 @@ var _ = Describe("List Command", func() {
 			// Create empty temp cache directory
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			cmd := list.NewCommand(log)
 			app := &cli.App{
@@ -119,10 +119,10 @@ var _ = Describe("List Command", func() {
 			// Create temp cache directory with non-YAML file
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			// Create a non-YAML file
-			err = os.WriteFile(filepath.Join(tempDir, "not-yaml.txt"), []byte("test"), 0644)
+			err = os.WriteFile(filepath.Join(tempDir, "not-yaml.txt"), []byte("test"), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
@@ -140,10 +140,10 @@ var _ = Describe("List Command", func() {
 			// Create temp cache directory with invalid YAML
 			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tempDir)
+			DeferCleanup(os.RemoveAll, tempDir)
 
 			// Create an invalid YAML file
-			err = os.WriteFile(filepath.Join(tempDir, "invalid.yaml"), []byte("invalid: [yaml"), 0644)
+			err = os.WriteFile(filepath.Join(tempDir, "invalid.yaml"), []byte("invalid: [yaml"), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
