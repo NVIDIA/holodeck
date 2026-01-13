@@ -211,15 +211,87 @@ type ExtraPortMapping struct {
 	HostPort      int `json:"hostPort"`
 }
 
+// CTKSource defines where to install the NVIDIA Container Toolkit from.
+// +kubebuilder:validation:Enum=package;git;latest
+type CTKSource string
+
+const (
+	// CTKSourcePackage installs from distribution packages (default)
+	CTKSourcePackage CTKSource = "package"
+	// CTKSourceGit installs from a specific git reference
+	CTKSourceGit CTKSource = "git"
+	// CTKSourceLatest tracks a moving branch at provision time
+	CTKSourceLatest CTKSource = "latest"
+)
+
+// CTKPackageSpec defines configuration for package-based installation.
+type CTKPackageSpec struct {
+	// Channel selects stable or experimental packages.
+	// +kubebuilder:validation:Enum=stable;experimental
+	// +kubebuilder:default=stable
+	// +optional
+	Channel string `json:"channel,omitempty"`
+
+	// Version pins to a specific package version (e.g., "1.17.3-1").
+	// +optional
+	Version string `json:"version,omitempty"`
+}
+
+// CTKGitSpec defines configuration for git-based installation.
+type CTKGitSpec struct {
+	// Repo is the git repository URL.
+	// +kubebuilder:default="https://github.com/NVIDIA/nvidia-container-toolkit.git"
+	// +optional
+	Repo string `json:"repo,omitempty"`
+
+	// Ref is the git reference (commit SHA, tag, branch, or PR ref).
+	// Examples: "v1.17.3", "refs/tags/v1.17.3", "refs/heads/main", "abc123"
+	// +required
+	Ref string `json:"ref"`
+}
+
+// CTKLatestSpec defines configuration for latest branch tracking.
+type CTKLatestSpec struct {
+	// Track specifies the branch to track at provision time.
+	// +kubebuilder:default=main
+	// +optional
+	Track string `json:"track,omitempty"`
+
+	// Repo is the git repository URL.
+	// +kubebuilder:default="https://github.com/NVIDIA/nvidia-container-toolkit.git"
+	// +optional
+	Repo string `json:"repo,omitempty"`
+}
+
+// NVIDIAContainerToolkit defines the NVIDIA Container Toolkit configuration.
 type NVIDIAContainerToolkit struct {
 	Install bool `json:"install"`
-	// If not set the latest stable version will be used
+
+	// Source determines installation method.
+	// +kubebuilder:default=package
 	// +optional
-	Version string `json:"version"`
+	Source CTKSource `json:"source,omitempty"`
+
+	// Package source configuration (when source=package).
+	// +optional
+	Package *CTKPackageSpec `json:"package,omitempty"`
+
+	// Git source configuration (when source=git).
+	// +optional
+	Git *CTKGitSpec `json:"git,omitempty"`
+
+	// Latest source configuration (when source=latest).
+	// +optional
+	Latest *CTKLatestSpec `json:"latest,omitempty"`
+
 	// EnableCDI enables the Container Device Interface (CDI) in the selected
 	// container runtime.
 	// +optional
-	EnableCDI bool `json:"enableCDI"`
+	EnableCDI bool `json:"enableCDI,omitempty"`
+
+	// Version is deprecated, use Package.Version instead.
+	// +optional
+	Version string `json:"version,omitempty"`
 }
 
 // Kernel defines the kernel configuration

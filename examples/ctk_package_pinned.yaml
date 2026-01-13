@@ -1,0 +1,32 @@
+# Example: Install NVIDIA Container Toolkit with version pinning
+#
+# This configuration installs CTK from distribution packages with an
+# exact version pin. Recommended for reproducible production environments.
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: ctk-pinned-test
+  description: "Test environment with pinned CTK package version"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+    source: package
+    package:
+      channel: stable       # or "experimental"
+      version: "1.17.3-1"   # Exact package version
+    enableCDI: true
+  nvidiaDriver:
+    install: true
