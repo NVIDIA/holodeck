@@ -28,6 +28,159 @@ import (
 
 var _ = Describe("IP Utilities", func() {
 
+	Describe("GetIPAddressWithServices", func() {
+		var server *httptest.Server
+
+		AfterEach(func() {
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		Context("when first service returns valid public IP", func() {
+			BeforeEach(func() {
+				server = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte("203.0.113.1")) //nolint:errcheck // test
+					}))
+			})
+
+			It("should return the IP with /32 suffix", func() {
+				services := []IPService{{URL: server.URL, Timeout: 5 * time.Second}}
+				ip, err := GetIPAddressWithServices(services)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ip).To(Equal("203.0.113.1/32"))
+			})
+		})
+
+		Context("when first service fails but second succeeds", func() {
+			var server2 *httptest.Server
+
+			BeforeEach(func() {
+				// First server returns error
+				server = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusInternalServerError)
+					}))
+				// Second server returns valid IP
+				server2 = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte("8.8.8.8")) //nolint:errcheck // test
+					}))
+			})
+
+			AfterEach(func() {
+				if server2 != nil {
+					server2.Close()
+				}
+			})
+
+			It("should fallback to second service", func() {
+				services := []IPService{
+					{URL: server.URL, Timeout: 5 * time.Second},
+					{URL: server2.URL, Timeout: 5 * time.Second},
+				}
+				ip, err := GetIPAddressWithServices(services)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ip).To(Equal("8.8.8.8/32"))
+			})
+		})
+
+		Context("when service returns private IP", func() {
+			var server2 *httptest.Server
+
+			BeforeEach(func() {
+				// First server returns private IP
+				server = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte("192.168.1.1")) //nolint:errcheck // test
+					}))
+				// Second server returns valid public IP
+				server2 = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte("1.1.1.1")) //nolint:errcheck // test
+					}))
+			})
+
+			AfterEach(func() {
+				if server2 != nil {
+					server2.Close()
+				}
+			})
+
+			It("should skip private IP and use next service", func() {
+				services := []IPService{
+					{URL: server.URL, Timeout: 5 * time.Second},
+					{URL: server2.URL, Timeout: 5 * time.Second},
+				}
+				ip, err := GetIPAddressWithServices(services)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ip).To(Equal("1.1.1.1/32"))
+			})
+		})
+
+		Context("when all services fail", func() {
+			BeforeEach(func() {
+				server = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusInternalServerError)
+					}))
+			})
+
+			It("should return an error", func() {
+				services := []IPService{{URL: server.URL, Timeout: 5 * time.Second}}
+				_, err := GetIPAddressWithServices(services)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to get IP address"))
+			})
+		})
+
+		Context("when no services provided", func() {
+			It("should return an error", func() {
+				_, err := GetIPAddressWithServices([]IPService{})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no IP services provided"))
+			})
+		})
+
+		Context("when service returns invalid IP format", func() {
+			BeforeEach(func() {
+				server = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte("not-an-ip")) //nolint:errcheck // test
+					}))
+			})
+
+			It("should return an error", func() {
+				services := []IPService{{URL: server.URL, Timeout: 5 * time.Second}}
+				_, err := GetIPAddressWithServices(services)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to get IP address"))
+			})
+		})
+	})
+
+	Describe("DefaultIPServices", func() {
+		It("should return non-empty list of services", func() {
+			services := DefaultIPServices()
+			Expect(services).NotTo(BeEmpty())
+			Expect(len(services)).To(BeNumerically(">=", 1))
+		})
+
+		It("should have valid URLs", func() {
+			services := DefaultIPServices()
+			for _, svc := range services {
+				Expect(svc.URL).To(HavePrefix("https://"))
+				Expect(svc.Timeout).To(BeNumerically(">", 0))
+			}
+		})
+	})
+
 	Describe("isValidPublicIP", func() {
 		DescribeTable("validating IP addresses",
 			func(ip string, expected bool) {
@@ -182,6 +335,23 @@ var _ = Describe("IP Utilities", func() {
 				_, err := getIPFromHTTPService(ctx,
 					"http://127.0.0.1:59999/unreachable", 1*time.Second)
 				Expect(err).To(HaveOccurred())
+			})
+		})
+
+		Context("when timeout is exceeded", func() {
+			BeforeEach(func() {
+				server = httptest.NewServer(http.HandlerFunc(
+					func(w http.ResponseWriter, r *http.Request) {
+						time.Sleep(200 * time.Millisecond)
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte("203.0.113.1")) //nolint:errcheck // test
+					}))
+			})
+
+			It("should return an error", func() {
+				_, err := getIPFromHTTPService(ctx, server.URL, 50*time.Millisecond)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error fetching IP"))
 			})
 		})
 
