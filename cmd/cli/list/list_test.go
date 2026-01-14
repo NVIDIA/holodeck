@@ -18,6 +18,7 @@ package list_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -82,7 +83,10 @@ spec:
 // captureStdout captures stdout during function execution.
 func captureStdout(fn func()) string {
 	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
+	r, w, err := os.Pipe()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create pipe: %v", err))
+	}
 	os.Stdout = w
 
 	fn()

@@ -404,47 +404,11 @@ status:
 				Expect(provider.Name()).To(Equal("aws"))
 			})
 
-			It("should use AWS_REGION environment variable if set", func() {
+			It("should create provider successfully when AWS_REGION env var is set", func() {
 				// Save original and set test value
 				origRegion := os.Getenv("AWS_REGION")
 				_ = os.Setenv("AWS_REGION", "eu-west-1")
 				defer func() { _ = os.Setenv("AWS_REGION", origRegion) }()
-
-				mockClient := aws.NewMockEC2Client()
-				env := v1alpha1.Environment{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "test-env",
-					},
-					Spec: v1alpha1.EnvironmentSpec{
-						Provider: v1alpha1.ProviderAWS,
-						Instance: v1alpha1.Instance{
-							Type:   "t3.medium",
-							Region: "us-east-1", // This should be overridden
-						},
-					},
-				}
-
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
-				Expect(err).NotTo(HaveOccurred())
-				Expect(provider).NotTo(BeNil())
-			})
-		})
-
-		Context("with GitHub environment variables", func() {
-			It("should include GitHub tags when env vars are set", func() {
-				// Set GitHub environment variables
-				_ = os.Setenv("GITHUB_SHA", "abc123def456")
-				_ = os.Setenv("GITHUB_ACTOR", "test-user")
-				_ = os.Setenv("GITHUB_REF_NAME", "main")
-				_ = os.Setenv("GITHUB_REPOSITORY", "NVIDIA/holodeck")
-				_ = os.Setenv("GITHUB_RUN_ID", "12345")
-				defer func() {
-					_ = os.Unsetenv("GITHUB_SHA")
-					_ = os.Unsetenv("GITHUB_ACTOR")
-					_ = os.Unsetenv("GITHUB_REF_NAME")
-					_ = os.Unsetenv("GITHUB_REPOSITORY")
-					_ = os.Unsetenv("GITHUB_RUN_ID")
-				}()
 
 				mockClient := aws.NewMockEC2Client()
 				env := v1alpha1.Environment{
@@ -464,6 +428,44 @@ status:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(provider).NotTo(BeNil())
 			})
+		})
+
+		Context("with GitHub environment variables", func() {
+			It("should create provider successfully when GitHub CI env vars are set",
+				func() {
+					// Set GitHub environment variables to simulate CI environment
+					_ = os.Setenv("GITHUB_SHA", "abc123def456")
+					_ = os.Setenv("GITHUB_ACTOR", "test-user")
+					_ = os.Setenv("GITHUB_REF_NAME", "main")
+					_ = os.Setenv("GITHUB_REPOSITORY", "NVIDIA/holodeck")
+					_ = os.Setenv("GITHUB_RUN_ID", "12345")
+					defer func() {
+						_ = os.Unsetenv("GITHUB_SHA")
+						_ = os.Unsetenv("GITHUB_ACTOR")
+						_ = os.Unsetenv("GITHUB_REF_NAME")
+						_ = os.Unsetenv("GITHUB_REPOSITORY")
+						_ = os.Unsetenv("GITHUB_RUN_ID")
+					}()
+
+					mockClient := aws.NewMockEC2Client()
+					env := v1alpha1.Environment{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test-env",
+						},
+						Spec: v1alpha1.EnvironmentSpec{
+							Provider: v1alpha1.ProviderAWS,
+							Instance: v1alpha1.Instance{
+								Type:   "t3.medium",
+								Region: "us-east-1",
+							},
+						},
+					}
+
+					provider, err := aws.New(log, env, tmpFile,
+						aws.WithEC2Client(mockClient))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(provider).NotTo(BeNil())
+				})
 		})
 	})
 
