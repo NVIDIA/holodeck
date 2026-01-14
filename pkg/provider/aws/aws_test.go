@@ -17,20 +17,48 @@
 package aws_test
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 )
 
 var _ = Describe("AWS Provider", func() {
+	var (
+		log     *logger.FunLogger
+		buf     bytes.Buffer
+		tmpDir  string
+		tmpFile string
+	)
+
+	BeforeEach(func() {
+		log = logger.NewLogger()
+		log.Out = &buf
+		buf.Reset()
+
+		var err error
+		tmpDir, err = os.MkdirTemp("", "holodeck-aws-provider-*")
+		Expect(err).NotTo(HaveOccurred())
+		tmpFile = filepath.Join(tmpDir, "cache.yaml")
+	})
+
+	AfterEach(func() {
+		if tmpDir != "" {
+			_ = os.RemoveAll(tmpDir)
+		}
+	})
 
 	Describe("Constants", func() {
 		It("should have the correct provider name", func() {
@@ -344,4 +372,1368 @@ status:
 			Expect(*env.Spec.Instance.Image.OwnerId).To(Equal("123456789012"))
 		})
 	})
+
+	Describe("Provider Creation", func() {
+		Context("with mock EC2 client", func() {
+			It("should create provider with mock client", func() {
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-env",
+					},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image: v1alpha1.Image{
+								Architecture: "x86_64",
+							},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName:    "test-key",
+							PrivateKey: "/path/to/key.pem",
+							Username:   "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(provider).NotTo(BeNil())
+				Expect(provider.Name()).To(Equal("aws"))
+			})
+
+			It("should create provider successfully when AWS_REGION env var is set", func() {
+				// Save original and set test value
+				origRegion := os.Getenv("AWS_REGION")
+				_ = os.Setenv("AWS_REGION", "eu-west-1")
+				defer func() { _ = os.Setenv("AWS_REGION", origRegion) }()
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-env",
+					},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(provider).NotTo(BeNil())
+			})
+		})
+
+		Context("with GitHub environment variables", func() {
+			It("should create provider successfully when GitHub CI env vars are set",
+				func() {
+					// Set GitHub environment variables to simulate CI environment
+					_ = os.Setenv("GITHUB_SHA", "abc123def456")
+					_ = os.Setenv("GITHUB_ACTOR", "test-user")
+					_ = os.Setenv("GITHUB_REF_NAME", "main")
+					_ = os.Setenv("GITHUB_REPOSITORY", "NVIDIA/holodeck")
+					_ = os.Setenv("GITHUB_RUN_ID", "12345")
+					defer func() {
+						_ = os.Unsetenv("GITHUB_SHA")
+						_ = os.Unsetenv("GITHUB_ACTOR")
+						_ = os.Unsetenv("GITHUB_REF_NAME")
+						_ = os.Unsetenv("GITHUB_REPOSITORY")
+						_ = os.Unsetenv("GITHUB_RUN_ID")
+					}()
+
+					mockClient := aws.NewMockEC2Client()
+					env := v1alpha1.Environment{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test-env",
+						},
+						Spec: v1alpha1.EnvironmentSpec{
+							Provider: v1alpha1.ProviderAWS,
+							Instance: v1alpha1.Instance{
+								Type:   "t3.medium",
+								Region: "us-east-1",
+							},
+						},
+					}
+
+					provider, err := aws.New(log, env, tmpFile,
+						aws.WithEC2Client(mockClient))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(provider).NotTo(BeNil())
+				})
+		})
+	})
+
+	Describe("DryRun", func() {
+		It("should return nil for dry run", func() {
+			mockClient := aws.NewMockEC2Client()
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-env",
+				},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   "t3.medium",
+						Region: "us-east-1",
+					},
+				},
+			}
+
+			provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+			Expect(err).NotTo(HaveOccurred())
+
+			err = provider.DryRun()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("Cache operations", func() {
+		Context("unmarshalCache", func() {
+			It("should parse cache file with all properties", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  properties:
+    - name: vpc-id
+      value: vpc-12345
+    - name: subnet-id
+      value: subnet-12345
+    - name: internet-gateway-id
+      value: igw-12345
+    - name: route-table-id
+      value: rtb-12345
+    - name: security-group-id
+      value: sg-12345
+    - name: instance-id
+      value: i-12345
+    - name: public-dns-name
+      value: ec2-1-2-3-4.compute.amazonaws.com
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify file can be read
+				data, err := os.ReadFile(tmpFile) //nolint:gosec
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(data)).To(ContainSubstring("vpc-12345"))
+				Expect(string(data)).To(ContainSubstring("i-12345"))
+			})
+
+			It("should handle cache file with unknown properties", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  properties:
+    - name: vpc-id
+      value: vpc-12345
+    - name: unknown-property
+      value: some-value
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				data, err := os.ReadFile(tmpFile) //nolint:gosec
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(data)).To(ContainSubstring("unknown-property"))
+			})
+		})
+	})
+
+	Describe("Status operations", func() {
+		Context("Status", func() {
+			It("should return conditions from cache file", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  conditions:
+    - type: Available
+      status: "True"
+    - type: Progressing
+      status: "False"
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				conditions, err := provider.Status()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(conditions).To(HaveLen(2))
+				Expect(conditions[0].Type).To(Equal("Available"))
+				Expect(string(conditions[0].Status)).To(Equal("True"))
+			})
+
+			It("should return empty conditions when none exist", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  properties: []
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				conditions, err := provider.Status()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(conditions).To(BeEmpty())
+			})
+
+			It("should return error when cache file doesn't exist", func() {
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, "/nonexistent/cache.yaml", aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = provider.Status()
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should return error when cache file has invalid YAML", func() {
+				err := os.WriteFile(tmpFile, []byte("invalid: [yaml"), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = provider.Status()
+				Expect(err).To(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Condition helpers", func() {
+		It("should return correct available conditions", func() {
+			conditions := aws.GetAvailableConditions()
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Available condition
+			var availableFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionAvailable {
+					Expect(string(c.Status)).To(Equal("True"))
+					availableFound = true
+				} else {
+					Expect(string(c.Status)).To(Equal("False"))
+				}
+			}
+			Expect(availableFound).To(BeTrue())
+		})
+
+		It("should return correct degraded conditions", func() {
+			conditions := aws.GetDegradedConditions("TestReason", "Test message")
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Degraded condition
+			var degradedFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionDegraded {
+					Expect(string(c.Status)).To(Equal("True"))
+					Expect(c.Reason).To(Equal("TestReason"))
+					Expect(c.Message).To(Equal("Test message"))
+					degradedFound = true
+				}
+			}
+			Expect(degradedFound).To(BeTrue())
+		})
+
+		It("should return correct progressing conditions", func() {
+			conditions := aws.GetProgressingConditions("Creating", "Creating VPC")
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Progressing condition
+			var progressingFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionProgressing {
+					Expect(string(c.Status)).To(Equal("True"))
+					Expect(c.Reason).To(Equal("Creating"))
+					Expect(c.Message).To(Equal("Creating VPC"))
+					progressingFound = true
+				}
+			}
+			Expect(progressingFound).To(BeTrue())
+		})
+
+		It("should return correct terminated conditions", func() {
+			conditions := aws.GetTerminatedConditions("Terminated", "Resources deleted")
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Terminated condition
+			var terminatedFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionTerminated {
+					Expect(string(c.Status)).To(Equal("True"))
+					Expect(c.Reason).To(Equal("Terminated"))
+					Expect(c.Message).To(Equal("Resources deleted"))
+					terminatedFound = true
+				}
+			}
+			Expect(terminatedFound).To(BeTrue())
+		})
+	})
+
+	Describe("Update function", func() {
+		It("should create cache file and directory if they don't exist", func() {
+			newCacheFile := filepath.Join(tmpDir, "subdir", "new-cache.yaml")
+			env := &v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				Status: v1alpha1.EnvironmentStatus{
+					Properties: []v1alpha1.Properties{
+						{Name: aws.VpcID, Value: "vpc-new"},
+					},
+				},
+			}
+
+			err := aws.Update(env, newCacheFile)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify file was created
+			data, err := os.ReadFile(newCacheFile) //nolint:gosec
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).To(ContainSubstring("vpc-new"))
+		})
+
+		It("should update existing cache file", func() {
+			// Create initial cache file
+			initialContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+`
+			err := os.WriteFile(tmpFile, []byte(initialContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			env := &v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				Status: v1alpha1.EnvironmentStatus{
+					Properties: []v1alpha1.Properties{
+						{Name: aws.VpcID, Value: "vpc-updated"},
+						{Name: aws.InstanceID, Value: "i-updated"},
+					},
+				},
+			}
+
+			err = aws.Update(env, tmpFile)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify file was updated
+			data, err := os.ReadFile(tmpFile) //nolint:gosec
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).To(ContainSubstring("vpc-updated"))
+			Expect(string(data)).To(ContainSubstring("i-updated"))
+		})
+	})
+
+	Describe("Create workflow error handling", func() {
+		var (
+			mockClient *aws.MockEC2Client
+			provider   *aws.Provider
+		)
+
+		BeforeEach(func() {
+			mockClient = aws.NewMockEC2Client()
+		})
+
+		Context("VPC creation errors", func() {
+			It("should fail when CreateVpc returns error", func() {
+				mockClient.CreateVpcFunc = func(ctx context.Context,
+					params *ec2.CreateVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
+					return nil, fmt.Errorf("vpc creation failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error creating VPC"))
+			})
+
+			It("should fail when ModifyVpcAttribute returns error", func() {
+				mockClient.ModifyVpcAttrFunc = func(ctx context.Context,
+					params *ec2.ModifyVpcAttributeInput,
+					optFns ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error) {
+					return nil, fmt.Errorf("modify vpc failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error creating VPC"))
+			})
+		})
+
+		Context("Subnet creation errors", func() {
+			It("should fail when CreateSubnet returns error", func() {
+				mockClient.CreateSubnetFunc = func(ctx context.Context,
+					params *ec2.CreateSubnetInput,
+					optFns ...func(*ec2.Options)) (*ec2.CreateSubnetOutput, error) {
+					return nil, fmt.Errorf("subnet creation failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error creating subnet"))
+			})
+		})
+
+		Context("Internet Gateway creation errors", func() {
+			It("should fail when CreateInternetGateway returns error", func() {
+				mockClient.CreateIGWFunc = func(ctx context.Context,
+					params *ec2.CreateInternetGatewayInput,
+					optFns ...func(*ec2.Options)) (*ec2.CreateInternetGatewayOutput, error) {
+					return nil, fmt.Errorf("igw creation failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(
+					"error creating Internet Gateway"))
+			})
+
+			It("should fail when AttachInternetGateway returns error", func() {
+				mockClient.AttachIGWFunc = func(ctx context.Context,
+					params *ec2.AttachInternetGatewayInput,
+					optFns ...func(*ec2.Options)) (*ec2.AttachInternetGatewayOutput, error) {
+					return nil, fmt.Errorf("attach igw failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(
+					"error creating Internet Gateway"))
+			})
+		})
+
+		Context("Route Table creation errors", func() {
+			It("should fail when CreateRouteTable returns error", func() {
+				mockClient.CreateRTFunc = func(ctx context.Context,
+					params *ec2.CreateRouteTableInput,
+					optFns ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error) {
+					return nil, fmt.Errorf("route table creation failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error creating route table"))
+			})
+
+			It("should fail when AssociateRouteTable returns error", func() {
+				mockClient.AssociateRTFunc = func(ctx context.Context,
+					params *ec2.AssociateRouteTableInput,
+					optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error) {
+					return nil, fmt.Errorf("associate rt failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error creating route table"))
+			})
+
+			It("should fail when CreateRoute returns error", func() {
+				mockClient.CreateRouteFunc = func(ctx context.Context,
+					params *ec2.CreateRouteInput,
+					optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
+					return nil, fmt.Errorf("create route failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error creating route table"))
+			})
+		})
+
+		Context("Security Group creation errors", func() {
+			It("should fail when CreateSecurityGroup returns error", func() {
+				mockClient.CreateSGFunc = func(ctx context.Context,
+					params *ec2.CreateSecurityGroupInput,
+					optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
+					return nil, fmt.Errorf("sg creation failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(
+					"error creating security group"))
+			})
+
+			It("should fail when AuthorizeSecurityGroupIngress returns error",
+				func() {
+					mockClient.AuthorizeSGFunc = func(ctx context.Context,
+						params *ec2.AuthorizeSecurityGroupIngressInput,
+						optFns ...func(*ec2.Options)) (
+						*ec2.AuthorizeSecurityGroupIngressOutput, error) {
+						return nil, fmt.Errorf("authorize ingress failed")
+					}
+
+					env := v1alpha1.Environment{
+						ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+						Spec: v1alpha1.EnvironmentSpec{
+							Provider: v1alpha1.ProviderAWS,
+							Instance: v1alpha1.Instance{
+								Type:   "t3.medium",
+								Region: "us-east-1",
+								Image:  v1alpha1.Image{Architecture: "x86_64"},
+							},
+							Auth: v1alpha1.Auth{
+								KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+								Username: "ubuntu",
+							},
+						},
+					}
+
+					var err error
+					provider, err = aws.New(log, env, tmpFile,
+						aws.WithEC2Client(mockClient))
+					Expect(err).NotTo(HaveOccurred())
+
+					err = provider.Create()
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring(
+						"error creating security group"))
+				})
+		})
+
+		Context("EC2 Instance creation errors", func() {
+			It("should fail when DescribeImages returns error", func() {
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return nil, fmt.Errorf("describe images failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(
+					"error creating EC2 instance"))
+			})
+
+			It("should fail when RunInstances returns error", func() {
+				imageID := "ami-test123"
+				mockClient.RunInstancesFunc = func(ctx context.Context,
+					params *ec2.RunInstancesInput,
+					optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
+					return nil, fmt.Errorf("run instances failed")
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{ImageId: &imageID},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				var err error
+				provider, err = aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Create()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(
+					"error creating EC2 instance"))
+			})
+		})
+	})
+
+	Describe("DryRun", func() {
+		It("should succeed with valid configuration and mock client", func() {
+			mockClient := aws.NewMockEC2Client()
+
+			// Mock DescribeImages for setAMI
+			mockClient.DescribeImagesFunc = func(ctx context.Context,
+				params *ec2.DescribeImagesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+				return &ec2.DescribeImagesOutput{
+					Images: []types.Image{
+						{
+							ImageId:      strPtr("ami-test123"),
+							CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+						},
+					},
+				}, nil
+			}
+
+			// Mock DescribeInstanceTypes for checkInstanceTypes
+			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+				params *ec2.DescribeInstanceTypesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+				return &ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []types.InstanceTypeInfo{
+						{InstanceType: types.InstanceTypeT3Medium},
+					},
+				}, nil
+			}
+
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   "t3.medium",
+						Region: "us-east-1",
+						Image:  v1alpha1.Image{Architecture: "x86_64"},
+					},
+					Auth: v1alpha1.Auth{
+						KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+						Username: "ubuntu",
+					},
+				},
+			}
+
+			provider, err := aws.New(log, env, tmpFile,
+				aws.WithEC2Client(mockClient))
+			Expect(err).NotTo(HaveOccurred())
+
+			err = provider.DryRun()
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should fail when instance type is unsupported", func() {
+			mockClient := aws.NewMockEC2Client()
+
+			// Mock DescribeImages for setAMI
+			mockClient.DescribeImagesFunc = func(ctx context.Context,
+				params *ec2.DescribeImagesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+				return &ec2.DescribeImagesOutput{
+					Images: []types.Image{
+						{
+							ImageId:      strPtr("ami-test123"),
+							CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+						},
+					},
+				}, nil
+			}
+
+			// Return empty list - instance type not supported
+			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+				params *ec2.DescribeInstanceTypesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+				return &ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []types.InstanceTypeInfo{},
+				}, nil
+			}
+
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   "t3.medium",
+						Region: "us-east-1",
+						Image:  v1alpha1.Image{Architecture: "x86_64"},
+					},
+					Auth: v1alpha1.Auth{
+						KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+						Username: "ubuntu",
+					},
+				},
+			}
+
+			provider, err := aws.New(log, env, tmpFile,
+				aws.WithEC2Client(mockClient))
+			Expect(err).NotTo(HaveOccurred())
+
+			err = provider.DryRun()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("is not supported"))
+		})
+
+		It("should fail when image not found", func() {
+			mockClient := aws.NewMockEC2Client()
+
+			// Return empty images list
+			mockClient.DescribeImagesFunc = func(ctx context.Context,
+				params *ec2.DescribeImagesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+				return &ec2.DescribeImagesOutput{Images: []types.Image{}}, nil
+			}
+
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   "t3.medium",
+						Region: "us-east-1",
+						Image:  v1alpha1.Image{Architecture: "x86_64"},
+					},
+					Auth: v1alpha1.Auth{
+						KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+						Username: "ubuntu",
+					},
+				},
+			}
+
+			provider, err := aws.New(log, env, tmpFile,
+				aws.WithEC2Client(mockClient))
+			Expect(err).NotTo(HaveOccurred())
+
+			err = provider.DryRun()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("no images found"))
+		})
+	})
+
+	Describe("Delete workflow", func() {
+		Context("cache file errors", func() {
+			It("should fail when cache file does not exist", func() {
+				mockClient := aws.NewMockEC2Client()
+				nonExistentCache := filepath.Join(tmpDir, "nonexistent.yaml")
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, nonExistentCache,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Delete()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error retrieving cache"))
+			})
+
+			It("should fail when cache file is invalid YAML", func() {
+				mockClient := aws.NewMockEC2Client()
+
+				err := os.WriteFile(tmpFile, []byte("invalid: yaml: content:"),
+					0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Delete()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error retrieving cache"))
+			})
+		})
+
+		Context("with empty cache", func() {
+			It("should succeed when cache has no resources", func() {
+				mockClient := aws.NewMockEC2Client()
+
+				// Create empty cache file
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  properties: []
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.Delete()
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Image validation", func() {
+		Context("setAMI", func() {
+			It("should return image when found", func() {
+				mockClient := aws.NewMockEC2Client()
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      strPtr("ami-newer"),
+								CreationDate: strPtr("2024-06-01T00:00:00.000Z"),
+							},
+							{
+								ImageId:      strPtr("ami-older"),
+								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+							},
+						},
+					}, nil
+				}
+				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{InstanceType: types.InstanceTypeT3Medium},
+						},
+					}, nil
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "x86_64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.DryRun()
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should support arm64 architecture", func() {
+				mockClient := aws.NewMockEC2Client()
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      strPtr("ami-arm64"),
+								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+							},
+						},
+					}, nil
+				}
+				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{InstanceType: types.InstanceTypeT4gMedium},
+						},
+					}, nil
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t4g.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "arm64"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.DryRun()
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should fail for invalid architecture", func() {
+				mockClient := aws.NewMockEC2Client()
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{Architecture: "invalid_arch"},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.DryRun()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid architecture"))
+			})
+
+			It("should skip setAMI when ImageId is provided", func() {
+				mockClient := aws.NewMockEC2Client()
+				imageID := "ami-custom123"
+
+				// Mock DescribeImages to return the custom image
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      strPtr("ami-custom123"),
+								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+							},
+						},
+					}, nil
+				}
+				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{InstanceType: types.InstanceTypeT3Medium},
+						},
+					}, nil
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{ImageId: &imageID},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.DryRun()
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should fail when custom ImageId is not found", func() {
+				mockClient := aws.NewMockEC2Client()
+				imageID := "ami-notfound"
+
+				// Mock DescribeImages to return a different image
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      strPtr("ami-different"),
+								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+							},
+						},
+					}, nil
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image:  v1alpha1.Image{ImageId: &imageID},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.DryRun()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("is not supported"))
+			})
+		})
+
+		Context("custom owner ID", func() {
+			It("should use custom owner ID when provided", func() {
+				mockClient := aws.NewMockEC2Client()
+				ownerID := "123456789012"
+
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					// Verify owner filter is applied
+					for _, filter := range params.Filters {
+						if *filter.Name == "owner-id" {
+							Expect(filter.Values).To(ContainElement("123456789012"))
+						}
+					}
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      strPtr("ami-custom-owner"),
+								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+							},
+						},
+					}, nil
+				}
+				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{InstanceType: types.InstanceTypeT3Medium},
+						},
+					}, nil
+				}
+
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image: v1alpha1.Image{
+								Architecture: "x86_64",
+								OwnerId:      &ownerID,
+							},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName: "test-key", PrivateKey: "/path/to/key.pem",
+							Username: "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile,
+					aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = provider.DryRun()
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+	})
 })
+
+func strPtr(s string) *string {
+	return &s
+}

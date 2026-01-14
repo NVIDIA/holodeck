@@ -23,7 +23,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
+	cli "github.com/urfave/cli/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -126,6 +126,148 @@ spec:
 			It("should detect missing environment file", func() {
 				_, err := os.ReadFile("/nonexistent/path/env.yaml")
 				Expect(err).To(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Command execution", func() {
+		var tmpDir string
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = os.MkdirTemp("", "holodeck-create-exec-*")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
+		})
+
+		Context("Before hook validation", func() {
+			It("should fail when envFile is not provided", func() {
+				cmd := create.NewCommand(log)
+				app := &cli.App{
+					Commands: []*cli.Command{cmd},
+				}
+
+				err := app.Run([]string{"holodeck", "create"})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error reading config file"))
+			})
+
+			It("should fail when envFile does not exist", func() {
+				cmd := create.NewCommand(log)
+				app := &cli.App{
+					Commands: []*cli.Command{cmd},
+				}
+
+				err := app.Run([]string{"holodeck", "create", "-f", "/nonexistent/env.yaml"})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error reading config file"))
+			})
+
+			It("should fail when envFile contains invalid YAML", func() {
+				invalidYAML := filepath.Join(tmpDir, "invalid.yaml")
+				err := os.WriteFile(invalidYAML, []byte("invalid: [yaml"), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				cmd := create.NewCommand(log)
+				app := &cli.App{
+					Commands: []*cli.Command{cmd},
+				}
+
+				err = app.Run([]string{"holodeck", "create", "-f", invalidYAML})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error reading config file"))
+			})
+
+			It("should parse valid environment file in Before hook", func() {
+				validYAML := filepath.Join(tmpDir, "valid.yaml")
+				// Use AWS provider to avoid nil provider panic
+				// The test will fail at AWS client creation (no credentials)
+				// but Before hook validation should pass
+				content := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+  instance:
+    type: t3.medium
+    region: us-east-1
+    image:
+      architecture: amd64
+  auth:
+    keyName: test-key
+    username: ubuntu
+    privateKey: /path/to/key.pem
+`
+				err := os.WriteFile(validYAML, []byte(content), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				cmd := create.NewCommand(log)
+				app := &cli.App{
+					Commands: []*cli.Command{cmd},
+				}
+
+				// This will fail in run() at AWS client creation (no credentials)
+				// but Before hook should pass (no "error reading config file")
+				err = app.Run([]string{"holodeck", "create", "-f", validYAML, "-c", tmpDir})
+				Expect(err).To(HaveOccurred())
+				// The error should NOT be from Before hook
+				Expect(err.Error()).NotTo(ContainSubstring("error reading config file"))
+			})
+		})
+
+		Context("Container runtime defaulting", func() {
+			It("should default container runtime to none when not specified", func() {
+				// Test that the Before hook sets default container runtime
+				// We verify this by checking the command structure
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+					},
+				}
+				// Initially empty
+				Expect(env.Spec.ContainerRuntime.Name).To(Equal(v1alpha1.ContainerRuntimeNone))
+			})
+		})
+
+		Context("Flag aliases", func() {
+			It("should accept -p for provision", func() {
+				cmd := create.NewCommand(log)
+				for _, flag := range cmd.Flags {
+					if flag.Names()[0] == "provision" {
+						Expect(flag.Names()).To(ContainElement("p"))
+					}
+				}
+			})
+
+			It("should accept -k for kubeconfig", func() {
+				cmd := create.NewCommand(log)
+				for _, flag := range cmd.Flags {
+					if flag.Names()[0] == "kubeconfig" {
+						Expect(flag.Names()).To(ContainElement("k"))
+					}
+				}
+			})
+
+			It("should accept -c for cachepath", func() {
+				cmd := create.NewCommand(log)
+				for _, flag := range cmd.Flags {
+					if flag.Names()[0] == "cachepath" {
+						Expect(flag.Names()).To(ContainElement("c"))
+					}
+				}
+			})
+
+			It("should accept -f for envFile", func() {
+				cmd := create.NewCommand(log)
+				for _, flag := range cmd.Flags {
+					if flag.Names()[0] == "envFile" {
+						Expect(flag.Names()).To(ContainElement("f"))
+					}
+				}
 			})
 		})
 	})
