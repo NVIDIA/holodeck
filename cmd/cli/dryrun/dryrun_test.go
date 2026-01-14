@@ -18,10 +18,13 @@ package dryrun_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	cli "github.com/urfave/cli/v2"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/dryrun"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -71,6 +74,132 @@ var _ = Describe("Dryrun Command", func() {
 		It("should have a before hook", func() {
 			cmd := dryrun.NewCommand(log)
 			Expect(cmd.Before).NotTo(BeNil())
+		})
+	})
+
+	Describe("Before hook", func() {
+		It("should fail when envFile does not exist", func() {
+			cmd := dryrun.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Run with non-existent env file
+			err := app.Run([]string{"holodeck", "dryrun", "-f", "/nonexistent/file.yaml"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to read config file"))
+		})
+
+		It("should fail when envFile contains invalid YAML", func() {
+			// Create temp file with invalid YAML
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			envFile := filepath.Join(tempDir, "invalid.yaml")
+			err = os.WriteFile(envFile, []byte("invalid: [yaml"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to read config file"))
+		})
+
+		It("should fail when provider is unknown", func() {
+			// Create temp file with unknown provider
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			envFile := filepath.Join(tempDir, "unknown-provider.yaml")
+			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-env\n" +
+				"spec:\n" +
+				"  provider: unknown\n"
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unknown provider"))
+		})
+	})
+
+	Describe("SSH provider validation", func() {
+		It("should fail when private key file does not exist", func() {
+			// Create temp file with SSH provider but missing key
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			envFile := filepath.Join(tempDir, "ssh-env.yaml")
+			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-ssh-env\n" +
+				"spec:\n" +
+				"  provider: ssh\n" +
+				"  auth:\n" +
+				"    privateKey: /nonexistent/key\n" +
+				"  instance:\n" +
+				"    hostUrl: localhost\n"
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to read key file"))
+		})
+
+		It("should fail when private key is invalid", func() {
+			// Create temp file with invalid key
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			keyFile := filepath.Join(tempDir, "invalid_key")
+			err = os.WriteFile(keyFile, []byte("not a valid key"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			envFile := filepath.Join(tempDir, "ssh-env.yaml")
+			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-ssh-env\n" +
+				"spec:\n" +
+				"  provider: ssh\n" +
+				"  auth:\n" +
+				"    privateKey: " + keyFile + "\n" +
+				"  instance:\n" +
+				"    hostUrl: localhost\n"
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to parse private key"))
 		})
 	})
 })

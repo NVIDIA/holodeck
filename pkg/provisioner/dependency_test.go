@@ -17,6 +17,8 @@
 package provisioner_test
 
 import (
+	"bytes"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -185,6 +187,212 @@ var _ = Describe("DependencyResolver", func() {
 
 				// microk8s resets the list, so only 1 dependency
 				Expect(deps).To(HaveLen(1))
+			})
+		})
+	})
+
+	Describe("ProvisionFunc execution", func() {
+		var buf *bytes.Buffer
+
+		BeforeEach(func() {
+			buf = &bytes.Buffer{}
+		})
+
+		Context("nvdriver", func() {
+			It("should execute nvdriver template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						NVIDIADriver: v1alpha1.NVIDIADriver{
+							Install: true,
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(1))
+
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).NotTo(BeEmpty())
+			})
+		})
+
+		Context("docker", func() {
+			It("should execute docker template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeDocker,
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(1))
+
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("docker"))
+			})
+		})
+
+		Context("containerd", func() {
+			It("should execute containerd template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeContainerd,
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(1))
+
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("containerd"))
+			})
+		})
+
+		Context("crio", func() {
+			It("should execute crio template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeCrio,
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(1))
+
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("crio"))
+			})
+		})
+
+		Context("container toolkit (package source)", func() {
+			It("should execute container toolkit template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						NVIDIAContainerToolkit: v1alpha1.NVIDIAContainerToolkit{
+							Install: true,
+							Source:  v1alpha1.CTKSourcePackage,
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(1))
+
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).NotTo(BeEmpty())
+			})
+		})
+
+		Context("kubeadm", func() {
+			It("should execute kubeadm template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeContainerd,
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "kubeadm",
+							KubernetesVersion:   "v1.28.0",
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				// containerd + kubeadm
+				Expect(deps).To(HaveLen(2))
+
+				// Execute kubeadm (second in list)
+				err := deps[1](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("kubeadm"))
+			})
+		})
+
+		Context("kind", func() {
+			It("should execute kind template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeDocker,
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "kind",
+							KubernetesVersion:   "v1.28.0",
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				// docker + kind
+				Expect(deps).To(HaveLen(2))
+
+				// Execute kind (second in list)
+				err := deps[1](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("kind"))
+			})
+		})
+
+		Context("microk8s", func() {
+			It("should execute microk8s template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeContainerd,
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "microk8s",
+							KubernetesVersion:   "v1.28.0",
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				// microk8s resets list, so just 1
+				Expect(deps).To(HaveLen(1))
+
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("microk8s"))
+			})
+		})
+
+		Context("kernel", func() {
+			It("should execute kernel template", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						Kernel: v1alpha1.Kernel{
+							Version: "5.15.0-generic",
+						},
+					},
+				}
+				d := provisioner.NewDependencies(env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(1))
+
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("5.15.0"))
 			})
 		})
 	})

@@ -140,8 +140,15 @@ type MockEC2Client struct {
 	DescribeImagesFunc     func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error)
 
 	// Tagging and Network operations
-	CreateTagsFunc                func(ctx context.Context, params *ec2.CreateTagsInput, optFns ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error)
-	DescribeNetworkInterfacesFunc func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
+	CreateTagsFunc                      func(ctx context.Context, params *ec2.CreateTagsInput, optFns ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error)
+	DescribeNetworkInterfacesFunc       func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
+	ModifyNetworkInterfaceAttributeFunc func(ctx context.Context, params *ec2.ModifyNetworkInterfaceAttributeInput, optFns ...func(*ec2.Options)) (*ec2.ModifyNetworkInterfaceAttributeOutput, error)
+	DescribeTagsFunc                    func(ctx context.Context, params *ec2.DescribeTagsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error)
+
+	// Additional operations required by internal/aws.EC2Client
+	DescribeInternetGatewaysFunc     func(ctx context.Context, params *ec2.DescribeInternetGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)
+	DescribeInstanceTypesFunc        func(ctx context.Context, params *ec2.DescribeInstanceTypesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error)
+	ReplaceRouteTableAssociationFunc func(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error)
 }
 
 // VPC operations
@@ -394,6 +401,41 @@ func (m *MockEC2Client) DescribeNetworkInterfaces(ctx context.Context, params *e
 		return m.DescribeNetworkInterfacesFunc(ctx, params, optFns...)
 	}
 	return &ec2.DescribeNetworkInterfacesOutput{}, nil
+}
+
+func (m *MockEC2Client) ModifyNetworkInterfaceAttribute(ctx context.Context, params *ec2.ModifyNetworkInterfaceAttributeInput, optFns ...func(*ec2.Options)) (*ec2.ModifyNetworkInterfaceAttributeOutput, error) {
+	if m.ModifyNetworkInterfaceAttributeFunc != nil {
+		return m.ModifyNetworkInterfaceAttributeFunc(ctx, params, optFns...)
+	}
+	return &ec2.ModifyNetworkInterfaceAttributeOutput{}, nil
+}
+
+func (m *MockEC2Client) DescribeTags(ctx context.Context, params *ec2.DescribeTagsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error) {
+	if m.DescribeTagsFunc != nil {
+		return m.DescribeTagsFunc(ctx, params, optFns...)
+	}
+	return &ec2.DescribeTagsOutput{}, nil
+}
+
+func (m *MockEC2Client) DescribeInternetGateways(ctx context.Context, params *ec2.DescribeInternetGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+	if m.DescribeInternetGatewaysFunc != nil {
+		return m.DescribeInternetGatewaysFunc(ctx, params, optFns...)
+	}
+	return &ec2.DescribeInternetGatewaysOutput{}, nil
+}
+
+func (m *MockEC2Client) DescribeInstanceTypes(ctx context.Context, params *ec2.DescribeInstanceTypesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+	if m.DescribeInstanceTypesFunc != nil {
+		return m.DescribeInstanceTypesFunc(ctx, params, optFns...)
+	}
+	return &ec2.DescribeInstanceTypesOutput{}, nil
+}
+
+func (m *MockEC2Client) ReplaceRouteTableAssociation(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error) {
+	if m.ReplaceRouteTableAssociationFunc != nil {
+		return m.ReplaceRouteTableAssociationFunc(ctx, params, optFns...)
+	}
+	return &ec2.ReplaceRouteTableAssociationOutput{}, nil
 }
 
 // Helper functions

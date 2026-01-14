@@ -541,5 +541,226 @@ status:
 			err := provider.DryRun()
 			Expect(err).NotTo(HaveOccurred())
 		})
+
+		It("should fail when instance type check fails (triggers fail())", func() {
+			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+				params *ec2.DescribeInstanceTypesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+				// Return empty list - instance type not found
+				return &ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []types.InstanceTypeInfo{},
+				}, nil
+			}
+
+			err := provider.DryRun()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("not supported"))
+		})
+
+		It("should fail when image check fails (triggers fail())", func() {
+			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
+				params *ec2.DescribeInstanceTypesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+				return &ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []types.InstanceTypeInfo{
+						{InstanceType: types.InstanceTypeT3Medium},
+					},
+				}, nil
+			}
+
+			mockClient.DescribeImagesFunc = func(ctx context.Context,
+				params *ec2.DescribeImagesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+				// Return error
+				return nil, ErrMockDescribeImages
+			}
+
+			err := provider.DryRun()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get images"))
+		})
+	})
+
+	Describe("setAMI", func() {
+		var (
+			tmpDir    string
+			cacheFile string
+			provider  *Provider
+		)
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = os.MkdirTemp("", "aws-ami-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			cacheFile = filepath.Join(tmpDir, "cache.yaml")
+		})
+
+		AfterEach(func() {
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
+		})
+
+		Context("when image ID is specified", func() {
+			It("should use the specified AMI", func() {
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image: v1alpha1.Image{
+								ImageId: strPtr("ami-custom-12345"),
+							},
+						},
+					},
+				}
+
+				var err error
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      strPtr("ami-custom-12345"),
+								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+								Architecture: types.ArchitectureValuesX8664,
+							},
+						},
+					}, nil
+				}
+
+				err = provider.setAMI()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(*provider.Environment.Spec.Instance.Image.ImageId).To(
+					Equal("ami-custom-12345"))
+			})
+		})
+
+		Context("when image ID is not specified", func() {
+			It("should find latest image by pattern", func() {
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+						},
+					},
+				}
+
+				var err error
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      strPtr("ami-older"),
+								CreationDate: strPtr("2023-01-01T00:00:00.000Z"),
+								Architecture: types.ArchitectureValuesX8664,
+							},
+							{
+								ImageId:      strPtr("ami-latest"),
+								CreationDate: strPtr("2024-06-01T00:00:00.000Z"),
+								Architecture: types.ArchitectureValuesX8664,
+							},
+						},
+					}, nil
+				}
+
+				err = provider.setAMI()
+				Expect(err).NotTo(HaveOccurred())
+				// Should select the latest image
+				Expect(*provider.Environment.Spec.Instance.Image.ImageId).To(
+					Equal("ami-latest"))
+			})
+
+			It("should fail when no images found", func() {
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+						},
+					},
+				}
+
+				var err error
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{},
+					}, nil
+				}
+
+				err = provider.setAMI()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no images found"))
+			})
+		})
+	})
+
+	Describe("describeImages", func() {
+		var (
+			tmpDir    string
+			cacheFile string
+			provider  *Provider
+		)
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = os.MkdirTemp("", "aws-describe-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			cacheFile = filepath.Join(tmpDir, "cache.yaml")
+
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   "t3.medium",
+						Region: "us-east-1",
+					},
+				},
+			}
+
+			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
+		})
+
+		It("should return error when DescribeImages fails", func() {
+			mockClient.DescribeImagesFunc = func(ctx context.Context,
+				params *ec2.DescribeImagesInput,
+				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+				return nil, ErrMockDescribeImages
+			}
+
+			filter := []types.Filter{
+				{
+					Name:   strPtr("image-id"),
+					Values: []string{"ami-test"},
+				},
+			}
+			_, err := provider.describeImages(filter)
+			Expect(err).To(HaveOccurred())
+		})
 	})
 })

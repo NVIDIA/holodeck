@@ -26,17 +26,32 @@ import (
 	"time"
 )
 
-// GetIPAddress gets the IP address of the user with timeout and fallback services
-func GetIPAddress() (string, error) {
-	// List of IP lookup services to try in order of preference
-	ipServices := []struct {
-		url     string
-		timeout time.Duration
-	}{
+// IPService represents an IP lookup service configuration.
+type IPService struct {
+	URL     string
+	Timeout time.Duration
+}
+
+// DefaultIPServices returns the default list of IP lookup services.
+func DefaultIPServices() []IPService {
+	return []IPService{
 		{"https://api.ipify.org?format=text", 5 * time.Second},
 		{"https://ifconfig.me/ip", 5 * time.Second},
 		{"https://icanhazip.com", 5 * time.Second},
 		{"https://ident.me", 5 * time.Second},
+	}
+}
+
+// GetIPAddress gets the IP address of the user with timeout and fallback services
+func GetIPAddress() (string, error) {
+	return GetIPAddressWithServices(DefaultIPServices())
+}
+
+// GetIPAddressWithServices gets the IP address using the provided list of
+// services. This allows for testing with mock services.
+func GetIPAddressWithServices(services []IPService) (string, error) {
+	if len(services) == 0 {
+		return "", fmt.Errorf("no IP services provided")
 	}
 
 	// Create context with overall timeout
@@ -44,8 +59,8 @@ func GetIPAddress() (string, error) {
 	defer cancel()
 
 	// Try each service until one works
-	for _, service := range ipServices {
-		ip, err := getIPFromHTTPService(ctx, service.url, service.timeout)
+	for _, service := range services {
+		ip, err := getIPFromHTTPService(ctx, service.URL, service.Timeout)
 		if err == nil && isValidPublicIP(ip) {
 			return fmt.Sprintf("%s/32", ip), nil
 		}

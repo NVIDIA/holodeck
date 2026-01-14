@@ -36,6 +36,11 @@ type NestedStruct struct {
 	Nested SimpleStruct `json:"nested" yaml:"nested"`
 }
 
+// UnmarshalableStruct is a struct that will fail to marshal due to a channel.
+type UnmarshalableStruct struct {
+	Ch chan int `json:"ch" yaml:"ch"`
+}
+
 var _ = Describe("JYaml", func() {
 
 	Describe("MarshalJSON", func() {
@@ -70,6 +75,12 @@ var _ = Describe("JYaml", func() {
 			Expect(string(result)).To(ContainSubstring(`"id":"parent"`))
 			Expect(string(result)).To(ContainSubstring(`"nested"`))
 		})
+
+		It("should return error for unmarshalable type", func() {
+			data := UnmarshalableStruct{Ch: make(chan int)}
+			_, err := jyaml.MarshalJSON(data)
+			Expect(err).To(HaveOccurred())
+		})
 	})
 
 	Describe("MarshalJSONIndent", func() {
@@ -86,6 +97,12 @@ var _ = Describe("JYaml", func() {
 			result, err := jyaml.MarshalJSONIndent(data, ">>", "  ")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(result)).To(ContainSubstring(">>"))
+		})
+
+		It("should return error for unmarshalable type", func() {
+			data := UnmarshalableStruct{Ch: make(chan int)}
+			_, err := jyaml.MarshalJSONIndent(data, "", "  ")
+			Expect(err).To(HaveOccurred())
 		})
 	})
 
@@ -116,6 +133,12 @@ var _ = Describe("JYaml", func() {
 			result, err := jyaml.MarshalYAML(data)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(result)).To(ContainSubstring("one: 1"))
+		})
+
+		It("should return error for unmarshalable type", func() {
+			data := UnmarshalableStruct{Ch: make(chan int)}
+			_, err := jyaml.MarshalYAML(data)
+			Expect(err).To(HaveOccurred())
 		})
 	})
 
@@ -168,6 +191,12 @@ var _ = Describe("JYaml", func() {
 				_, err := jyaml.Unmarshal[SimpleStruct](yamlStr)
 				Expect(err).To(HaveOccurred())
 			})
+
+			It("should return error for unmarshalable input in default case", func() {
+				input := UnmarshalableStruct{Ch: make(chan int)}
+				_, err := jyaml.Unmarshal[SimpleStruct](input)
+				Expect(err).To(HaveOccurred())
+			})
 		})
 	})
 
@@ -195,6 +224,35 @@ var _ = Describe("JYaml", func() {
 				result, err := jyaml.UnmarshalStrict[SimpleStruct](input)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).To(Equal(input))
+			})
+		})
+
+		Context("with []byte input", func() {
+			It("should unmarshal YAML bytes", func() {
+				yamlBytes := []byte("name: bytestest\nvalue: 99")
+				result, err := jyaml.UnmarshalStrict[SimpleStruct](yamlBytes)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Name).To(Equal("bytestest"))
+				Expect(result.Value).To(Equal(99))
+			})
+		})
+
+		Context("with map input (default case)", func() {
+			It("should marshal and unmarshal", func() {
+				input := map[string]interface{}{
+					"name":  "maptest",
+					"value": 77,
+				}
+				result, err := jyaml.UnmarshalStrict[SimpleStruct](input)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Name).To(Equal("maptest"))
+				Expect(result.Value).To(Equal(77))
+			})
+
+			It("should return error for unmarshalable input", func() {
+				input := UnmarshalableStruct{Ch: make(chan int)}
+				_, err := jyaml.UnmarshalStrict[SimpleStruct](input)
+				Expect(err).To(HaveOccurred())
 			})
 		})
 	})
