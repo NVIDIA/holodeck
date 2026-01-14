@@ -546,4 +546,225 @@ status:
 			})
 		})
 	})
+
+	Describe("Status operations", func() {
+		Context("Status", func() {
+			It("should return conditions from cache file", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  conditions:
+    - type: Available
+      status: "True"
+    - type: Progressing
+      status: "False"
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				conditions, err := provider.Status()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(conditions).To(HaveLen(2))
+				Expect(conditions[0].Type).To(Equal("Available"))
+				Expect(string(conditions[0].Status)).To(Equal("True"))
+			})
+
+			It("should return empty conditions when none exist", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  properties: []
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				conditions, err := provider.Status()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(conditions).To(BeEmpty())
+			})
+
+			It("should return error when cache file doesn't exist", func() {
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, "/nonexistent/cache.yaml", aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = provider.Status()
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should return error when cache file has invalid YAML", func() {
+				err := os.WriteFile(tmpFile, []byte("invalid: [yaml"), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = provider.Status()
+				Expect(err).To(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Condition helpers", func() {
+		It("should return correct available conditions", func() {
+			conditions := aws.GetAvailableConditions()
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Available condition
+			var availableFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionAvailable {
+					Expect(string(c.Status)).To(Equal("True"))
+					availableFound = true
+				} else {
+					Expect(string(c.Status)).To(Equal("False"))
+				}
+			}
+			Expect(availableFound).To(BeTrue())
+		})
+
+		It("should return correct degraded conditions", func() {
+			conditions := aws.GetDegradedConditions("TestReason", "Test message")
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Degraded condition
+			var degradedFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionDegraded {
+					Expect(string(c.Status)).To(Equal("True"))
+					Expect(c.Reason).To(Equal("TestReason"))
+					Expect(c.Message).To(Equal("Test message"))
+					degradedFound = true
+				}
+			}
+			Expect(degradedFound).To(BeTrue())
+		})
+
+		It("should return correct progressing conditions", func() {
+			conditions := aws.GetProgressingConditions("Creating", "Creating VPC")
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Progressing condition
+			var progressingFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionProgressing {
+					Expect(string(c.Status)).To(Equal("True"))
+					Expect(c.Reason).To(Equal("Creating"))
+					Expect(c.Message).To(Equal("Creating VPC"))
+					progressingFound = true
+				}
+			}
+			Expect(progressingFound).To(BeTrue())
+		})
+
+		It("should return correct terminated conditions", func() {
+			conditions := aws.GetTerminatedConditions("Terminated", "Resources deleted")
+			Expect(conditions).To(HaveLen(4))
+
+			// Find Terminated condition
+			var terminatedFound bool
+			for _, c := range conditions {
+				if c.Type == v1alpha1.ConditionTerminated {
+					Expect(string(c.Status)).To(Equal("True"))
+					Expect(c.Reason).To(Equal("Terminated"))
+					Expect(c.Message).To(Equal("Resources deleted"))
+					terminatedFound = true
+				}
+			}
+			Expect(terminatedFound).To(BeTrue())
+		})
+	})
+
+	Describe("Update function", func() {
+		It("should create cache file and directory if they don't exist", func() {
+			newCacheFile := filepath.Join(tmpDir, "subdir", "new-cache.yaml")
+			env := &v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				Status: v1alpha1.EnvironmentStatus{
+					Properties: []v1alpha1.Properties{
+						{Name: aws.VpcID, Value: "vpc-new"},
+					},
+				},
+			}
+
+			err := aws.Update(env, newCacheFile)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify file was created
+			data, err := os.ReadFile(newCacheFile) //nolint:gosec
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).To(ContainSubstring("vpc-new"))
+		})
+
+		It("should update existing cache file", func() {
+			// Create initial cache file
+			initialContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+`
+			err := os.WriteFile(tmpFile, []byte(initialContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			env := &v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
+				Status: v1alpha1.EnvironmentStatus{
+					Properties: []v1alpha1.Properties{
+						{Name: aws.VpcID, Value: "vpc-updated"},
+						{Name: aws.InstanceID, Value: "i-updated"},
+					},
+				},
+			}
+
+			err = aws.Update(env, tmpFile)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify file was updated
+			data, err := os.ReadFile(tmpFile) //nolint:gosec
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).To(ContainSubstring("vpc-updated"))
+			Expect(string(data)).To(ContainSubstring("i-updated"))
+		})
+	})
 })
