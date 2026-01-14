@@ -1,0 +1,14 @@
+mode: set
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:36.53,41.2 2 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:43.39,57.38 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:57.38,58.21 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:58.21,60.5 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:61.4,61.19 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:65.2,65.16 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:68.44,72.46 2 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:72.46,75.17 2 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:75.17,77.4 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:80.3,80.60 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:80.60,82.4 1 0
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:84.3,84.81 1 1
+github.com/NVIDIA/holodeck/cmd/cli/delete/delete.go:87.2,87.12 1 1

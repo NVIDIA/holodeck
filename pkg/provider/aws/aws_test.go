@@ -52,7 +52,7 @@ var _ = Describe("AWS Provider", func() {
 
 	AfterEach(func() {
 		if tmpDir != "" {
-			os.RemoveAll(tmpDir)
+			_ = os.RemoveAll(tmpDir)
 		}
 	})
 
@@ -403,8 +403,8 @@ status:
 			It("should use AWS_REGION environment variable if set", func() {
 				// Save original and set test value
 				origRegion := os.Getenv("AWS_REGION")
-				os.Setenv("AWS_REGION", "eu-west-1")
-				defer os.Setenv("AWS_REGION", origRegion)
+				_ = os.Setenv("AWS_REGION", "eu-west-1")
+				defer func() { _ = os.Setenv("AWS_REGION", origRegion) }()
 
 				mockClient := aws.NewMockEC2Client()
 				env := v1alpha1.Environment{
@@ -429,17 +429,17 @@ status:
 		Context("with GitHub environment variables", func() {
 			It("should include GitHub tags when env vars are set", func() {
 				// Set GitHub environment variables
-				os.Setenv("GITHUB_SHA", "abc123def456")
-				os.Setenv("GITHUB_ACTOR", "test-user")
-				os.Setenv("GITHUB_REF_NAME", "main")
-				os.Setenv("GITHUB_REPOSITORY", "NVIDIA/holodeck")
-				os.Setenv("GITHUB_RUN_ID", "12345")
+				_ = os.Setenv("GITHUB_SHA", "abc123def456")
+				_ = os.Setenv("GITHUB_ACTOR", "test-user")
+				_ = os.Setenv("GITHUB_REF_NAME", "main")
+				_ = os.Setenv("GITHUB_REPOSITORY", "NVIDIA/holodeck")
+				_ = os.Setenv("GITHUB_RUN_ID", "12345")
 				defer func() {
-					os.Unsetenv("GITHUB_SHA")
-					os.Unsetenv("GITHUB_ACTOR")
-					os.Unsetenv("GITHUB_REF_NAME")
-					os.Unsetenv("GITHUB_REPOSITORY")
-					os.Unsetenv("GITHUB_RUN_ID")
+					_ = os.Unsetenv("GITHUB_SHA")
+					_ = os.Unsetenv("GITHUB_ACTOR")
+					_ = os.Unsetenv("GITHUB_REF_NAME")
+					_ = os.Unsetenv("GITHUB_REPOSITORY")
+					_ = os.Unsetenv("GITHUB_RUN_ID")
 				}()
 
 				mockClient := aws.NewMockEC2Client()
