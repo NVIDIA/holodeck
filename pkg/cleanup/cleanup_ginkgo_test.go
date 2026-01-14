@@ -21,8 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -134,50 +133,41 @@ var _ = Describe("Cleanup Package", func() {
 
 	Describe("CheckGitHubJobsCompleted", func() {
 		var (
-			log    *logger.FunLogger
-			server *httptest.Server
+			log     *logger.FunLogger
+			buf     bytes.Buffer
+			mockEC2 *mocks.MockEC2Client
 		)
 
 		BeforeEach(func() {
 			log = logger.NewLogger()
-		})
-
-		AfterEach(func() {
-			if server != nil {
-				server.Close()
-			}
+			log.Out = &buf
+			mockEC2 = &mocks.MockEC2Client{}
 		})
 
 		Context("input validation", func() {
 			It("should reject invalid repository format", func() {
-				// We can't call CheckGitHubJobsCompleted without a Cleaner,
-				// but we can test the validation patterns directly
-				Expect(repoPattern.MatchString("invalid")).To(BeFalse())
-				Expect(repoPattern.MatchString("org/repo")).To(BeTrue())
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC2))
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = cleaner.CheckGitHubJobsCompleted("invalid", "12345", "token")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid repository format"))
 			})
 
 			It("should reject invalid runID format", func() {
-				Expect(runIDPattern.MatchString("abc")).To(BeFalse())
-				Expect(runIDPattern.MatchString("12345")).To(BeTrue())
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC2))
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = cleaner.CheckGitHubJobsCompleted("org/repo", "abc", "token")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid runID format"))
 			})
-		})
 
-		Context("HTTP response handling", func() {
-			It("should handle 404 response as completed", func() {
-				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusNotFound)
-				}))
-
-				// Create a cleaner with nil EC2 client (we're testing HTTP, not EC2)
-				cleaner := &Cleaner{
-					ec2: nil,
-					log: log,
-				}
-
-				// Note: We can't easily test this because the URL is hardcoded
-				// This demonstrates the need for HTTP client injection
-				_ = cleaner
-				_ = server
+			It("should accept valid repository and runID formats", func() {
+				// Test that valid formats pass validation (the HTTP request
+				// will fail, but validation should pass)
+				Expect(repoPattern.MatchString("NVIDIA/holodeck")).To(BeTrue())
+				Expect(runIDPattern.MatchString("12345678")).To(BeTrue())
 			})
 		})
 	})
@@ -557,6 +547,139 @@ var _ = Describe("Cleanup Package", func() {
 				Expect(err.Error()).To(ContainSubstring("failed to delete VPC"))
 				// Should have retried 3 times
 				Expect(deleteAttempts).To(Equal(3))
+			})
+		})
+
+		Describe("CleanupVPC", func() {
+			BeforeEach(func() {
+				// Setup for full cleanup flow
+				mockEC.DescribeTagsFunc = func(ctx context.Context,
+					params *ec2.DescribeTagsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error) {
+					return &ec2.DescribeTagsOutput{Tags: []types.TagDescription{}}, nil
+				}
+				mockEC.DescribeInstancesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstancesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+					return &ec2.DescribeInstancesOutput{}, nil
+				}
+				mockEC.DescribeSecurityGroupsFunc = func(ctx context.Context,
+					params *ec2.DescribeSecurityGroupsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+					return &ec2.DescribeSecurityGroupsOutput{}, nil
+				}
+				mockEC.DescribeSubnetsFunc = func(ctx context.Context,
+					params *ec2.DescribeSubnetsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+					return &ec2.DescribeSubnetsOutput{}, nil
+				}
+				mockEC.DescribeRouteTablesFunc = func(ctx context.Context,
+					params *ec2.DescribeRouteTablesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+					return &ec2.DescribeRouteTablesOutput{}, nil
+				}
+				mockEC.DescribeInternetGatewaysFunc = func(ctx context.Context,
+					params *ec2.DescribeInternetGatewaysInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+					return &ec2.DescribeInternetGatewaysOutput{}, nil
+				}
+				mockEC.DeleteVpcFunc = func(ctx context.Context,
+					params *ec2.DeleteVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+					return &ec2.DeleteVpcOutput{}, nil
+				}
+			})
+
+			It("should succeed when no GitHub tags exist", func() {
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.CleanupVPC("vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should fail when GetTagValue for repository fails", func() {
+				mockEC.DescribeTagsFunc = func(ctx context.Context,
+					params *ec2.DescribeTagsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error) {
+					return nil, errors.New("failed to describe tags")
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.CleanupVPC("vpc-12345")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to get GitHubRepository tag"))
+			})
+
+			It("should proceed when GITHUB_TOKEN is not set", func() {
+				// Clear GITHUB_TOKEN
+				originalToken := os.Getenv("GITHUB_TOKEN")
+				Expect(os.Unsetenv("GITHUB_TOKEN")).To(Succeed())
+				DeferCleanup(func() {
+					if originalToken != "" {
+						_ = os.Setenv("GITHUB_TOKEN", originalToken) //nolint:errcheck
+					}
+				})
+
+				mockEC.DescribeTagsFunc = func(ctx context.Context,
+					params *ec2.DescribeTagsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error) {
+					// Return tags for repository and runID
+					for _, filter := range params.Filters {
+						if *filter.Name == "key" && len(filter.Values) > 0 {
+							if filter.Values[0] == "GitHubRepository" {
+								return &ec2.DescribeTagsOutput{
+									Tags: []types.TagDescription{
+										{Value: aws.String("NVIDIA/holodeck")},
+									},
+								}, nil
+							}
+							if filter.Values[0] == "GitHubRunId" {
+								return &ec2.DescribeTagsOutput{
+									Tags: []types.TagDescription{
+										{Value: aws.String("12345")},
+									},
+								}, nil
+							}
+						}
+					}
+					return &ec2.DescribeTagsOutput{}, nil
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				// When GITHUB_TOKEN is not set, cleanup should still proceed
+				err = cleaner.CleanupVPC("vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should fail when GetTagValue for runID fails", func() {
+				callCount := 0
+				mockEC.DescribeTagsFunc = func(ctx context.Context,
+					params *ec2.DescribeTagsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error) {
+					callCount++
+					// First call for repository succeeds
+					if callCount == 1 {
+						return &ec2.DescribeTagsOutput{
+							Tags: []types.TagDescription{
+								{Value: aws.String("NVIDIA/holodeck")},
+							},
+						}, nil
+					}
+					// Second call for runID fails
+					return nil, errors.New("failed to describe tags")
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.CleanupVPC("vpc-12345")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to get GitHubRunId tag"))
 			})
 		})
 
