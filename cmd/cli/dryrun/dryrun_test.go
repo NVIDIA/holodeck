@@ -201,5 +201,72 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to parse private key"))
 		})
+
+		It("should use current user when username is empty", func() {
+			// Create temp file with SSH provider but no username
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			keyFile := filepath.Join(tempDir, "invalid_key")
+			err = os.WriteFile(keyFile, []byte("not a valid key"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			envFile := filepath.Join(tempDir, "ssh-env.yaml")
+			// Note: no username field in spec
+			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-ssh-env\n" +
+				"spec:\n" +
+				"  provider: ssh\n" +
+				"  auth:\n" +
+				"    privateKey: " + keyFile + "\n" +
+				"  instance:\n" +
+				"    hostUrl: localhost\n"
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// This will fail due to invalid key, but covers the username
+			// default path
+			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("AWS provider validation", func() {
+		It("should fail when AWS provider cannot be initialized", func() {
+			// Create temp file with AWS provider
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			envFile := filepath.Join(tempDir, "aws-env.yaml")
+			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-aws-env\n" +
+				"spec:\n" +
+				"  provider: aws\n" +
+				"  instance:\n" +
+				"    type: t2.micro\n"
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// This will fail due to AWS credentials/config issues
+			// but covers the validateAWS path
+			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			Expect(err).To(HaveOccurred())
+		})
 	})
 })

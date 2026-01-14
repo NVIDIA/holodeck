@@ -123,5 +123,84 @@ var _ = Describe("Status Command", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to"))
 		})
+
+		It("should display instance details when instance exists", func() {
+			// Create temp cache directory with valid cache file
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			instanceID := "test12345678"
+			cacheFile := filepath.Join(tempDir, instanceID+".yaml")
+			validYAML := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-environment
+  labels:
+    holodeck-instance-id: test12345678
+spec:
+  provider: ssh
+  username: testuser
+  hostUrl: 192.168.1.100
+`
+			err = os.WriteFile(cacheFile, []byte(validYAML), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := status.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// This should succeed and print instance details
+			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, instanceID})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should fallback to filename lookup for UUID-style instance IDs", func() {
+			// Create temp cache directory
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			// Use a UUID-like ID (36 characters)
+			instanceID := "123e4567-e89b-12d3-a456-426614174000"
+			cacheFile := filepath.Join(tempDir, instanceID+".yaml")
+			validYAML := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: legacy-instance
+spec:
+  provider: ssh
+  username: testuser
+  hostUrl: 192.168.1.100
+`
+			err = os.WriteFile(cacheFile, []byte(validYAML), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := status.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// This will first fail GetInstance (no label), then fallback to
+			// GetInstanceByFilename
+			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, instanceID})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should return error for empty instance ID", func() {
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			cmd := status.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// Empty string as instance ID
+			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, ""})
+			Expect(err).To(HaveOccurred())
+		})
 	})
 })
