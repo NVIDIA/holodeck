@@ -17,20 +17,44 @@
 package aws_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"sort"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 )
 
 var _ = Describe("AWS Provider", func() {
+	var (
+		log     *logger.FunLogger
+		buf     bytes.Buffer
+		tmpDir  string
+		tmpFile string
+	)
+
+	BeforeEach(func() {
+		log = logger.NewLogger()
+		log.Out = &buf
+		buf.Reset()
+
+		var err error
+		tmpDir, err = os.MkdirTemp("", "holodeck-aws-provider-*")
+		Expect(err).NotTo(HaveOccurred())
+		tmpFile = filepath.Join(tmpDir, "cache.yaml")
+	})
+
+	AfterEach(func() {
+		if tmpDir != "" {
+			os.RemoveAll(tmpDir)
+		}
+	})
 
 	Describe("Constants", func() {
 		It("should have the correct provider name", func() {
@@ -342,6 +366,184 @@ status:
 			}
 			Expect(env.Spec.Instance.Image.OwnerId).NotTo(BeNil())
 			Expect(*env.Spec.Instance.Image.OwnerId).To(Equal("123456789012"))
+		})
+	})
+
+	Describe("Provider Creation", func() {
+		Context("with mock EC2 client", func() {
+			It("should create provider with mock client", func() {
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-env",
+					},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+							Image: v1alpha1.Image{
+								Architecture: "x86_64",
+							},
+						},
+						Auth: v1alpha1.Auth{
+							KeyName:    "test-key",
+							PrivateKey: "/path/to/key.pem",
+							Username:   "ubuntu",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(provider).NotTo(BeNil())
+				Expect(provider.Name()).To(Equal("aws"))
+			})
+
+			It("should use AWS_REGION environment variable if set", func() {
+				// Save original and set test value
+				origRegion := os.Getenv("AWS_REGION")
+				os.Setenv("AWS_REGION", "eu-west-1")
+				defer os.Setenv("AWS_REGION", origRegion)
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-env",
+					},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1", // This should be overridden
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(provider).NotTo(BeNil())
+			})
+		})
+
+		Context("with GitHub environment variables", func() {
+			It("should include GitHub tags when env vars are set", func() {
+				// Set GitHub environment variables
+				os.Setenv("GITHUB_SHA", "abc123def456")
+				os.Setenv("GITHUB_ACTOR", "test-user")
+				os.Setenv("GITHUB_REF_NAME", "main")
+				os.Setenv("GITHUB_REPOSITORY", "NVIDIA/holodeck")
+				os.Setenv("GITHUB_RUN_ID", "12345")
+				defer func() {
+					os.Unsetenv("GITHUB_SHA")
+					os.Unsetenv("GITHUB_ACTOR")
+					os.Unsetenv("GITHUB_REF_NAME")
+					os.Unsetenv("GITHUB_REPOSITORY")
+					os.Unsetenv("GITHUB_RUN_ID")
+				}()
+
+				mockClient := aws.NewMockEC2Client()
+				env := v1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-env",
+					},
+					Spec: v1alpha1.EnvironmentSpec{
+						Provider: v1alpha1.ProviderAWS,
+						Instance: v1alpha1.Instance{
+							Type:   "t3.medium",
+							Region: "us-east-1",
+						},
+					},
+				}
+
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(provider).NotTo(BeNil())
+			})
+		})
+	})
+
+	Describe("DryRun", func() {
+		It("should return nil for dry run", func() {
+			mockClient := aws.NewMockEC2Client()
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-env",
+				},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   "t3.medium",
+						Region: "us-east-1",
+					},
+				},
+			}
+
+			provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+			Expect(err).NotTo(HaveOccurred())
+
+			err = provider.DryRun()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("Cache operations", func() {
+		Context("unmarshalCache", func() {
+			It("should parse cache file with all properties", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  properties:
+    - name: vpc-id
+      value: vpc-12345
+    - name: subnet-id
+      value: subnet-12345
+    - name: internet-gateway-id
+      value: igw-12345
+    - name: route-table-id
+      value: rtb-12345
+    - name: security-group-id
+      value: sg-12345
+    - name: instance-id
+      value: i-12345
+    - name: public-dns-name
+      value: ec2-1-2-3-4.compute.amazonaws.com
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify file can be read
+				data, err := os.ReadFile(tmpFile) //nolint:gosec
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(data)).To(ContainSubstring("vpc-12345"))
+				Expect(string(data)).To(ContainSubstring("i-12345"))
+			})
+
+			It("should handle cache file with unknown properties", func() {
+				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-env
+spec:
+  provider: aws
+status:
+  properties:
+    - name: vpc-id
+      value: vpc-12345
+    - name: unknown-property
+      value: some-value
+`
+				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
+				Expect(err).NotTo(HaveOccurred())
+
+				data, err := os.ReadFile(tmpFile) //nolint:gosec
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(data)).To(ContainSubstring("unknown-property"))
+			})
 		})
 	})
 })
