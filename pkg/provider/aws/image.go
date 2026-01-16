@@ -53,29 +53,82 @@ func (p *Provider) setAMI() error {
 		return nil
 	}
 
+	// If OS is specified, use the AMI resolver
+	//nolint:staticcheck // Instance is embedded but explicit access is clearer
+	if p.Spec.Instance.OS != "" {
+		return p.resolveOSToAMI()
+	}
+
+	// Fall back to legacy behavior: Ubuntu 22.04 by default
+	return p.setLegacyAMI()
+}
+
+// resolveOSToAMI uses the AMI resolver to look up the AMI for the specified OS.
+func (p *Provider) resolveOSToAMI() error {
+	arch := p.Spec.Image.Architecture
+	if arch == "" {
+		arch = "x86_64" // Default architecture
+	}
+
+	//nolint:staticcheck // Instance is embedded but explicit access is clearer
+	resolved, err := p.amiResolver.Resolve(
+		context.TODO(),
+		p.Spec.Instance.OS,
+		arch,
+	)
+	if err != nil {
+		//nolint:staticcheck // Instance is embedded but explicit access is clearer
+		return fmt.Errorf(
+			"failed to resolve AMI for OS %s: %w",
+			p.Spec.Instance.OS,
+			err,
+		)
+	}
+
+	p.Spec.Image.ImageId = &resolved.ImageID
+
+	// Auto-set username if not provided
+	//nolint:staticcheck // Auth is embedded but explicit access is clearer
+	if p.Spec.Auth.Username == "" {
+		//nolint:staticcheck // Auth is embedded but explicit access is clearer
+		p.Spec.Auth.Username = resolved.SSHUsername
+	}
+
+	return nil
+}
+
+// setLegacyAMI implements the original Ubuntu 22.04 default behavior for
+// backward compatibility when OS is not specified.
+func (p *Provider) setLegacyAMI() error {
 	// Default to the official Ubuntu images in the AWS Marketplace
-	// TODO: Add support for other image OS types
 	awsOwner := []string{"099720109477", "679593333241"}
 	if p.Spec.Image.OwnerId != nil {
 		awsOwner = []string{*p.Spec.Image.OwnerId}
 	}
 
-	var filterNameValue []string
-	var filterArchitectureValue []string
-
-	if p.Spec.Image.Architecture != "" {
-		switch p.Spec.Image.Architecture {
-		case "x86_64", "amd64":
-			filterArchitectureValue = []string{"x86_64", "amd64"}
-		case "arm64", "aarch64":
-			filterArchitectureValue = []string{"arm64"}
-		default:
-			return fmt.Errorf("invalid architecture %s", p.Spec.Image.Architecture)
-		}
+	// Validate and normalize architecture
+	var arch string
+	switch p.Spec.Image.Architecture {
+	case "x86_64", "amd64":
+		arch = "x86_64"
+	case "arm64", "aarch64":
+		arch = "arm64"
+	case "":
+		arch = "x86_64" // Default
+	default:
+		return fmt.Errorf("invalid architecture %s", p.Spec.Image.Architecture)
 	}
 
-	for _, arch := range filterArchitectureValue {
-		filterNameValue = append(filterNameValue, fmt.Sprintf("ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-%s-server-20*", arch))
+	// Ubuntu AMI names use "amd64" not "x86_64"
+	nameArch := arch
+	if arch == "x86_64" {
+		nameArch = "amd64"
+	}
+	filterNameValue := []string{
+		fmt.Sprintf(
+			"ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-%s-server-20*",
+			nameArch,
+		),
 	}
 
 	filter := []types.Filter{
@@ -85,7 +138,7 @@ func (p *Provider) setAMI() error {
 		},
 		{
 			Name:   aws.String("architecture"),
-			Values: filterArchitectureValue,
+			Values: []string{arch},
 		},
 		{
 			Name:   aws.String("owner-id"),
@@ -105,6 +158,12 @@ func (p *Provider) setAMI() error {
 		return images[i].CreationDate > images[j].CreationDate
 	})
 	p.Spec.Image.ImageId = &images[0].ImageID
+
+	// Set default username for Ubuntu if not provided
+	//nolint:staticcheck // Auth is embedded but explicit access is clearer
+	if p.Spec.Auth.Username == "" {
+		p.Spec.Auth.Username = "ubuntu"
+	}
 
 	return nil
 }

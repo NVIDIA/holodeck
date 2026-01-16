@@ -117,7 +117,7 @@ func (p *Provisioner) waitForNodeReboot() error {
 }
 
 func (p *Provisioner) Run(env v1alpha1.Environment) error {
-	dependencies := NewDependencies(env)
+	dependencies := NewDependencies(&env)
 
 	// Create kubeadm config file if required installer is kubeadm and not using legacy mode
 	if env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {

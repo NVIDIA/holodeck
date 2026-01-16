@@ -30,6 +30,8 @@ import (
 const (
 	// DefaultNCTRepo is the default NVIDIA Container Toolkit repository.
 	DefaultNCTRepo = "https://github.com/NVIDIA/nvidia-container-toolkit.git"
+	// DefaultK8sRepo is the default Kubernetes repository.
+	DefaultK8sRepo = "https://github.com/kubernetes/kubernetes.git"
 )
 
 // Resolver resolves git references to commit SHAs.

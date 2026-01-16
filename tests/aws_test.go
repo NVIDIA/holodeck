@@ -111,7 +111,8 @@ var _ = DescribeTable("AWS Environment E2E",
 		})
 
 		state.opts.cfg.Spec.PrivateKey = sshKey
-		state.opts.cfg.Spec.Username = "ubuntu"
+		//nolint:staticcheck // Auth is embedded but explicit access is clearer
+		state.opts.cfg.Spec.Auth.Username = "ubuntu"
 		Expect(state.provider.Create()).To(Succeed(), "Failed to create environment")
 		Expect(state.opts.cfg.Name).NotTo(BeEmpty(), "Environment name should not be empty")
 
@@ -143,11 +144,27 @@ var _ = DescribeTable("AWS Environment E2E",
 		Expect(p.Run(env)).To(Succeed(), "Failed to provision environment")
 
 		By("Kubernetes Configuration")
-		if state.opts.cfg.Spec.Kubernetes.KubernetesVersion != "" {
-			Expect(state.opts.cfg.Spec.Kubernetes.KubernetesVersion).NotTo(BeEmpty(), "Kubernetes version should not be empty")
-			Expect(state.opts.cfg.Spec.Kubernetes.KubernetesInstaller).NotTo(BeEmpty(), "Kubernetes installer should not be empty")
+		k8s := state.opts.cfg.Spec.Kubernetes
+		if k8s.Install {
+			Expect(k8s.KubernetesInstaller).NotTo(BeEmpty(), "Kubernetes installer should not be empty")
+			// Validate based on source type
+			switch k8s.Source {
+			case "git":
+				Expect(k8s.Git).NotTo(BeNil(), "Git config required for git source")
+				Expect(k8s.Git.Ref).NotTo(BeEmpty(), "Git ref should not be empty")
+			case "latest":
+				// Latest source resolves branch at provision time
+				if k8s.Latest != nil {
+					GinkgoWriter.Printf("Tracking branch: %s\n", k8s.Latest.Track)
+				}
+			default:
+				// Release source (default) - check for version
+				if k8s.KubernetesVersion == "" && k8s.Release == nil {
+					Skip("Skipping Kubernetes validation: no version specified")
+				}
+			}
 		} else {
-			Skip("Skipping test: Kubernetes version not specified in environment file")
+			Skip("Skipping test: Kubernetes not enabled in environment file")
 		}
 
 		GinkgoWriter.Println("=== Finished test:", config.name, "===")
@@ -177,6 +194,21 @@ var _ = DescribeTable("AWS Environment E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_ctk_git.yml"),
 		description: "Tests AWS environment with CTK installed from git source",
 	}, Label("ctk-git")),
+	Entry("K8s Git Source Test (kubeadm)", testConfig{
+		name:        "K8s Git Source Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_git.yml"),
+		description: "Tests AWS environment with Kubernetes built from git source using kubeadm",
+	}, Label("k8s-git")),
+	Entry("K8s Git Source Test (KIND)", testConfig{
+		name:        "K8s KIND Git Source Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_kind_git.yml"),
+		description: "Tests AWS environment with Kubernetes built from git source using KIND",
+	}, Label("k8s-kind-git")),
+	Entry("K8s Latest Branch Test", testConfig{
+		name:        "K8s Latest Branch Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_latest.yml"),
+		description: "Tests AWS environment with Kubernetes tracking master branch",
+	}, Label("k8s-latest")),
 )
 
 // Mark the table as parallel

@@ -31,7 +31,7 @@ var _ = Describe("DependencyResolver", func() {
 	Describe("NewDependencies", func() {
 		It("should create an empty dependency resolver", func() {
 			env := v1alpha1.Environment{}
-			d := provisioner.NewDependencies(env)
+			d := provisioner.NewDependencies(&env)
 			Expect(d).NotTo(BeNil())
 			Expect(d.Dependencies).To(BeEmpty())
 		})
@@ -41,7 +41,7 @@ var _ = Describe("DependencyResolver", func() {
 		Context("with no components installed", func() {
 			It("should return empty dependencies", func() {
 				env := v1alpha1.Environment{}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(BeEmpty())
 			})
@@ -58,7 +58,7 @@ var _ = Describe("DependencyResolver", func() {
 							},
 						},
 					}
-					d := provisioner.NewDependencies(env)
+					d := provisioner.NewDependencies(&env)
 					deps := d.Resolve()
 					Expect(deps).To(HaveLen(expectedDeps))
 				},
@@ -80,7 +80,7 @@ var _ = Describe("DependencyResolver", func() {
 							},
 						},
 					}
-					d := provisioner.NewDependencies(env)
+					d := provisioner.NewDependencies(&env)
 					deps := d.Resolve()
 					Expect(deps).To(HaveLen(expectedDeps))
 				},
@@ -101,7 +101,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 			})
@@ -116,7 +116,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 			})
@@ -131,7 +131,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 			})
@@ -160,7 +160,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 
 				// Expected order: kernel, nvdriver, containerd, toolkit, kubeadm
@@ -182,7 +182,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 
 				// microk8s resets the list, so only 1 dependency
@@ -207,7 +207,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 
@@ -227,7 +227,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 
@@ -247,7 +247,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 
@@ -267,7 +267,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 
@@ -287,7 +287,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 
@@ -312,7 +312,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				// containerd + kubeadm
 				Expect(deps).To(HaveLen(2))
@@ -339,7 +339,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				// docker + kind
 				Expect(deps).To(HaveLen(2))
@@ -366,7 +366,7 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				// microk8s resets list, so just 1
 				Expect(deps).To(HaveLen(1))
@@ -386,13 +386,139 @@ var _ = Describe("DependencyResolver", func() {
 						},
 					},
 				}
-				d := provisioner.NewDependencies(env)
+				d := provisioner.NewDependencies(&env)
 				deps := d.Resolve()
 				Expect(deps).To(HaveLen(1))
 
 				err := deps[0](buf, env)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(buf.String()).To(ContainSubstring("5.15.0"))
+			})
+		})
+
+		Context("KIND with git source auto-upgrades Docker", func() {
+			It("should set minimum Docker version for KIND git source builds", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeDocker,
+							// No version specified
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "kind",
+							Source:              "git",
+							Git: &v1alpha1.K8sGitSpec{
+								Ref: "refs/tags/v1.31.0",
+							},
+						},
+					},
+				}
+				d := provisioner.NewDependencies(&env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(2)) // docker + kind
+
+				// Verify Docker version was auto-set
+				Expect(env.Spec.ContainerRuntime.Version).To(Equal("5:24.0.0-1~ubuntu.22.04~jammy"))
+
+				// Verify docker template uses the version
+				err := deps[0](buf, env)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("5:24.0.0-1~ubuntu.22.04~jammy"))
+			})
+
+			It("should set minimum Docker version for KIND latest source builds", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeDocker,
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "kind",
+							Source:              "latest",
+							Latest: &v1alpha1.K8sLatestSpec{
+								Track: "master",
+							},
+						},
+					},
+				}
+				d := provisioner.NewDependencies(&env)
+				deps := d.Resolve()
+				Expect(deps).To(HaveLen(2))
+				Expect(env.Spec.ContainerRuntime.Version).To(Equal("5:24.0.0-1~ubuntu.22.04~jammy"))
+			})
+
+			It("should not override explicit Docker version", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeDocker,
+							Version: "5:25.0.0-1~ubuntu.22.04~jammy",
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "kind",
+							Source:              "git",
+							Git: &v1alpha1.K8sGitSpec{
+								Ref: "refs/tags/v1.31.0",
+							},
+						},
+					},
+				}
+				d := provisioner.NewDependencies(&env)
+				_ = d.Resolve()
+				// User's version should be preserved
+				Expect(env.Spec.ContainerRuntime.Version).To(Equal("5:25.0.0-1~ubuntu.22.04~jammy"))
+			})
+
+			It("should not set Docker version for KIND release source", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeDocker,
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "kind",
+							Source:              "release",
+							Release: &v1alpha1.K8sReleaseSpec{
+								Version: "v1.31.0",
+							},
+						},
+					},
+				}
+				d := provisioner.NewDependencies(&env)
+				_ = d.Resolve()
+				// No auto-upgrade for release source (uses pre-built images)
+				Expect(env.Spec.ContainerRuntime.Version).To(BeEmpty())
+			})
+
+			It("should not set Docker version for kubeadm git source", func() {
+				env := v1alpha1.Environment{
+					Spec: v1alpha1.EnvironmentSpec{
+						ContainerRuntime: v1alpha1.ContainerRuntime{
+							Install: true,
+							Name:    v1alpha1.ContainerRuntimeDocker,
+						},
+						Kubernetes: v1alpha1.Kubernetes{
+							Install:             true,
+							KubernetesInstaller: "kubeadm",
+							Source:              "git",
+							Git: &v1alpha1.K8sGitSpec{
+								Ref: "refs/tags/v1.31.0",
+							},
+						},
+					},
+				}
+				d := provisioner.NewDependencies(&env)
+				_ = d.Resolve()
+				// kubeadm doesn't need specific Docker version
+				Expect(env.Spec.ContainerRuntime.Version).To(BeEmpty())
 			})
 		})
 	})

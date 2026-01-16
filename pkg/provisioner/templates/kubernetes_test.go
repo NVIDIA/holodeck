@@ -37,6 +37,7 @@ func TestNewKubernetes(t *testing.T) {
 				CrictlVersion:         defaultCRIVersion,
 				UseLegacyInit:         true, // v1.30.0 < v1.32.0
 				CriSocket:             "unix:///run/containerd/containerd.sock",
+				Source:                "release",
 			},
 			wantErr: false,
 		},
@@ -61,6 +62,7 @@ func TestNewKubernetes(t *testing.T) {
 				CrictlVersion:         defaultCRIVersion,
 				UseLegacyInit:         true, // v1.31.0 < v1.32.0
 				CriSocket:             "unix:///run/containerd/containerd.sock",
+				Source:                "release",
 			},
 			wantErr: false,
 		},
@@ -92,6 +94,117 @@ func TestNewKubernetes(t *testing.T) {
 				K8sFeatureGates:       "Feature1=true,Feature2=false",
 				UseLegacyInit:         true,                           // v1.30.0 < v1.32.0
 				CriSocket:             "unix:///run/cri-dockerd.sock", // docker runtime
+				Source:                "release",
+			},
+			wantErr: false,
+		},
+		{
+			name: "git source",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						Source: v1alpha1.K8sSourceGit,
+						Git: &v1alpha1.K8sGitSpec{
+							Repo: "https://github.com/myorg/kubernetes.git",
+							Ref:  "feature/my-feature",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			want: &Kubernetes{
+				KubeletReleaseVersion: defaultKubeletReleaseVersion,
+				Arch:                  defaultArch,
+				CniPluginsVersion:     defaultCNIPluginsVersion,
+				CalicoVersion:         defaultCalicoVersion,
+				CrictlVersion:         defaultCRIVersion,
+				CriSocket:             "unix:///run/containerd/containerd.sock",
+				Source:                "git",
+				GitRepo:               "https://github.com/myorg/kubernetes.git",
+				GitRef:                "feature/my-feature",
+			},
+			wantErr: false,
+		},
+		{
+			name: "git source default repo",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						Source: v1alpha1.K8sSourceGit,
+						Git: &v1alpha1.K8sGitSpec{
+							Ref: "v1.32.0-alpha.1",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			want: &Kubernetes{
+				KubeletReleaseVersion: defaultKubeletReleaseVersion,
+				Arch:                  defaultArch,
+				CniPluginsVersion:     defaultCNIPluginsVersion,
+				CalicoVersion:         defaultCalicoVersion,
+				CrictlVersion:         defaultCRIVersion,
+				CriSocket:             "unix:///run/containerd/containerd.sock",
+				Source:                "git",
+				GitRepo:               "https://github.com/kubernetes/kubernetes.git",
+				GitRef:                "v1.32.0-alpha.1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "latest source",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						Source: v1alpha1.K8sSourceLatest,
+						Latest: &v1alpha1.K8sLatestSpec{
+							Track: "release-1.31",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			want: &Kubernetes{
+				KubeletReleaseVersion: defaultKubeletReleaseVersion,
+				Arch:                  defaultArch,
+				CniPluginsVersion:     defaultCNIPluginsVersion,
+				CalicoVersion:         defaultCalicoVersion,
+				CrictlVersion:         defaultCRIVersion,
+				CriSocket:             "unix:///run/containerd/containerd.sock",
+				Source:                "latest",
+				GitRepo:               "https://github.com/kubernetes/kubernetes.git",
+				TrackBranch:           "release-1.31",
+			},
+			wantErr: false,
+		},
+		{
+			name: "latest source defaults",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						Source: v1alpha1.K8sSourceLatest,
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			want: &Kubernetes{
+				KubeletReleaseVersion: defaultKubeletReleaseVersion,
+				Arch:                  defaultArch,
+				CniPluginsVersion:     defaultCNIPluginsVersion,
+				CalicoVersion:         defaultCalicoVersion,
+				CrictlVersion:         defaultCRIVersion,
+				CriSocket:             "unix:///run/containerd/containerd.sock",
+				Source:                "latest",
+				GitRepo:               "https://github.com/kubernetes/kubernetes.git",
+				TrackBranch:           "master",
 			},
 			wantErr: false,
 		},
@@ -221,6 +334,90 @@ func TestKubernetes_Execute(t *testing.T) {
 			expectedString: "Waiting for CoreDNS",
 			checkSafeExit:  true,
 		},
+		{
+			name: "kubeadm git source",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesInstaller: "kubeadm",
+						Source:              v1alpha1.K8sSourceGit,
+						Git: &v1alpha1.K8sGitSpec{
+							Ref: "v1.32.0-alpha.1",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			wantErr:        false,
+			checkTemplate:  true,
+			expectedString: "Building Kubernetes binaries",
+			checkSafeExit:  true,
+		},
+		{
+			name: "kubeadm latest source",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesInstaller: "kubeadm",
+						Source:              v1alpha1.K8sSourceLatest,
+						Latest: &v1alpha1.K8sLatestSpec{
+							Track: "master",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			wantErr:        false,
+			checkTemplate:  true,
+			expectedString: "Resolving latest commit",
+			checkSafeExit:  true,
+		},
+		{
+			name: "kind git source",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesInstaller: "kind",
+						Source:              v1alpha1.K8sSourceGit,
+						Git: &v1alpha1.K8sGitSpec{
+							Ref: "v1.32.0-alpha.1",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			wantErr:        false,
+			checkTemplate:  true,
+			expectedString: "Building KIND node image",
+			checkSafeExit:  true,
+		},
+		{
+			name: "kind latest source",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesInstaller: "kind",
+						Source:              v1alpha1.K8sSourceLatest,
+						Latest: &v1alpha1.K8sLatestSpec{
+							Track: "master",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			},
+			wantErr:        false,
+			checkTemplate:  true,
+			expectedString: "Resolving latest commit",
+			checkSafeExit:  true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -247,6 +444,17 @@ func TestKubernetes_Execute(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKubernetes_SetResolvedCommit(t *testing.T) {
+	k := &Kubernetes{
+		Source:  "git",
+		GitRepo: "https://github.com/kubernetes/kubernetes.git",
+		GitRef:  "v1.32.0-alpha.1",
+	}
+
+	k.SetResolvedCommit("abc12345")
+	assert.Equal(t, "abc12345", k.GitCommit)
 }
 
 func TestGetCRISocket(t *testing.T) {

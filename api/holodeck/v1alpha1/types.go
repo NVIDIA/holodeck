@@ -58,11 +58,22 @@ const (
 	ConditionTerminated  string = "Terminated"
 )
 
-// Instance defines and AWS instance
+// Instance defines an AWS instance
 type Instance struct {
 	Type   string `json:"type"`
-	Image  Image  `json:"image"`
 	Region string `json:"region"`
+
+	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
+	// When set, the AMI is automatically resolved for the region and
+	// architecture. Takes precedence over Image.ImageId if both are specified.
+	// Run 'holodeck os list' for available options.
+	// +optional
+	OS string `json:"os,omitempty"`
+
+	// Image allows explicit AMI specification. If OS is set, ImageId is
+	// automatically resolved and other Image fields are ignored.
+	// +optional
+	Image Image `json:"image"`
 
 	// +optional
 	IngressIpRanges []string `json:"ingressIpRanges"`
@@ -140,8 +151,10 @@ type Properties struct {
 type Auth struct {
 	// KeyName for the SSH connection
 	KeyName string `json:"keyName"`
-	// Username for the SSH connection
-	Username string `json:"username"`
+	// Username for the SSH connection.
+	// Auto-detected from OS if not specified and OS field is set.
+	// +optional
+	Username string `json:"username,omitempty"`
 	// Path to the public key file on the local machine
 	PublicKey string `json:"publicKey"`
 	// Path to the private key file on the local machine
@@ -181,29 +194,129 @@ const (
 	ContainerRuntimeNone ContainerRuntimeName = ""
 )
 
+// K8sSource defines the installation source for Kubernetes.
+// +kubebuilder:validation:Enum=release;git;latest
+type K8sSource string
+
+const (
+	// K8sSourceRelease installs from official releases (default)
+	K8sSourceRelease K8sSource = "release"
+	// K8sSourceGit installs from a specific git reference
+	K8sSourceGit K8sSource = "git"
+	// K8sSourceLatest tracks a moving branch at provision time
+	K8sSourceLatest K8sSource = "latest"
+)
+
+// K8sReleaseSpec defines configuration for release-based installation.
+type K8sReleaseSpec struct {
+	// Version specifies the Kubernetes version (e.g., "v1.31.0").
+	// +required
+	Version string `json:"version"`
+}
+
+// K8sGitSpec defines configuration for git-based installation.
+type K8sGitSpec struct {
+	// Repo is the git repository URL.
+	// +kubebuilder:default="https://github.com/kubernetes/kubernetes.git"
+	// +optional
+	Repo string `json:"repo,omitempty"`
+
+	// Ref is the git reference (commit SHA, tag, branch, or PR ref).
+	// Examples: "v1.32.0-alpha.1", "refs/tags/v1.31.0", "refs/heads/master",
+	//           "abc123", "refs/pull/123456/head"
+	// +required
+	Ref string `json:"ref"`
+}
+
+// K8sLatestSpec defines configuration for latest branch tracking.
+type K8sLatestSpec struct {
+	// Track specifies the branch to track at provision time.
+	// +kubebuilder:default=master
+	// +optional
+	Track string `json:"track,omitempty"`
+
+	// Repo is the git repository URL.
+	// +kubebuilder:default="https://github.com/kubernetes/kubernetes.git"
+	// +optional
+	Repo string `json:"repo,omitempty"`
+}
+
+// Kubernetes defines the Kubernetes cluster configuration.
 type Kubernetes struct {
 	Install bool `json:"install"`
-	// KubeConfig is the path to the kubeconfig file on the local machine
-	KubeConfig            string   `json:"kubeConfig"`
-	KubernetesFeatures    []string `json:"Features"`
-	KubernetesVersion     string   `json:"Version"`
-	KubernetesInstaller   string   `json:"Installer"`
-	KubeletReleaseVersion string   `json:"KubeletReleaseVersion"`
-	Arch                  string   `json:"Arch"`
-	CniPluginsVersion     string   `json:"CniPluginsVersion"`
-	CalicoVersion         string   `json:"CalicoVersion"`
-	CrictlVersion         string   `json:"CrictlVersion"`
-	K8sEndpointHost       string   `json:"K8sEndpointHost"`
-	// A set of key=value pairs that describe feature gates for
-	// alpha/experimental features
-	K8sFeatureGates []string `json:"K8sFeatureGates"`
 
-	// KubeAdmConfig is the path to the KubeAdmConfig file on the local machine
+	// Source determines installation method.
+	// +kubebuilder:default=release
 	// +optional
-	KubeAdmConfig string `json:"kubeAdmConfig"`
+	Source K8sSource `json:"source,omitempty"`
 
-	// Kind exclusive
-	KindConfig string `json:"kindConfig"`
+	// Release source configuration (when source=release).
+	// +optional
+	Release *K8sReleaseSpec `json:"release,omitempty"`
+
+	// Git source configuration (when source=git).
+	// +optional
+	Git *K8sGitSpec `json:"git,omitempty"`
+
+	// Latest source configuration (when source=latest).
+	// +optional
+	Latest *K8sLatestSpec `json:"latest,omitempty"`
+
+	// KubernetesInstaller specifies the installer to use.
+	// +kubebuilder:validation:Enum=kubeadm;kind;microk8s
+	// +kubebuilder:default=kubeadm
+	// +optional
+	KubernetesInstaller string `json:"Installer,omitempty"`
+
+	// KubeConfig is the path to the kubeconfig file on the local machine.
+	// +optional
+	KubeConfig string `json:"kubeConfig,omitempty"`
+
+	// KubernetesVersion is deprecated, use Release.Version instead.
+	// Preserved for backward compatibility.
+	// +optional
+	KubernetesVersion string `json:"Version,omitempty"`
+
+	// KubernetesFeatures is a list of Kubernetes features to enable.
+	// +optional
+	KubernetesFeatures []string `json:"Features,omitempty"`
+
+	// KubeletReleaseVersion specifies the kubelet release version.
+	// +optional
+	KubeletReleaseVersion string `json:"KubeletReleaseVersion,omitempty"`
+
+	// Arch specifies the architecture (e.g., "amd64", "arm64").
+	// +optional
+	Arch string `json:"Arch,omitempty"`
+
+	// CniPluginsVersion specifies the CNI plugins version.
+	// +optional
+	CniPluginsVersion string `json:"CniPluginsVersion,omitempty"`
+
+	// CalicoVersion specifies the Calico version.
+	// +optional
+	CalicoVersion string `json:"CalicoVersion,omitempty"`
+
+	// CrictlVersion specifies the crictl version.
+	// +optional
+	CrictlVersion string `json:"CrictlVersion,omitempty"`
+
+	// K8sEndpointHost is the Kubernetes API endpoint host.
+	// +optional
+	K8sEndpointHost string `json:"K8sEndpointHost,omitempty"`
+
+	// K8sFeatureGates is a set of key=value pairs that describe feature gates
+	// for alpha/experimental features.
+	// +optional
+	K8sFeatureGates []string `json:"K8sFeatureGates,omitempty"`
+
+	// KubeAdmConfig is the path to the kubeadm config file on the local machine.
+	// +optional
+	KubeAdmConfig string `json:"kubeAdmConfig,omitempty"`
+
+	// KindConfig is the path to the KIND config file (KIND installer only).
+	// +optional
+	KindConfig string `json:"kindConfig,omitempty"`
 }
 
 type ExtraPortMapping struct {

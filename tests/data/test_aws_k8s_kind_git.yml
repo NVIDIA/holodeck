@@ -1,19 +1,16 @@
 apiVersion: holodeck.nvidia.com/v1alpha1
 kind: Environment
 metadata:
-  name: holodeck-aws-e2e-test
-  description: "end-to-end test infrastructure"
+  name: holodeck-aws-k8s-kind-git-e2e
+  description: "E2E test for Kubernetes installation from git source (KIND)"
 spec:
   provider: aws
   auth:
     keyName: cnt-ci
-    privateKey: /home/runner/.cache/key
-    # username is auto-detected from os field (ubuntu for ubuntu-22.04)
+    privateKey: ~/.ssh/cnt-ci.pem
   instance:
     type: g4dn.xlarge
     region: us-west-1
-    # os field auto-resolves AMI for the region and architecture
-    os: ubuntu-22.04
     image:
       architecture: amd64
   containerRuntime:
@@ -21,8 +18,13 @@ spec:
     name: docker
   nvidiaContainerToolkit:
     install: true
+    enableCDI: true
   nvidiaDriver:
     install: true
   kubernetes:
     install: true
-    installer: kubeadm
+    installer: kind
+    source: git
+    git:
+      # Build custom KIND node image from a specific release tag
+      ref: v1.31.0

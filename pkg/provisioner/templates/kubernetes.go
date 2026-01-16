@@ -360,6 +360,353 @@ holodeck_log "INFO" "$COMPONENT" \
     "Access the cluster with: ssh -i <your-private-key> ubuntu@${K8S_ENDPOINT_HOST}"
 `
 
+// kindGitTemplate builds a custom node image from a git ref.
+const kindGitTemplate = `
+COMPONENT="kubernetes-kind-git"
+GIT_REPO="{{.GitRepo}}"
+GIT_REF="{{.GitRef}}"
+GIT_COMMIT="{{.GitCommit}}"
+K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
+
+holodeck_progress "$COMPONENT" 1 7 "Checking existing installation"
+
+# Check if already installed with this commit
+if [[ -f /etc/kubernetes/PROVENANCE.json ]]; then
+    if command -v jq &>/dev/null; then
+        INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/kubernetes/PROVENANCE.json)
+        if [[ "$INSTALLED_COMMIT" == "$GIT_COMMIT" ]]; then
+            if kind get clusters 2>/dev/null | grep -q "^holodeck$"; then
+                export KUBECONFIG="${HOME}/.kube/config"
+                if kubectl --kubeconfig "$KUBECONFIG" get nodes &>/dev/null; then
+                    holodeck_log "INFO" "$COMPONENT" "Already installed from commit: ${GIT_COMMIT}"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+fi
+
+# Delete existing cluster if present
+if kind get clusters 2>/dev/null | grep -q "^holodeck$"; then
+    holodeck_log "INFO" "$COMPONENT" "Deleting existing cluster for rebuild"
+    kind delete cluster --name holodeck || true
+fi
+
+holodeck_progress "$COMPONENT" 2 7 "Installing KIND and kubectl"
+
+ARCH_KIND=""
+if [[ "$(uname -m)" == "x86_64" ]]; then
+    ARCH_KIND="amd64"
+elif [[ "$(uname -m)" == "aarch64" ]]; then
+    ARCH_KIND="arm64"
+fi
+
+# Install KIND
+if [[ ! -f /usr/local/bin/kind ]]; then
+    holodeck_retry 3 "$COMPONENT" curl -Lo ./kind \
+        "https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-${ARCH_KIND}"
+    chmod +x ./kind
+    sudo install ./kind /usr/local/bin/kind
+    rm -f ./kind
+fi
+
+# Install kubectl (required for cluster verification)
+if [[ ! -f /usr/local/bin/kubectl ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing kubectl"
+    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+    holodeck_retry 3 "$COMPONENT" curl -Lo ./kubectl \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH_KIND}/kubectl"
+    chmod +x ./kubectl
+    sudo install ./kubectl /usr/local/bin/kubectl
+    rm -f ./kubectl
+fi
+
+# Ensure docker buildx is available for KIND node image builds
+if ! docker buildx version &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Installing docker buildx"
+    BUILDX_ARCH=""
+    if [[ "$(uname -m)" == "x86_64" ]]; then
+        BUILDX_ARCH="amd64"
+    elif [[ "$(uname -m)" == "aarch64" ]]; then
+        BUILDX_ARCH="arm64"
+    fi
+    mkdir -p ~/.docker/cli-plugins
+    holodeck_retry 3 "$COMPONENT" curl -Lo ~/.docker/cli-plugins/docker-buildx \
+        "https://github.com/docker/buildx/releases/download/v0.12.1/buildx-v0.12.1.linux-${BUILDX_ARCH}"
+    chmod +x ~/.docker/cli-plugins/docker-buildx
+fi
+
+holodeck_progress "$COMPONENT" 3 7 "Cloning Kubernetes repository"
+
+WORK_DIR=$(mktemp -d)
+
+# Cleanup function that handles Go module cache read-only files
+cleanup_workdir() {
+    if [[ -d "$WORK_DIR" ]]; then
+        chmod -R u+w "$WORK_DIR" 2>/dev/null || true
+        rm -rf "$WORK_DIR" 2>/dev/null || true
+    fi
+}
+trap cleanup_workdir EXIT
+
+# Validate repository URL
+if [[ -z "${GIT_REPO}" ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO is empty" ""
+fi
+if [[ "${GIT_REPO}" != https://github.com/* && "${GIT_REPO}" != git@github.com:* ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO must be a GitHub URL: ${GIT_REPO}" ""
+fi
+
+holodeck_log "INFO" "$COMPONENT" "Cloning ${GIT_REPO} at ${GIT_REF}"
+if ! git clone --depth 1 "${GIT_REPO}" "${WORK_DIR}/kubernetes" 2>&1; then
+    holodeck_error 2 "$COMPONENT" "Failed to clone repository" "Check network and repo URL"
+fi
+cd "${WORK_DIR}/kubernetes" || exit 1
+# Fetch tags for KIND version detection
+git fetch --depth 1 --tags origin 2>&1 || true
+if ! git fetch --depth 1 origin "${GIT_REF}" 2>&1; then
+    holodeck_error 2 "$COMPONENT" "Failed to fetch ref ${GIT_REF}" "Verify ref exists"
+fi
+git checkout FETCH_HEAD
+
+K8S_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "${GIT_COMMIT}")
+holodeck_log "INFO" "$COMPONENT" "Detected K8s version: ${K8S_VERSION}"
+
+holodeck_progress "$COMPONENT" 4 7 "Building KIND node image (this may take 20-40 minutes)"
+
+NODE_IMAGE="holodeck/k8s-node:${GIT_COMMIT}"
+holodeck_log "INFO" "$COMPONENT" "Building node image: ${NODE_IMAGE}"
+
+if ! kind build node-image "${WORK_DIR}/kubernetes" --image "${NODE_IMAGE}"; then
+    holodeck_error 4 "$COMPONENT" "Failed to build KIND node image" "Check build logs above"
+fi
+
+holodeck_progress "$COMPONENT" 5 7 "Configuring NVIDIA GPU support"
+
+if command -v nvidia-ctk &>/dev/null; then
+    sudo nvidia-ctk runtime configure --set-as-default
+    sudo systemctl restart docker
+    sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts --in-place
+else
+    holodeck_log "WARN" "$COMPONENT" "nvidia-ctk not found, skipping GPU configuration"
+fi
+
+holodeck_progress "$COMPONENT" 6 7 "Creating KIND cluster"
+
+mkdir -p "$HOME/.kube"
+sudo chown -R "$(id -u):$(id -g)" "$HOME/.kube/"
+export KUBECONFIG="${HOME}/.kube/config"
+
+KIND_CONFIG_ARGS=()
+if [[ -n "{{.KindConfig}}" ]]; then
+    KIND_CONFIG_ARGS=(--config /etc/kubernetes/kind.yaml)
+fi
+
+holodeck_retry 3 "$COMPONENT" kind create cluster \
+    --name holodeck \
+    --image "${NODE_IMAGE}" \
+    "${KIND_CONFIG_ARGS[@]}" \
+    --kubeconfig="${HOME}/.kube/config"
+
+holodeck_progress "$COMPONENT" 7 7 "Verifying cluster"
+
+if ! kubectl --kubeconfig "${HOME}/.kube/config" get nodes &>/dev/null; then
+    holodeck_error 13 "$COMPONENT" "KIND cluster verification failed" ""
+fi
+
+# Write provenance
+sudo mkdir -p /etc/kubernetes
+printf '%s\n' '{
+  "source": "git",
+  "repo": "'"${GIT_REPO}"'",
+  "ref": "'"${GIT_REF}"'",
+  "commit": "'"${GIT_COMMIT}"'",
+  "version": "'"${K8S_VERSION}"'",
+  "installer": "kind",
+  "node_image": "'"${NODE_IMAGE}"'",
+  "installed_at": "'"$(date -Iseconds)"'"
+}' | sudo tee /etc/kubernetes/PROVENANCE.json > /dev/null
+
+holodeck_mark_installed "$COMPONENT" "${GIT_COMMIT}"
+holodeck_log "INFO" "$COMPONENT" "KIND cluster with custom K8s ${GIT_COMMIT} installed"
+holodeck_log "INFO" "$COMPONENT" \
+    "Access the cluster with: ssh -i <your-private-key> ubuntu@${K8S_ENDPOINT_HOST}"
+`
+
+// kindLatestTemplate tracks a branch and builds node image at provision time.
+const kindLatestTemplate = `
+COMPONENT="kubernetes-kind-latest"
+GIT_REPO="{{.GitRepo}}"
+TRACK_BRANCH="{{.TrackBranch}}"
+K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
+
+holodeck_progress "$COMPONENT" 1 7 "Resolving latest commit on ${TRACK_BRANCH}"
+
+# Validate repository URL
+if [[ -z "${GIT_REPO}" ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO is empty" ""
+fi
+if [[ "${GIT_REPO}" != https://github.com/* && "${GIT_REPO}" != git@github.com:* ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO must be a GitHub URL: ${GIT_REPO}" ""
+fi
+
+LATEST_COMMIT=$(git ls-remote "${GIT_REPO}" "refs/heads/${TRACK_BRANCH}" | cut -f1)
+if [[ -z "$LATEST_COMMIT" ]]; then
+    holodeck_error 2 "$COMPONENT" "Failed to resolve branch ${TRACK_BRANCH}" ""
+fi
+SHORT_COMMIT="${LATEST_COMMIT:0:8}"
+holodeck_log "INFO" "$COMPONENT" "Tracking ${TRACK_BRANCH} at ${SHORT_COMMIT}"
+
+# Check if already at latest
+if [[ -f /etc/kubernetes/PROVENANCE.json ]]; then
+    if command -v jq &>/dev/null; then
+        INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/kubernetes/PROVENANCE.json)
+        if [[ "$INSTALLED_COMMIT" == "$SHORT_COMMIT" ]]; then
+            if kind get clusters 2>/dev/null | grep -q "^holodeck$"; then
+                export KUBECONFIG="${HOME}/.kube/config"
+                if kubectl --kubeconfig "$KUBECONFIG" get nodes &>/dev/null; then
+                    holodeck_log "INFO" "$COMPONENT" "Already at latest: ${SHORT_COMMIT}"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+fi
+
+# Delete existing cluster for rebuild
+if kind get clusters 2>/dev/null | grep -q "^holodeck$"; then
+    holodeck_log "INFO" "$COMPONENT" "Deleting existing cluster for rebuild"
+    kind delete cluster --name holodeck || true
+fi
+
+holodeck_progress "$COMPONENT" 2 7 "Installing KIND and kubectl"
+
+ARCH_KIND=""
+if [[ "$(uname -m)" == "x86_64" ]]; then
+    ARCH_KIND="amd64"
+elif [[ "$(uname -m)" == "aarch64" ]]; then
+    ARCH_KIND="arm64"
+fi
+
+# Install KIND
+if [[ ! -f /usr/local/bin/kind ]]; then
+    holodeck_retry 3 "$COMPONENT" curl -Lo ./kind \
+        "https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-${ARCH_KIND}"
+    chmod +x ./kind
+    sudo install ./kind /usr/local/bin/kind
+    rm -f ./kind
+fi
+
+# Install kubectl (required for cluster verification)
+if [[ ! -f /usr/local/bin/kubectl ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing kubectl"
+    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+    holodeck_retry 3 "$COMPONENT" curl -Lo ./kubectl \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH_KIND}/kubectl"
+    chmod +x ./kubectl
+    sudo install ./kubectl /usr/local/bin/kubectl
+    rm -f ./kubectl
+fi
+
+# Ensure docker buildx is available for KIND node image builds
+if ! docker buildx version &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Installing docker buildx"
+    BUILDX_ARCH=""
+    if [[ "$(uname -m)" == "x86_64" ]]; then
+        BUILDX_ARCH="amd64"
+    elif [[ "$(uname -m)" == "aarch64" ]]; then
+        BUILDX_ARCH="arm64"
+    fi
+    mkdir -p ~/.docker/cli-plugins
+    holodeck_retry 3 "$COMPONENT" curl -Lo ~/.docker/cli-plugins/docker-buildx \
+        "https://github.com/docker/buildx/releases/download/v0.12.1/buildx-v0.12.1.linux-${BUILDX_ARCH}"
+    chmod +x ~/.docker/cli-plugins/docker-buildx
+fi
+
+holodeck_progress "$COMPONENT" 3 7 "Cloning Kubernetes repository"
+
+WORK_DIR=$(mktemp -d)
+
+# Cleanup function that handles Go module cache read-only files
+cleanup_workdir() {
+    if [[ -d "$WORK_DIR" ]]; then
+        chmod -R u+w "$WORK_DIR" 2>/dev/null || true
+        rm -rf "$WORK_DIR" 2>/dev/null || true
+    fi
+}
+trap cleanup_workdir EXIT
+
+holodeck_log "INFO" "$COMPONENT" "Cloning ${GIT_REPO} branch ${TRACK_BRANCH}"
+if ! git clone --depth 1 --branch "${TRACK_BRANCH}" "${GIT_REPO}" "${WORK_DIR}/kubernetes" 2>&1; then
+    holodeck_error 2 "$COMPONENT" "Failed to clone repository" "Check network and branch name"
+fi
+cd "${WORK_DIR}/kubernetes" || exit 1
+# Fetch tags for KIND version detection
+git fetch --depth 1 --tags origin 2>&1 || true
+
+K8S_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "${SHORT_COMMIT}")
+holodeck_log "INFO" "$COMPONENT" "Detected K8s version: ${K8S_VERSION}"
+
+holodeck_progress "$COMPONENT" 4 7 "Building KIND node image (this may take 20-40 minutes)"
+
+NODE_IMAGE="holodeck/k8s-node:${SHORT_COMMIT}"
+holodeck_log "INFO" "$COMPONENT" "Building node image: ${NODE_IMAGE}"
+
+if ! kind build node-image "${WORK_DIR}/kubernetes" --image "${NODE_IMAGE}"; then
+    holodeck_error 4 "$COMPONENT" "Failed to build KIND node image" ""
+fi
+
+holodeck_progress "$COMPONENT" 5 7 "Configuring NVIDIA GPU support"
+
+if command -v nvidia-ctk &>/dev/null; then
+    sudo nvidia-ctk runtime configure --set-as-default
+    sudo systemctl restart docker
+    sudo nvidia-ctk config --set accept-nvidia-visible-devices-as-volume-mounts --in-place
+else
+    holodeck_log "WARN" "$COMPONENT" "nvidia-ctk not found, skipping GPU configuration"
+fi
+
+holodeck_progress "$COMPONENT" 6 7 "Creating KIND cluster"
+
+mkdir -p "$HOME/.kube"
+sudo chown -R "$(id -u):$(id -g)" "$HOME/.kube/"
+export KUBECONFIG="${HOME}/.kube/config"
+
+KIND_CONFIG_ARGS=()
+if [[ -n "{{.KindConfig}}" ]]; then
+    KIND_CONFIG_ARGS=(--config /etc/kubernetes/kind.yaml)
+fi
+
+holodeck_retry 3 "$COMPONENT" kind create cluster \
+    --name holodeck \
+    --image "${NODE_IMAGE}" \
+    "${KIND_CONFIG_ARGS[@]}" \
+    --kubeconfig="${HOME}/.kube/config"
+
+holodeck_progress "$COMPONENT" 7 7 "Verifying cluster"
+
+if ! kubectl --kubeconfig "${HOME}/.kube/config" get nodes &>/dev/null; then
+    holodeck_error 13 "$COMPONENT" "KIND cluster verification failed" ""
+fi
+
+sudo mkdir -p /etc/kubernetes
+printf '%s\n' '{
+  "source": "latest",
+  "repo": "'"${GIT_REPO}"'",
+  "branch": "'"${TRACK_BRANCH}"'",
+  "commit": "'"${SHORT_COMMIT}"'",
+  "version": "'"${K8S_VERSION}"'",
+  "installer": "kind",
+  "node_image": "'"${NODE_IMAGE}"'",
+  "installed_at": "'"$(date -Iseconds)"'"
+}' | sudo tee /etc/kubernetes/PROVENANCE.json > /dev/null
+
+holodeck_mark_installed "$COMPONENT" "${SHORT_COMMIT}"
+holodeck_log "INFO" "$COMPONENT" "KIND cluster with ${TRACK_BRANCH}@${SHORT_COMMIT} installed"
+holodeck_log "INFO" "$COMPONENT" \
+    "Access the cluster with: ssh -i <your-private-key> ubuntu@${K8S_ENDPOINT_HOST}"
+`
+
 const microk8sTemplate = `
 COMPONENT="kubernetes-microk8s"
 K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
@@ -466,6 +813,621 @@ featureGates:
 {{- end }}
 `
 
+// kubeadmGitTemplate builds Kubernetes from source and installs via kubeadm.
+const kubeadmGitTemplate = `
+COMPONENT="kubernetes-kubeadm-git"
+GIT_REPO="{{.GitRepo}}"
+GIT_REF="{{.GitRef}}"
+GIT_COMMIT="{{.GitCommit}}"
+CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
+CALICO_VERSION="{{.CalicoVersion}}"
+CRICTL_VERSION="{{.CrictlVersion}}"
+ARCH="{{.Arch}}"
+KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
+K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
+
+holodeck_progress "$COMPONENT" 1 11 "Checking existing installation"
+
+# Check if already installed with this commit
+if [[ -f /etc/kubernetes/PROVENANCE.json ]]; then
+    if command -v jq &>/dev/null; then
+        INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/kubernetes/PROVENANCE.json)
+        if [[ "$INSTALLED_COMMIT" == "$GIT_COMMIT" ]]; then
+            if [[ -f /etc/kubernetes/admin.conf ]]; then
+                if kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes &>/dev/null; then
+                    holodeck_log "INFO" "$COMPONENT" "Already installed from commit: ${GIT_COMMIT}"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+fi
+
+holodeck_progress "$COMPONENT" 2 11 "Checking system resources"
+
+# Check available disk space (need at least 10GB for build)
+AVAILABLE_GB=$(df -BG /tmp | tail -1 | awk '{print $4}' | sed 's/G//')
+if [[ "$AVAILABLE_GB" -lt 10 ]]; then
+    holodeck_error 1 "$COMPONENT" \
+        "Insufficient disk space: ${AVAILABLE_GB}GB available, need 10GB+" \
+        "Free up disk space or use a larger instance"
+fi
+holodeck_log "INFO" "$COMPONENT" "Available disk space: ${AVAILABLE_GB}GB"
+
+# Check available memory
+AVAILABLE_MEM_MB=$(free -m | awk '/^Mem:/{print $7}')
+holodeck_log "INFO" "$COMPONENT" "Available memory: ${AVAILABLE_MEM_MB}MB"
+
+holodeck_progress "$COMPONENT" 3 11 "Configuring system prerequisites"
+
+# Disable swap (idempotent)
+sudo swapoff -a
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+# Configure persistent loading of modules (idempotent)
+if [[ ! -f /etc/modules-load.d/k8s.conf ]]; then
+    sudo tee /etc/modules-load.d/k8s.conf > /dev/null <<EOF
+overlay
+br_netfilter
+EOF
+fi
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+if [[ ! -f /etc/sysctl.d/kubernetes.conf ]]; then
+    sudo tee /etc/sysctl.d/kubernetes.conf > /dev/null <<EOF
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF
+    sudo sysctl --system
+fi
+
+holodeck_progress "$COMPONENT" 4 11 "Installing build prerequisites"
+
+# Install ALL required build tools
+install_packages_with_retry make rsync gcc g++ libc6-dev jq
+
+# Verify critical tools are available
+for tool in make rsync gcc; do
+    if ! command -v "$tool" &>/dev/null; then
+        holodeck_error 2 "$COMPONENT" "Required tool not found: $tool" "Install build-essential"
+    fi
+done
+
+holodeck_progress "$COMPONENT" 5 11 "Installing CNI plugins"
+
+DEST="/opt/cni/bin"
+sudo mkdir -p "$DEST"
+
+if [[ ! -f "$DEST/bridge" ]] || [[ ! -f "$DEST/loopback" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing CNI plugins ${CNI_PLUGINS_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -L \
+        "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | \
+        sudo tar -C "$DEST" -xz
+    sudo chmod -R 755 "$DEST"
+fi
+
+holodeck_progress "$COMPONENT" 6 11 "Cloning Kubernetes repository"
+
+WORK_DIR=$(mktemp -d)
+
+# Cleanup function that handles Go module cache read-only files
+cleanup_workdir() {
+    if [[ -d "$WORK_DIR" ]]; then
+        # Go module cache has read-only files, make writable before removing
+        chmod -R u+w "$WORK_DIR" 2>/dev/null || true
+        rm -rf "$WORK_DIR" 2>/dev/null || true
+    fi
+}
+trap cleanup_workdir EXIT
+
+# Validate repository URL (security: only allow GitHub URLs)
+if [[ -z "${GIT_REPO}" ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO is empty" "Check environment configuration"
+fi
+if [[ "${GIT_REPO}" != https://github.com/* && "${GIT_REPO}" != git@github.com:* ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO must be a GitHub URL: ${GIT_REPO}" ""
+fi
+
+holodeck_log "INFO" "$COMPONENT" "Cloning ${GIT_REPO} at ${GIT_REF}"
+if ! git clone --depth 1 "${GIT_REPO}" "${WORK_DIR}/kubernetes" 2>&1; then
+    holodeck_error 2 "$COMPONENT" "Failed to clone repository" "Check network and repo URL"
+fi
+cd "${WORK_DIR}/kubernetes" || exit 1
+if ! git fetch --depth 1 origin "${GIT_REF}" 2>&1; then
+    holodeck_error 2 "$COMPONENT" "Failed to fetch ref ${GIT_REF}" "Verify ref exists in repo"
+fi
+git checkout FETCH_HEAD
+
+holodeck_progress "$COMPONENT" 7 11 "Installing Go toolchain"
+
+# Extract Go version from go.mod
+GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')
+if [[ -z "$GO_VERSION" ]]; then
+    GO_VERSION="1.23.4"  # Fallback
+fi
+holodeck_log "INFO" "$COMPONENT" "Required Go version: ${GO_VERSION}"
+
+# Detect architecture
+GO_ARCH="$(uname -m)"
+case "${GO_ARCH}" in
+    x86_64|amd64)  GO_ARCH="amd64" ;;
+    aarch64|arm64) GO_ARCH="arm64" ;;
+    *)
+        holodeck_error 3 "$COMPONENT" "Unsupported architecture: ${GO_ARCH}" ""
+        ;;
+esac
+
+# Install Go if needed or version mismatch
+NEED_GO_INSTALL=false
+if ! command -v /usr/local/go/bin/go &>/dev/null; then
+    NEED_GO_INSTALL=true
+else
+    INSTALLED_GO=$(/usr/local/go/bin/go version | awk '{print $3}' | sed 's/go//')
+    if [[ "$INSTALLED_GO" != "$GO_VERSION"* ]]; then
+        holodeck_log "INFO" "$COMPONENT" "Go version mismatch: installed=$INSTALLED_GO, required=$GO_VERSION"
+        sudo rm -rf /usr/local/go
+        NEED_GO_INSTALL=true
+    fi
+fi
+
+if [[ "$NEED_GO_INSTALL" == "true" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -fsSL \
+        "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
+    sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+    rm -f /tmp/go.tar.gz
+fi
+
+# Set Go environment - use local toolchain only (no auto-download)
+export GOROOT="/usr/local/go"
+export GOPATH="${WORK_DIR}/gopath"
+export GOCACHE="${WORK_DIR}/gocache"
+export GOTOOLCHAIN="local"
+export PATH="${GOROOT}/bin:${GOPATH}/bin:$PATH"
+
+# Verify Go is working
+if ! go version; then
+    holodeck_error 3 "$COMPONENT" "Go installation failed" "Check Go installation"
+fi
+holodeck_log "INFO" "$COMPONENT" "Using Go: $(go version)"
+
+holodeck_progress "$COMPONENT" 8 11 "Building Kubernetes binaries (10-20 minutes)"
+
+BUILD_LOG="${WORK_DIR}/build.log"
+holodeck_log "INFO" "$COMPONENT" "Building kubeadm, kubelet, kubectl..."
+holodeck_log "INFO" "$COMPONENT" "Build log: ${BUILD_LOG}"
+
+# Run build with output capture
+if ! make WHAT="cmd/kubeadm cmd/kubelet cmd/kubectl" 2>&1 | tee "$BUILD_LOG"; then
+    holodeck_log "ERROR" "$COMPONENT" "Build failed. Last 100 lines of build log:"
+    tail -100 "$BUILD_LOG" >&2
+    holodeck_error 4 "$COMPONENT" "Kubernetes build failed" "Check build prerequisites and disk space"
+fi
+
+# Verify binaries were created
+for binary in kubeadm kubelet kubectl; do
+    if [[ ! -f "_output/bin/${binary}" ]]; then
+        holodeck_error 4 "$COMPONENT" "Build incomplete: ${binary} not found" "Check build log"
+    fi
+done
+
+# Get version string
+K8S_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "${GIT_COMMIT}")
+holodeck_log "INFO" "$COMPONENT" "Built Kubernetes version: ${K8S_VERSION}"
+
+holodeck_progress "$COMPONENT" 9 11 "Installing Kubernetes binaries"
+
+DOWNLOAD_DIR="/usr/local/bin"
+sudo mkdir -p "$DOWNLOAD_DIR"
+
+# Install built binaries
+sudo install -m 755 _output/bin/kubeadm "$DOWNLOAD_DIR/"
+sudo install -m 755 _output/bin/kubelet "$DOWNLOAD_DIR/"
+sudo install -m 755 _output/bin/kubectl "$DOWNLOAD_DIR/"
+
+# Verify installation
+for binary in kubeadm kubelet kubectl; do
+    if ! "${DOWNLOAD_DIR}/${binary}" version --client 2>/dev/null || \
+       ! "${DOWNLOAD_DIR}/${binary}" --version 2>/dev/null; then
+        holodeck_log "INFO" "$COMPONENT" "Installed ${binary}"
+    fi
+done
+
+# Install crictl
+if [[ ! -f "$DOWNLOAD_DIR/crictl" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing crictl ${CRICTL_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -L \
+        "https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${ARCH}.tar.gz" | \
+        sudo tar -C "$DOWNLOAD_DIR" -xz
+fi
+
+# Configure kubelet service
+if [[ ! -f /etc/systemd/system/kubelet.service ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Configuring kubelet service"
+    curl -sSL \
+        "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubelet/kubelet.service" | \
+        sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | \
+        sudo tee /etc/systemd/system/kubelet.service > /dev/null
+fi
+
+sudo mkdir -p /etc/systemd/system/kubelet.service.d
+if [[ ! -f /etc/systemd/system/kubelet.service.d/10-kubeadm.conf ]]; then
+    curl -sSL \
+        "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubeadm/10-kubeadm.conf" | \
+        sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | \
+        sudo tee /etc/systemd/system/kubelet.service.d/10-kubeadm.conf > /dev/null
+fi
+
+sudo systemctl daemon-reload
+sudo systemctl enable kubelet
+
+holodeck_progress "$COMPONENT" 10 11 "Initializing Kubernetes cluster"
+
+if [[ ! -f /etc/kubernetes/admin.conf ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Running kubeadm init"
+    
+    # Start kubelet before kubeadm init
+    sudo systemctl start kubelet || true
+    
+    if ! sudo kubeadm init \
+        --pod-network-cidr=192.168.0.0/16 \
+        --control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443" \
+        --ignore-preflight-errors=all 2>&1 | tee /tmp/kubeadm-init.log; then
+        holodeck_log "ERROR" "$COMPONENT" "kubeadm init failed. Output:"
+        cat /tmp/kubeadm-init.log >&2
+        holodeck_error 5 "$COMPONENT" "kubeadm init failed" "Check kubelet logs: journalctl -xeu kubelet"
+    fi
+fi
+
+mkdir -p "$HOME/.kube"
+sudo cp -f /etc/kubernetes/admin.conf "$HOME/.kube/config"
+sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+export KUBECONFIG="${HOME}/.kube/config"
+
+holodeck_log "INFO" "$COMPONENT" "Waiting for API server..."
+# Use get --raw /healthz instead of version to avoid client version parsing issues
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" get --raw /healthz
+
+holodeck_progress "$COMPONENT" 11 11 "Installing CNI and finalizing"
+
+# Install Calico CNI
+if ! kubectl --kubeconfig "$KUBECONFIG" get namespace tigera-operator &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Installing Calico ${CALICO_VERSION}"
+    holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" create -f \
+        "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
+fi
+
+holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator..."
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+
+if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
+    -n tigera-operator &>/dev/null; then
+    holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" apply -f \
+        "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml"
+fi
+
+holodeck_log "INFO" "$COMPONENT" "Waiting for Calico pods..."
+holodeck_retry 20 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=calico-node -n calico-system
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=calico-kube-controllers -n calico-system
+
+# Configure node
+kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- 2>/dev/null || true
+kubectl label node --all node-role.kubernetes.io/worker= --overwrite 2>/dev/null || true
+kubectl label node --all nvidia.com/holodeck.managed=true --overwrite 2>/dev/null || true
+
+holodeck_log "INFO" "$COMPONENT" "Waiting for nodes to be ready..."
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s nodes --all
+
+holodeck_log "INFO" "$COMPONENT" "Waiting for CoreDNS..."
+holodeck_retry 20 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=kube-dns -n kube-system
+
+# Write provenance
+sudo mkdir -p /etc/kubernetes
+printf '%s\n' '{
+  "source": "git",
+  "repo": "'"${GIT_REPO}"'",
+  "ref": "'"${GIT_REF}"'",
+  "commit": "'"${GIT_COMMIT}"'",
+  "version": "'"${K8S_VERSION}"'",
+  "installer": "kubeadm",
+  "installed_at": "'"$(date -Iseconds)"'"
+}' | sudo tee /etc/kubernetes/PROVENANCE.json > /dev/null
+
+holodeck_mark_installed "$COMPONENT" "${GIT_COMMIT}"
+holodeck_log "INFO" "$COMPONENT" "Successfully installed Kubernetes from git: ${GIT_COMMIT}"
+`
+
+// kubeadmLatestTemplate tracks a branch and builds at provision time.
+const kubeadmLatestTemplate = `
+COMPONENT="kubernetes-kubeadm-latest"
+GIT_REPO="{{.GitRepo}}"
+TRACK_BRANCH="{{.TrackBranch}}"
+CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
+CALICO_VERSION="{{.CalicoVersion}}"
+CRICTL_VERSION="{{.CrictlVersion}}"
+ARCH="{{.Arch}}"
+KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
+K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
+
+holodeck_progress "$COMPONENT" 1 11 "Resolving latest commit on ${TRACK_BRANCH}"
+
+# Validate repository URL
+if [[ -z "${GIT_REPO}" ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO is empty" ""
+fi
+if [[ "${GIT_REPO}" != https://github.com/* && "${GIT_REPO}" != git@github.com:* ]]; then
+    holodeck_error 1 "$COMPONENT" "GIT_REPO must be a GitHub URL: ${GIT_REPO}" ""
+fi
+
+# Resolve branch to latest commit
+LATEST_COMMIT=$(git ls-remote "${GIT_REPO}" "refs/heads/${TRACK_BRANCH}" | cut -f1)
+if [[ -z "$LATEST_COMMIT" ]]; then
+    holodeck_error 2 "$COMPONENT" \
+        "Failed to resolve branch ${TRACK_BRANCH}" "Verify branch exists in ${GIT_REPO}"
+fi
+SHORT_COMMIT="${LATEST_COMMIT:0:8}"
+holodeck_log "INFO" "$COMPONENT" "Tracking ${TRACK_BRANCH} at ${SHORT_COMMIT}"
+
+# Check if already at latest
+if [[ -f /etc/kubernetes/PROVENANCE.json ]]; then
+    if command -v jq &>/dev/null; then
+        INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/kubernetes/PROVENANCE.json)
+        if [[ "$INSTALLED_COMMIT" == "$SHORT_COMMIT" ]]; then
+            if [[ -f /etc/kubernetes/admin.conf ]]; then
+                if kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes &>/dev/null; then
+                    holodeck_log "INFO" "$COMPONENT" "Already at latest: ${SHORT_COMMIT}"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+fi
+
+holodeck_progress "$COMPONENT" 2 11 "Checking system resources"
+
+# Check available disk space
+AVAILABLE_GB=$(df -BG /tmp | tail -1 | awk '{print $4}' | sed 's/G//')
+if [[ "$AVAILABLE_GB" -lt 10 ]]; then
+    holodeck_error 1 "$COMPONENT" \
+        "Insufficient disk space: ${AVAILABLE_GB}GB available, need 10GB+" ""
+fi
+holodeck_log "INFO" "$COMPONENT" "Available disk space: ${AVAILABLE_GB}GB"
+
+holodeck_progress "$COMPONENT" 3 11 "Configuring system prerequisites"
+
+sudo swapoff -a
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+if [[ ! -f /etc/modules-load.d/k8s.conf ]]; then
+    sudo tee /etc/modules-load.d/k8s.conf > /dev/null <<EOF
+overlay
+br_netfilter
+EOF
+fi
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+if [[ ! -f /etc/sysctl.d/kubernetes.conf ]]; then
+    sudo tee /etc/sysctl.d/kubernetes.conf > /dev/null <<EOF
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF
+    sudo sysctl --system
+fi
+
+holodeck_progress "$COMPONENT" 4 11 "Installing build prerequisites"
+
+install_packages_with_retry make rsync gcc g++ libc6-dev jq
+
+holodeck_progress "$COMPONENT" 5 11 "Installing CNI plugins"
+
+DEST="/opt/cni/bin"
+sudo mkdir -p "$DEST"
+
+if [[ ! -f "$DEST/bridge" ]] || [[ ! -f "$DEST/loopback" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing CNI plugins ${CNI_PLUGINS_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -L \
+        "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | \
+        sudo tar -C "$DEST" -xz
+    sudo chmod -R 755 "$DEST"
+fi
+
+holodeck_progress "$COMPONENT" 6 11 "Cloning Kubernetes repository"
+
+WORK_DIR=$(mktemp -d)
+
+# Cleanup function that handles Go module cache read-only files
+cleanup_workdir() {
+    if [[ -d "$WORK_DIR" ]]; then
+        chmod -R u+w "$WORK_DIR" 2>/dev/null || true
+        rm -rf "$WORK_DIR" 2>/dev/null || true
+    fi
+}
+trap cleanup_workdir EXIT
+
+holodeck_log "INFO" "$COMPONENT" "Cloning ${GIT_REPO} branch ${TRACK_BRANCH}"
+if ! git clone --depth 1 --branch "${TRACK_BRANCH}" "${GIT_REPO}" "${WORK_DIR}/kubernetes" 2>&1; then
+    holodeck_error 2 "$COMPONENT" "Failed to clone repository" "Check network and branch name"
+fi
+cd "${WORK_DIR}/kubernetes" || exit 1
+
+holodeck_progress "$COMPONENT" 7 11 "Installing Go toolchain"
+
+GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')
+if [[ -z "$GO_VERSION" ]]; then
+    GO_VERSION="1.23.4"
+fi
+holodeck_log "INFO" "$COMPONENT" "Required Go version: ${GO_VERSION}"
+
+GO_ARCH="$(uname -m)"
+case "${GO_ARCH}" in
+    x86_64|amd64)  GO_ARCH="amd64" ;;
+    aarch64|arm64) GO_ARCH="arm64" ;;
+    *)
+        holodeck_error 3 "$COMPONENT" "Unsupported architecture: ${GO_ARCH}" ""
+        ;;
+esac
+
+NEED_GO_INSTALL=false
+if ! command -v /usr/local/go/bin/go &>/dev/null; then
+    NEED_GO_INSTALL=true
+else
+    INSTALLED_GO=$(/usr/local/go/bin/go version | awk '{print $3}' | sed 's/go//')
+    if [[ "$INSTALLED_GO" != "$GO_VERSION"* ]]; then
+        sudo rm -rf /usr/local/go
+        NEED_GO_INSTALL=true
+    fi
+fi
+
+if [[ "$NEED_GO_INSTALL" == "true" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -fsSL \
+        "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
+    sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+    rm -f /tmp/go.tar.gz
+fi
+
+export GOROOT="/usr/local/go"
+export GOPATH="${WORK_DIR}/gopath"
+export GOCACHE="${WORK_DIR}/gocache"
+export GOTOOLCHAIN="local"
+export PATH="${GOROOT}/bin:${GOPATH}/bin:$PATH"
+
+holodeck_log "INFO" "$COMPONENT" "Using Go: $(go version)"
+
+holodeck_progress "$COMPONENT" 8 11 "Building Kubernetes binaries (10-20 minutes)"
+
+BUILD_LOG="${WORK_DIR}/build.log"
+holodeck_log "INFO" "$COMPONENT" "Building kubeadm, kubelet, kubectl..."
+
+if ! make WHAT="cmd/kubeadm cmd/kubelet cmd/kubectl" 2>&1 | tee "$BUILD_LOG"; then
+    holodeck_log "ERROR" "$COMPONENT" "Build failed. Last 100 lines:"
+    tail -100 "$BUILD_LOG" >&2
+    holodeck_error 4 "$COMPONENT" "Kubernetes build failed" "Check build log"
+fi
+
+for binary in kubeadm kubelet kubectl; do
+    if [[ ! -f "_output/bin/${binary}" ]]; then
+        holodeck_error 4 "$COMPONENT" "Build incomplete: ${binary} not found" ""
+    fi
+done
+
+K8S_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "${SHORT_COMMIT}")
+holodeck_log "INFO" "$COMPONENT" "Built Kubernetes version: ${K8S_VERSION}"
+
+holodeck_progress "$COMPONENT" 9 11 "Installing Kubernetes binaries"
+
+DOWNLOAD_DIR="/usr/local/bin"
+sudo mkdir -p "$DOWNLOAD_DIR"
+
+sudo install -m 755 _output/bin/kubeadm "$DOWNLOAD_DIR/"
+sudo install -m 755 _output/bin/kubelet "$DOWNLOAD_DIR/"
+sudo install -m 755 _output/bin/kubectl "$DOWNLOAD_DIR/"
+
+if [[ ! -f "$DOWNLOAD_DIR/crictl" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing crictl ${CRICTL_VERSION}"
+    holodeck_retry 3 "$COMPONENT" curl -L \
+        "https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${ARCH}.tar.gz" | \
+        sudo tar -C "$DOWNLOAD_DIR" -xz
+fi
+
+if [[ ! -f /etc/systemd/system/kubelet.service ]]; then
+    curl -sSL \
+        "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubelet/kubelet.service" | \
+        sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | \
+        sudo tee /etc/systemd/system/kubelet.service > /dev/null
+fi
+
+sudo mkdir -p /etc/systemd/system/kubelet.service.d
+if [[ ! -f /etc/systemd/system/kubelet.service.d/10-kubeadm.conf ]]; then
+    curl -sSL \
+        "https://raw.githubusercontent.com/kubernetes/release/${KUBELET_RELEASE_VERSION}/cmd/krel/templates/latest/kubeadm/10-kubeadm.conf" | \
+        sed "s:/usr/bin:${DOWNLOAD_DIR}:g" | \
+        sudo tee /etc/systemd/system/kubelet.service.d/10-kubeadm.conf > /dev/null
+fi
+
+sudo systemctl daemon-reload
+sudo systemctl enable kubelet
+
+holodeck_progress "$COMPONENT" 10 11 "Initializing Kubernetes cluster"
+
+if [[ ! -f /etc/kubernetes/admin.conf ]]; then
+    sudo systemctl start kubelet || true
+    
+    if ! sudo kubeadm init \
+        --pod-network-cidr=192.168.0.0/16 \
+        --control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443" \
+        --ignore-preflight-errors=all 2>&1 | tee /tmp/kubeadm-init.log; then
+        holodeck_log "ERROR" "$COMPONENT" "kubeadm init failed:"
+        cat /tmp/kubeadm-init.log >&2
+        holodeck_error 5 "$COMPONENT" "kubeadm init failed" "Check kubelet: journalctl -xeu kubelet"
+    fi
+fi
+
+mkdir -p "$HOME/.kube"
+sudo cp -f /etc/kubernetes/admin.conf "$HOME/.kube/config"
+sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+export KUBECONFIG="${HOME}/.kube/config"
+
+# Use get --raw /healthz instead of version to avoid client version parsing issues
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" get --raw /healthz
+
+holodeck_progress "$COMPONENT" 11 11 "Installing CNI and finalizing"
+
+if ! kubectl --kubeconfig "$KUBECONFIG" get namespace tigera-operator &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Installing Calico ${CALICO_VERSION}"
+    holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" create -f \
+        "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
+fi
+
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+
+if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
+    -n tigera-operator &>/dev/null; then
+    holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" apply -f \
+        "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml"
+fi
+
+holodeck_retry 20 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=calico-node -n calico-system
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=calico-kube-controllers -n calico-system
+
+kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- 2>/dev/null || true
+kubectl label node --all node-role.kubernetes.io/worker= --overwrite 2>/dev/null || true
+kubectl label node --all nvidia.com/holodeck.managed=true --overwrite 2>/dev/null || true
+
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s nodes --all
+holodeck_retry 20 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=kube-dns -n kube-system
+
+sudo mkdir -p /etc/kubernetes
+printf '%s\n' '{
+  "source": "latest",
+  "repo": "'"${GIT_REPO}"'",
+  "branch": "'"${TRACK_BRANCH}"'",
+  "commit": "'"${SHORT_COMMIT}"'",
+  "version": "'"${K8S_VERSION}"'",
+  "installer": "kubeadm",
+  "installed_at": "'"$(date -Iseconds)"'"
+}' | sudo tee /etc/kubernetes/PROVENANCE.json > /dev/null
+
+holodeck_mark_installed "$COMPONENT" "${SHORT_COMMIT}"
+holodeck_log "INFO" "$COMPONENT" "Successfully installed Kubernetes from ${TRACK_BRANCH}: ${SHORT_COMMIT}"
+`
+
 // Default Versions
 const (
 	defaultArch                  = "amd64"
@@ -476,6 +1438,7 @@ const (
 	defaultCalicoVersion         = "v3.30.2"
 )
 
+// Kubernetes holds configuration for Kubernetes installation templates.
 type Kubernetes struct {
 	Version               string
 	Installer             string
@@ -488,6 +1451,14 @@ type Kubernetes struct {
 	K8sFeatureGates       string
 	UseLegacyInit         bool
 	CriSocket             string
+
+	// Source configuration
+	Source      string // "release", "git", "latest"
+	GitRepo     string
+	GitRef      string
+	GitCommit   string // Resolved short SHA for git source
+	TrackBranch string // For latest source
+
 	// Kind exclusive
 	KindConfig string
 }
@@ -510,18 +1481,63 @@ type KubeadmConfig struct {
 	IsUbuntu             bool   // Whether the system is Ubuntu (for resolvConf)
 }
 
+// NewKubernetes creates a Kubernetes template configuration from an Environment.
 func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	kubernetes := &Kubernetes{}
 
-	// Normalize Kubernetes version: always ensure it starts with 'v'
-	switch {
-	case env.Spec.Kubernetes.KubernetesVersion == "":
-		kubernetes.Version = defaultKubernetesVersion
-	case !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v"):
-		kubernetes.Version = "v" + env.Spec.Kubernetes.KubernetesVersion
-	default:
-		kubernetes.Version = env.Spec.Kubernetes.KubernetesVersion
+	// Determine source (default to release)
+	kubernetes.Source = string(env.Spec.Kubernetes.Source)
+	if kubernetes.Source == "" {
+		kubernetes.Source = "release"
 	}
+
+	// Configure based on source
+	switch kubernetes.Source {
+	case "git":
+		if env.Spec.Kubernetes.Git != nil {
+			kubernetes.GitRepo = env.Spec.Kubernetes.Git.Repo
+			kubernetes.GitRef = env.Spec.Kubernetes.Git.Ref
+		}
+		if kubernetes.GitRepo == "" {
+			kubernetes.GitRepo = "https://github.com/kubernetes/kubernetes.git"
+		}
+
+	case "latest":
+		kubernetes.TrackBranch = "master"
+		kubernetes.GitRepo = "https://github.com/kubernetes/kubernetes.git"
+		if env.Spec.Kubernetes.Latest != nil {
+			if env.Spec.Kubernetes.Latest.Track != "" {
+				kubernetes.TrackBranch = env.Spec.Kubernetes.Latest.Track
+			}
+			if env.Spec.Kubernetes.Latest.Repo != "" {
+				kubernetes.GitRepo = env.Spec.Kubernetes.Latest.Repo
+			}
+		}
+
+	default: // "release"
+		// Normalize Kubernetes version: always ensure it starts with 'v'
+		// Check Release.Version first, then legacy KubernetesVersion
+		version := ""
+		if env.Spec.Kubernetes.Release != nil && env.Spec.Kubernetes.Release.Version != "" {
+			version = env.Spec.Kubernetes.Release.Version
+		} else if env.Spec.Kubernetes.KubernetesVersion != "" {
+			version = env.Spec.Kubernetes.KubernetesVersion
+		}
+
+		switch {
+		case version == "":
+			kubernetes.Version = defaultKubernetesVersion
+		case !strings.HasPrefix(version, "v"):
+			kubernetes.Version = "v" + version
+		default:
+			kubernetes.Version = version
+		}
+
+		// Check if we need to use legacy mode (only for release)
+		kubernetes.UseLegacyInit = isLegacyKubernetesVersion(kubernetes.Version)
+	}
+
+	// Common configuration
 	if env.Spec.Kubernetes.KubeletReleaseVersion != "" {
 		kubernetes.KubeletReleaseVersion = env.Spec.Kubernetes.KubeletReleaseVersion
 	} else {
@@ -557,9 +1573,6 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 		kubernetes.KindConfig = env.Spec.Kubernetes.KindConfig
 	}
 
-	// Check if we need to use legacy mode
-	kubernetes.UseLegacyInit = isLegacyKubernetesVersion(kubernetes.Version)
-
 	// Get CRI socket path
 	criSocket, err := GetCRISocket(string(env.Spec.ContainerRuntime.Name))
 	if err != nil {
@@ -570,22 +1583,65 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	return kubernetes, nil
 }
 
-func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	kubernetesTemplate := new(template.Template)
+// SetResolvedCommit sets the resolved git commit SHA.
+func (k *Kubernetes) SetResolvedCommit(shortSHA string) {
+	k.GitCommit = shortSHA
+}
 
-	switch env.Spec.Kubernetes.KubernetesInstaller {
-	case "kubeadm":
-		kubernetesTemplate = template.Must(template.New("kubeadm").Parse(KubeadmTemplate))
-	case "kind":
-		kubernetesTemplate = template.Must(template.New("kind").Parse(KindTemplate))
-	case "microk8s":
-		kubernetesTemplate = template.Must(template.New("microk8s").Parse(microk8sTemplate))
-	default:
-		return fmt.Errorf("unknown kubernetes installer %s", env.Spec.Kubernetes.KubernetesInstaller)
+// Execute renders the appropriate Kubernetes template based on installer and
+// source.
+func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	var templateContent string
+	var templateName string
+
+	installer := env.Spec.Kubernetes.KubernetesInstaller
+	if installer == "" {
+		installer = "kubeadm"
 	}
 
-	err := kubernetesTemplate.Execute(tpl, k)
-	if err != nil {
+	switch installer {
+	case "kubeadm":
+		// Select template based on source
+		switch k.Source {
+		case "git":
+			templateName = "kubeadm-git"
+			templateContent = kubeadmGitTemplate
+		case "latest":
+			templateName = "kubeadm-latest"
+			templateContent = kubeadmLatestTemplate
+		default: // "release"
+			templateName = "kubeadm"
+			templateContent = KubeadmTemplate
+		}
+
+	case "kind":
+		// Select template based on source
+		switch k.Source {
+		case "git":
+			templateName = "kind-git"
+			templateContent = kindGitTemplate
+		case "latest":
+			templateName = "kind-latest"
+			templateContent = kindLatestTemplate
+		default: // "release"
+			templateName = "kind"
+			templateContent = KindTemplate
+		}
+
+	case "microk8s":
+		// MicroK8s only supports release source (validated earlier)
+		templateName = "microk8s"
+		templateContent = microk8sTemplate
+
+	default:
+		return fmt.Errorf("unknown kubernetes installer: %s", installer)
+	}
+
+	kubernetesTemplate := template.Must(
+		template.New(templateName).Parse(templateContent),
+	)
+
+	if err := kubernetesTemplate.Execute(tpl, k); err != nil {
 		return fmt.Errorf("failed to execute kubernetes template: %v", err)
 	}
 

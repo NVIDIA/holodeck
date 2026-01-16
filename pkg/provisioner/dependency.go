@@ -109,10 +109,26 @@ func kubeadm(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	if err != nil {
 		return err
 	}
+
+	// Resolve git ref if using git source
+	if kubernetes.Source == "git" {
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+
+		resolver := gitref.NewGitHubResolver()
+		_, shortSHA, err := resolver.Resolve(ctx, kubernetes.GitRepo, kubernetes.GitRef)
+		if err != nil {
+			return err
+		}
+		kubernetes.SetResolvedCommit(shortSHA)
+	}
+	// Note: "latest" source resolves at provision time on the remote host
+
 	return kubernetes.Execute(tpl, env)
 }
 
 func microk8s(tpl *bytes.Buffer, env v1alpha1.Environment) error {
+	// MicroK8s only supports release source (validated in types)
 	microk8s, err := templates.NewKubernetes(env)
 	if err != nil {
 		return err
@@ -125,6 +141,20 @@ func kind(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	if err != nil {
 		return err
 	}
+
+	// Resolve git ref if using git source
+	if kind.Source == "git" {
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+
+		resolver := gitref.NewGitHubResolver()
+		_, shortSHA, err := resolver.Resolve(ctx, kind.GitRepo, kind.GitRef)
+		if err != nil {
+			return err
+		}
+		kind.SetResolvedCommit(shortSHA)
+	}
+
 	return kind.Execute(tpl, env)
 }
 
@@ -140,7 +170,7 @@ func kernel(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 // DependencySolver is a struct that holds the dependency list
 type DependencyResolver struct {
 	Dependencies []ProvisionFunc
-	env          v1alpha1.Environment
+	env          *v1alpha1.Environment
 }
 
 // DependencyConfigurator defines methods for configuring dependencies
@@ -154,7 +184,7 @@ type DependencyConfigurator interface {
 }
 
 // NewDependencies creates a new DependencyResolver for the given environment.
-func NewDependencies(env v1alpha1.Environment) *DependencyResolver {
+func NewDependencies(env *v1alpha1.Environment) *DependencyResolver {
 	return &DependencyResolver{
 		Dependencies: []ProvisionFunc{},
 		env:          env,
@@ -203,6 +233,31 @@ func (d *DependencyResolver) withKernel() {
 	d.Dependencies = append(d.Dependencies, functions[kernelInstaller])
 }
 
+// ensureKindCompatibleDocker ensures Docker version is compatible with KIND
+// source builds, which require Docker API v1.44+ (Docker 20.10+).
+// This method automatically sets a minimum Docker version if:
+// - Kubernetes installer is KIND
+// - Source is 'git' or 'latest' (requires building node images)
+// - Docker is the container runtime
+// - No explicit version is already set
+func (d *DependencyResolver) ensureKindCompatibleDocker() {
+	// Check if this is KIND with git or latest source
+	if d.env.Spec.Kubernetes.Install &&
+		d.env.Spec.Kubernetes.KubernetesInstaller == kindInstaller &&
+		(d.env.Spec.Kubernetes.Source == "git" || d.env.Spec.Kubernetes.Source == "latest") {
+
+		// Check if Docker is the runtime and needs version upgrade
+		if d.env.Spec.ContainerRuntime.Install &&
+			d.env.Spec.ContainerRuntime.Name == dockerRuntime &&
+			d.env.Spec.ContainerRuntime.Version == "" {
+
+			// Set minimum Docker version for KIND source builds (API v1.44+)
+			// Using Ubuntu 22.04 package version format
+			d.env.Spec.ContainerRuntime.Version = "5:24.0.0-1~ubuntu.22.04~jammy"
+		}
+	}
+}
+
 // Resolve returns the dependency list in the correct order
 func (d *DependencyResolver) Resolve() []ProvisionFunc {
 	// Add Kernel to the list first since it's a system-level dependency
@@ -214,6 +269,9 @@ func (d *DependencyResolver) Resolve() []ProvisionFunc {
 	if d.env.Spec.NVIDIADriver.Install {
 		d.withNVDriver()
 	}
+
+	// Ensure compatible Docker version for KIND source builds
+	d.ensureKindCompatibleDocker()
 
 	// Add Container Runtime to the list
 	if d.env.Spec.ContainerRuntime.Install {
