@@ -166,19 +166,20 @@ func (r *Resolver) resolveViaDescribeImages(
 		},
 	}
 
-	input := &ec2.DescribeImagesInput{
-		Filters: filters,
-	}
-
-	// Handle owner specification
-	if osImage.OwnerID == "amazon" {
-		input.Owners = []string{"amazon"}
-	} else {
+	// Handle owner specification - build filters before creating input
+	if osImage.OwnerID != "amazon" {
 		filters = append(filters, types.Filter{
 			Name:   aws.String("owner-id"),
 			Values: []string{osImage.OwnerID},
 		})
-		input.Filters = filters
+	}
+
+	input := &ec2.DescribeImagesInput{
+		Filters: filters,
+	}
+
+	if osImage.OwnerID == "amazon" {
+		input.Owners = []string{"amazon"}
 	}
 
 	result, err := r.ec2Client.DescribeImages(ctx, input)
