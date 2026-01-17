@@ -1,0 +1,42 @@
+# Example: Simplified AWS Configuration with OS Field
+#
+# This example demonstrates the simplified configuration using the 'os' field
+# instead of specifying explicit AMI IDs. The AMI is automatically resolved
+# based on the region and architecture.
+#
+# Supported OS values (run 'holodeck os list' for current list):
+#   - ubuntu-24.04  : Ubuntu 24.04 LTS (Noble Numbat)
+#   - ubuntu-22.04  : Ubuntu 22.04 LTS (Jammy Jellyfish)
+#   - amazon-linux-2023 : Amazon Linux 2023
+#   - rocky-9       : Rocky Linux 9
+#
+# Benefits:
+#   - No need to look up region-specific AMI IDs
+#   - SSH username is auto-detected (no need to specify auth.username)
+#   - Always uses the latest available AMI for the OS
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-simple
+  description: "Simple AWS environment using OS auto-resolution"
+spec:
+  provider: aws
+  auth:
+    keyName: my-aws-key
+    privateKey: ~/.ssh/my-aws-key.pem
+    publicKey: ~/.ssh/my-aws-key.pub
+    # username is optional - auto-detected from OS (ubuntu for ubuntu-22.04)
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    os: ubuntu-22.04  # AMI auto-resolved, username auto-detected
+    image:
+      architecture: x86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true

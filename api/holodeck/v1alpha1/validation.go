@@ -61,3 +61,57 @@ func (nct *NVIDIAContainerToolkit) Validate() error {
 		return fmt.Errorf("unknown CTK source: %s", source)
 	}
 }
+
+// Validate validates the Kubernetes configuration.
+func (k *Kubernetes) Validate() error {
+	if !k.Install {
+		return nil
+	}
+
+	source := k.Source
+	if source == "" {
+		source = K8sSourceRelease
+	}
+
+	installer := k.KubernetesInstaller
+	if installer == "" {
+		installer = "kubeadm"
+	}
+
+	switch source {
+	case K8sSourceRelease:
+		// Release source is valid; version can come from Release.Version or
+		// legacy KubernetesVersion field
+		return nil
+
+	case K8sSourceGit:
+		// MicroK8s does not support git source
+		if installer == "microk8s" {
+			return fmt.Errorf(
+				"Kubernetes git source is not supported with microk8s installer; " +
+					"use kubeadm or kind instead",
+			)
+		}
+		if k.Git == nil {
+			return fmt.Errorf("Kubernetes git source requires 'git' configuration")
+		}
+		if k.Git.Ref == "" {
+			return fmt.Errorf("Kubernetes git source requires 'ref' to be specified")
+		}
+		return nil
+
+	case K8sSourceLatest:
+		// MicroK8s does not support latest source
+		if installer == "microk8s" {
+			return fmt.Errorf(
+				"Kubernetes latest source is not supported with microk8s installer; " +
+					"use kubeadm or kind instead",
+			)
+		}
+		// Latest source is valid with or without explicit config
+		return nil
+
+	default:
+		return fmt.Errorf("unknown Kubernetes source: %s", source)
+	}
+}

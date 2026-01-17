@@ -85,9 +85,11 @@ holodeck_progress "$COMPONENT" 3 6 "Installing Docker"
 
 # Install Docker
 if [[ "$DESIRED_VERSION" == "latest" ]] || [[ -z "$DESIRED_VERSION" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing latest Docker version"
     holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
         docker-ce docker-ce-cli containerd.io
 else
+    holodeck_log "INFO" "$COMPONENT" "Installing Docker version: ${DESIRED_VERSION}"
     holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
         "docker-ce=$DESIRED_VERSION" "docker-ce-cli=$DESIRED_VERSION" containerd.io
 fi

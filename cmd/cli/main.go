@@ -24,6 +24,7 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/cli/delete"
 	"github.com/NVIDIA/holodeck/cmd/cli/dryrun"
 	"github.com/NVIDIA/holodeck/cmd/cli/list"
+	oscmd "github.com/NVIDIA/holodeck/cmd/cli/os"
 	"github.com/NVIDIA/holodeck/cmd/cli/status"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
@@ -94,6 +95,7 @@ Examples:
 		delete.NewCommand(log),
 		dryrun.NewCommand(log),
 		list.NewCommand(log),
+		oscmd.NewCommand(log),
 		status.NewCommand(log),
 	}
 

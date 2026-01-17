@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/ami"
 	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
@@ -29,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 const (
@@ -71,9 +73,11 @@ type AWS struct {
 }
 
 type Provider struct {
-	Tags      []types.Tag
-	ec2       internalaws.EC2Client
-	cacheFile string
+	Tags        []types.Tag
+	ec2         internalaws.EC2Client
+	ssm         internalaws.SSMClient
+	amiResolver *ami.Resolver
+	cacheFile   string
 
 	*v1alpha1.Environment
 	log *logger.FunLogger
@@ -87,6 +91,22 @@ type Option func(*Provider)
 func WithEC2Client(client internalaws.EC2Client) Option {
 	return func(p *Provider) {
 		p.ec2 = client
+	}
+}
+
+// WithSSMClient sets a custom SSM client for the Provider.
+// This is primarily used for testing to inject mock clients.
+func WithSSMClient(client internalaws.SSMClient) Option {
+	return func(p *Provider) {
+		p.ssm = client
+	}
+}
+
+// WithAMIResolver sets a custom AMI resolver for the Provider.
+// This is primarily used for testing.
+func WithAMIResolver(resolver *ami.Resolver) Option {
+	return func(p *Provider) {
+		p.amiResolver = resolver
 	}
 }
 
@@ -138,13 +158,26 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string,
 		opt(p)
 	}
 
-	// If no EC2 client was injected, create the real one
-	if p.ec2 == nil {
-		cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+	// Create AWS clients if not injected (for testing)
+	if p.ec2 == nil || p.ssm == nil {
+		cfg, err := config.LoadDefaultConfig(
+			context.TODO(),
+			config.WithRegion(region),
+		)
 		if err != nil {
 			return nil, err
 		}
-		p.ec2 = ec2.NewFromConfig(cfg)
+		if p.ec2 == nil {
+			p.ec2 = ec2.NewFromConfig(cfg)
+		}
+		if p.ssm == nil {
+			p.ssm = ssm.NewFromConfig(cfg)
+		}
+	}
+
+	// Create AMI resolver if not injected
+	if p.amiResolver == nil {
+		p.amiResolver = ami.NewResolver(p.ec2, p.ssm, region)
 	}
 
 	return p, nil

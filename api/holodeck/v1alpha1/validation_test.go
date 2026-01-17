@@ -164,3 +164,178 @@ func TestNVIDIAContainerToolkit_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestKubernetes_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		k8s     Kubernetes
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "Install disabled - always valid",
+			k8s: Kubernetes{
+				Install: false,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Release source - default (no config)",
+			k8s: Kubernetes{
+				Install: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Release source - explicit with version",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  K8sSourceRelease,
+				Release: &K8sReleaseSpec{
+					Version: "v1.31.0",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Release source - legacy KubernetesVersion field",
+			k8s: Kubernetes{
+				Install:           true,
+				KubernetesVersion: "v1.31.0",
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - valid with kubeadm",
+			k8s: Kubernetes{
+				Install:             true,
+				Source:              K8sSourceGit,
+				KubernetesInstaller: "kubeadm",
+				Git: &K8sGitSpec{
+					Ref: "v1.32.0-alpha.1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - valid with kind",
+			k8s: Kubernetes{
+				Install:             true,
+				Source:              K8sSourceGit,
+				KubernetesInstaller: "kind",
+				Git: &K8sGitSpec{
+					Ref: "refs/pull/123456/head",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - with custom repo",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  K8sSourceGit,
+				Git: &K8sGitSpec{
+					Repo: "https://github.com/myorg/kubernetes.git",
+					Ref:  "feature/my-feature",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - missing config",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  K8sSourceGit,
+			},
+			wantErr: true,
+			errMsg:  "git source requires",
+		},
+		{
+			name: "Git source - missing ref",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  K8sSourceGit,
+				Git:     &K8sGitSpec{},
+			},
+			wantErr: true,
+			errMsg:  "ref",
+		},
+		{
+			name: "Git source - not supported with microk8s",
+			k8s: Kubernetes{
+				Install:             true,
+				Source:              K8sSourceGit,
+				KubernetesInstaller: "microk8s",
+				Git: &K8sGitSpec{
+					Ref: "v1.32.0-alpha.1",
+				},
+			},
+			wantErr: true,
+			errMsg:  "not supported with microk8s",
+		},
+		{
+			name: "Latest source - default",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  K8sSourceLatest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Latest source - with config",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  K8sSourceLatest,
+				Latest: &K8sLatestSpec{
+					Track: "release-1.31",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Latest source - track master with custom repo",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  K8sSourceLatest,
+				Latest: &K8sLatestSpec{
+					Track: "master",
+					Repo:  "https://github.com/myorg/kubernetes.git",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Latest source - not supported with microk8s",
+			k8s: Kubernetes{
+				Install:             true,
+				Source:              K8sSourceLatest,
+				KubernetesInstaller: "microk8s",
+			},
+			wantErr: true,
+			errMsg:  "not supported with microk8s",
+		},
+		{
+			name: "Unknown source",
+			k8s: Kubernetes{
+				Install: true,
+				Source:  "unknown",
+			},
+			wantErr: true,
+			errMsg:  "unknown Kubernetes source",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.k8s.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
