@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -106,9 +107,9 @@ func (p *Provider) setLegacyAMI() error {
 		awsOwner = []string{*p.Spec.Image.OwnerId}
 	}
 
-	// Validate and normalize architecture
+	// Validate and normalize architecture (case-insensitive for backward compatibility)
 	var arch string
-	switch p.Spec.Image.Architecture {
+	switch strings.ToLower(p.Spec.Image.Architecture) {
 	case "x86_64", "amd64":
 		arch = "x86_64"
 	case "arm64", "aarch64":
