@@ -8,12 +8,9 @@ spec:
   auth:
     keyName: cnt-ci
     privateKey: /home/runner/.cache/key
-    # username is auto-detected from os field (ubuntu for ubuntu-22.04)
   instance:
     type: g4dn.xlarge
     region: us-west-1
-    # os field auto-resolves AMI for the region and architecture
-    os: ubuntu-22.04
     image:
       architecture: amd64
   containerRuntime:
