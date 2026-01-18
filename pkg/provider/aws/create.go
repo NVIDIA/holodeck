@@ -30,7 +30,14 @@ import (
 
 // Create creates an EC2 instance with proper Network configuration
 // VPC, Subnet, Internet Gateway, Route Table, Security Group
+// If the environment specifies a cluster configuration, it delegates to CreateCluster()
 func (p *Provider) Create() error {
+	// Check if this is a multinode cluster deployment
+	if p.IsMultinode() {
+		return p.CreateCluster()
+	}
+
+	// Single-node deployment
 	cache := new(AWS)
 
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources") // nolint:errcheck, gosec, staticcheck

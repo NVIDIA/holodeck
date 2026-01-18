@@ -1,0 +1,56 @@
+# High Availability multinode Kubernetes cluster
+# 3 control-plane nodes + 3 GPU workers with HA enabled
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: ha-cluster
+  description: "Production-grade HA cluster with 3 control-planes"
+spec:
+  provider: aws
+  auth:
+    keyName: <your-aws-key-name>
+    privateKey: <path-to-your-private-key>
+
+  cluster:
+    region: us-west-2
+
+    # HA control plane (3 nodes for etcd quorum)
+    controlPlane:
+      count: 3
+      instanceType: m5.xlarge
+      # Dedicated control-plane (no workloads scheduled here)
+      dedicated: true
+      # Custom labels for control-plane nodes
+      labels:
+        node.kubernetes.io/environment: production
+        node.kubernetes.io/tier: control-plane
+
+    # Worker pool with GPU instances
+    workers:
+      count: 3
+      instanceType: g4dn.xlarge
+      # Custom labels for worker nodes
+      labels:
+        node.kubernetes.io/environment: production
+        nvidia.com/gpu.present: "true"
+
+    # High availability configuration
+    highAvailability:
+      enabled: true
+      # Stacked etcd runs on control-plane nodes (simpler, recommended)
+      etcdTopology: stacked
+      # Network Load Balancer for API server
+      loadBalancerType: nlb
+
+  # Software stack
+  nvidiaDriver:
+    install: true
+  nvidiaContainerToolkit:
+    install: true
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm
+    kubernetesVersion: v1.31.1

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -33,6 +34,7 @@ const (
 	maxRetryDelay     = 30 * time.Second
 	deletionTimeout   = 15 * time.Minute
 	verificationDelay = 2 * time.Second
+	apiCallTimeout    = 30 * time.Second // Per-call timeout for EC2 API operations
 )
 
 // Delete deletes the EC2 instance and all associated resources
@@ -69,24 +71,53 @@ func (p *Provider) delete(cache *AWS) error {
 }
 
 func (p *Provider) deleteEC2Instances(cache *AWS) error {
-	if cache.Instanceid == "" {
-		p.log.Info("No EC2 instance to delete")
+	// Collect all instance IDs to terminate
+	var instanceIDs []string
+
+	// For cluster deployments, collect all node instance IDs
+	if p.Environment.Status.Cluster != nil && len(p.Environment.Status.Cluster.Nodes) > 0 {
+		for _, node := range p.Environment.Status.Cluster.Nodes {
+			if node.InstanceID != "" {
+				instanceIDs = append(instanceIDs, node.InstanceID)
+			}
+		}
+	}
+
+	// Also include the single instance ID if present (for non-cluster deployments)
+	if cache.Instanceid != "" {
+		// Avoid duplicates
+		found := false
+		for _, id := range instanceIDs {
+			if id == cache.Instanceid {
+				found = true
+				break
+			}
+		}
+		if !found {
+			instanceIDs = append(instanceIDs, cache.Instanceid)
+		}
+	}
+
+	if len(instanceIDs) == 0 {
+		p.log.Info("No EC2 instances to delete")
 		return nil
 	}
 
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Terminating EC2 instance"); err != nil {
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Terminating EC2 instances"); err != nil {
 		p.log.Error(fmt.Errorf("failed to update progressing condition: %v", err))
 	}
 
-	// Terminate instance with retries
+	// Terminate all instances with retries
 	err := p.retryWithBackoff(func() error {
-		_, err := p.ec2.TerminateInstances(context.Background(), &ec2.TerminateInstancesInput{
-			InstanceIds: []string{cache.Instanceid},
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+			InstanceIds: instanceIDs,
 		})
 		if err != nil {
-			// Check if instance is already terminated
+			// Check if instances are already terminated
 			if strings.Contains(err.Error(), "InvalidInstanceID.NotFound") {
-				p.log.Info("Instance %s already terminated", cache.Instanceid)
+				p.log.Info("Some instances already terminated")
 				return nil
 			}
 			return err
@@ -95,41 +126,66 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 	})
 
 	if err != nil {
-		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error terminating EC2 instance"); err != nil {
+		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error terminating EC2 instances"); err != nil {
 			p.log.Error(fmt.Errorf("failed to update degraded condition: %v", err))
 		}
-		return fmt.Errorf("error terminating instance %s: %v", cache.Instanceid, err)
+		return fmt.Errorf("error terminating instances: %v", err)
 	}
 
-	// Wait for instance termination
-	p.log.Wg.Add(1)
-	go p.log.Loading("Waiting for instance %s to be terminated", cache.Instanceid)
+	// Wait for all instances to terminate in parallel
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(instanceIDs))
 
-	ctx, cancel := context.WithTimeout(context.Background(), deletionTimeout)
-	defer cancel()
+	for _, instanceID := range instanceIDs {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
 
-	waiter := ec2.NewInstanceTerminatedWaiter(p.ec2)
-	err = waiter.Wait(ctx, &ec2.DescribeInstancesInput{
-		InstanceIds: []string{cache.Instanceid},
-	}, deletionTimeout)
+			p.log.Wg.Add(1)
+			go p.log.Loading("Waiting for instance %s to be terminated", id)
 
-	p.done()
+			ctx, cancel := context.WithTimeout(context.Background(), deletionTimeout)
+			defer cancel()
 
-	if err != nil {
-		// Verify if instance is actually terminated despite waiter error
-		if p.isInstanceTerminated(cache.Instanceid) {
-			p.log.Info("Instance %s confirmed terminated despite waiter error", cache.Instanceid)
-			return nil
-		}
-		return fmt.Errorf("error waiting for instance termination: %v", err)
+			waiter := ec2.NewInstanceTerminatedWaiter(p.ec2)
+			waitErr := waiter.Wait(ctx, &ec2.DescribeInstancesInput{
+				InstanceIds: []string{id},
+			}, deletionTimeout)
+
+			p.done()
+
+			if waitErr != nil {
+				// Verify if instance is actually terminated despite waiter error
+				if p.isInstanceTerminated(id) {
+					p.log.Info("Instance %s confirmed terminated despite waiter error", id)
+					return
+				}
+				errChan <- fmt.Errorf("error waiting for instance %s termination: %v", id, waitErr)
+				return
+			}
+
+			// Additional verification
+			if !p.isInstanceTerminated(id) {
+				errChan <- fmt.Errorf("instance %s not terminated after waiting", id)
+				return
+			}
+
+			p.log.Info("EC2 instance %s successfully terminated", id)
+		}(instanceID)
 	}
 
-	// Additional verification
-	if !p.isInstanceTerminated(cache.Instanceid) {
-		return fmt.Errorf("instance %s not terminated after waiting", cache.Instanceid)
+	wg.Wait()
+	close(errChan)
+
+	// Collect all errors from parallel termination
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to terminate %d instance(s): %v", len(errs), errs)
 	}
 
-	p.log.Info("EC2 instance %s successfully terminated", cache.Instanceid)
 	return nil
 }
 
@@ -145,7 +201,9 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 
 	// Delete security group with retries
 	err := p.retryWithBackoff(func() error {
-		_, err := p.ec2.DeleteSecurityGroup(context.Background(), &ec2.DeleteSecurityGroupInput{
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
 			GroupId: &cache.SecurityGroupid,
 		})
 		if err != nil {
@@ -220,7 +278,9 @@ func (p *Provider) deleteSubnet(cache *AWS) error {
 	}
 
 	err := p.retryWithBackoff(func() error {
-		_, err := p.ec2.DeleteSubnet(context.Background(), &ec2.DeleteSubnetInput{
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
 			SubnetId: &cache.Subnetid,
 		})
 		if err != nil {
@@ -264,7 +324,9 @@ func (p *Provider) deleteRouteTable(cache *AWS) error {
 	}
 
 	err = p.retryWithBackoff(func() error {
-		_, err := p.ec2.DeleteRouteTable(context.Background(), &ec2.DeleteRouteTableInput{
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
 			RouteTableId: &cache.RouteTable,
 		})
 		if err != nil {
@@ -294,7 +356,9 @@ func (p *Provider) deleteInternetGateway(cache *AWS) error {
 	// Step 1: Detach Internet Gateway
 	if cache.Vpcid != "" {
 		err := p.retryWithBackoff(func() error {
-			_, err := p.ec2.DetachInternetGateway(context.Background(), &ec2.DetachInternetGatewayInput{
+			ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+			defer cancel()
+			_, err := p.ec2.DetachInternetGateway(ctx, &ec2.DetachInternetGatewayInput{
 				InternetGatewayId: &cache.InternetGwid,
 				VpcId:             &cache.Vpcid,
 			})
@@ -318,7 +382,9 @@ func (p *Provider) deleteInternetGateway(cache *AWS) error {
 
 	// Step 2: Delete Internet Gateway
 	err := p.retryWithBackoff(func() error {
-		_, err := p.ec2.DeleteInternetGateway(context.Background(), &ec2.DeleteInternetGatewayInput{
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.DeleteInternetGateway(ctx, &ec2.DeleteInternetGatewayInput{
 			InternetGatewayId: &cache.InternetGwid,
 		})
 		if err != nil {
@@ -349,7 +415,9 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 	time.Sleep(verificationDelay * 2)
 
 	err := p.retryWithBackoff(func() error {
-		_, err := p.ec2.DeleteVpc(context.Background(), &ec2.DeleteVpcInput{
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.DeleteVpc(ctx, &ec2.DeleteVpcInput{
 			VpcId: &cache.Vpcid,
 		})
 		if err != nil {

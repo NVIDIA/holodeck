@@ -1,0 +1,39 @@
+# Integration test: Simple multinode cluster
+# 1 control-plane + 1 worker (minimal for testing)
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-cluster
+  description: "Integration test multinode cluster"
+spec:
+  provider: aws
+  auth:
+    keyName: holodeck-test
+    privateKey: ~/.ssh/holodeck-test.pem
+
+  cluster:
+    region: us-west-2
+
+    controlPlane:
+      count: 1
+      instanceType: t3.medium
+      dedicated: false
+      labels:
+        test: "true"
+
+    workers:
+      count: 1
+      instanceType: t3.medium
+      labels:
+        test: "true"
+
+  nvidiaDriver:
+    install: false
+  nvidiaContainerToolkit:
+    install: false
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm

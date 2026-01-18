@@ -20,8 +20,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/jyaml"
+	"github.com/NVIDIA/holodeck/pkg/provisioner"
 
 	cli "github.com/urfave/cli/v2"
 )
@@ -29,6 +32,7 @@ import (
 type command struct {
 	log       *logger.FunLogger
 	cachePath string
+	live      bool
 }
 
 // NewCommand constructs the status command with the specified logger
@@ -50,6 +54,12 @@ func (m command) build() *cli.Command {
 				Aliases:     []string{"c"},
 				Usage:       "Path to the cache directory",
 				Destination: &m.cachePath,
+			},
+			&cli.BoolFlag{
+				Name:        "live",
+				Aliases:     []string{"l"},
+				Usage:       "Query live cluster status (requires SSH access)",
+				Destination: &m.live,
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -89,6 +99,96 @@ func (m command) run(c *cli.Context, instanceID string) error {
 		age,
 	)
 	fmt.Printf("Cache File: %s\n", instance.CacheFile)
+
+	// Check if this is a multinode cluster
+	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
+	if err != nil {
+		return nil // Just return basic info if we can't read the environment
+	}
+
+	// Display cluster information if available
+	if env.Spec.Cluster != nil {
+		fmt.Printf("\n--- Cluster Configuration ---\n")
+		fmt.Printf("Region: %s\n", env.Spec.Cluster.Region)
+		fmt.Printf("Control Plane Count: %d\n", env.Spec.Cluster.ControlPlane.Count)
+		fmt.Printf("Control Plane Type: %s\n", env.Spec.Cluster.ControlPlane.InstanceType)
+		if env.Spec.Cluster.ControlPlane.Dedicated {
+			fmt.Printf("Control Plane Mode: Dedicated (NoSchedule)\n")
+		} else {
+			fmt.Printf("Control Plane Mode: Shared (workloads allowed)\n")
+		}
+		if env.Spec.Cluster.Workers != nil {
+			fmt.Printf("Worker Count: %d\n", env.Spec.Cluster.Workers.Count)
+			fmt.Printf("Worker Type: %s\n", env.Spec.Cluster.Workers.InstanceType)
+		}
+		if env.Spec.Cluster.HighAvailability != nil && env.Spec.Cluster.HighAvailability.Enabled {
+			fmt.Printf("High Availability: Enabled\n")
+			fmt.Printf("Etcd Topology: %s\n", env.Spec.Cluster.HighAvailability.EtcdTopology)
+		}
+
+		// Display node status from cache
+		if env.Status.Cluster != nil {
+			fmt.Printf("\n--- Cluster Status (cached) ---\n")
+			fmt.Printf("Phase: %s\n", env.Status.Cluster.Phase)
+			fmt.Printf("Total Nodes: %d\n", env.Status.Cluster.TotalNodes)
+			fmt.Printf("Ready Nodes: %d\n", env.Status.Cluster.ReadyNodes)
+			if env.Status.Cluster.ControlPlaneEndpoint != "" {
+				fmt.Printf("Control Plane Endpoint: %s\n", env.Status.Cluster.ControlPlaneEndpoint)
+			}
+			if env.Status.Cluster.LoadBalancerDNS != "" {
+				fmt.Printf("Load Balancer DNS: %s\n", env.Status.Cluster.LoadBalancerDNS)
+			}
+
+			if len(env.Status.Cluster.Nodes) > 0 {
+				fmt.Printf("\nNodes:\n")
+				for _, node := range env.Status.Cluster.Nodes {
+					fmt.Printf("  - %s (%s)\n", node.Name, node.Role)
+					fmt.Printf("    Instance ID: %s\n", node.InstanceID)
+					fmt.Printf("    Public IP: %s\n", node.PublicIP)
+					fmt.Printf("    Private IP: %s\n", node.PrivateIP)
+					fmt.Printf("    Phase: %s\n", node.Phase)
+				}
+			}
+		}
+
+		// Get live cluster health if requested
+		if m.live {
+			fmt.Printf("\n--- Live Cluster Health ---\n")
+			health, err := provisioner.GetClusterHealthFromEnv(m.log, &env)
+			if err != nil {
+				fmt.Printf("Unable to get live status: %v\n", err)
+			} else {
+				if health.Healthy {
+					fmt.Printf("Status: Healthy\n")
+				} else {
+					fmt.Printf("Status: Degraded\n")
+				}
+				fmt.Printf("API Server: %s\n", health.APIServerStatus)
+				fmt.Printf("Total Nodes: %d\n", health.TotalNodes)
+				fmt.Printf("Ready Nodes: %d\n", health.ReadyNodes)
+				fmt.Printf("Control Planes: %d\n", health.ControlPlanes)
+				fmt.Printf("Workers: %d\n", health.Workers)
+				fmt.Printf("Message: %s\n", health.Message)
+
+				if len(health.Nodes) > 0 {
+					fmt.Printf("\nLive Node Status:\n")
+					for _, node := range health.Nodes {
+						readyIcon := "✗"
+						if node.Ready {
+							readyIcon = "✓"
+						}
+						fmt.Printf("  %s %s (%s) - %s [%s]\n",
+							readyIcon,
+							node.Name,
+							node.Role,
+							node.Status,
+							node.Version,
+						)
+					}
+				}
+			}
+		}
+	}
 
 	return nil
 }

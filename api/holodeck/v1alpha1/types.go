@@ -26,9 +26,15 @@ type EnvironmentSpec struct {
 	Provider Provider `json:"provider"`
 
 	Auth `json:"auth"`
-	// Instance is required for AWS provider
+	// Instance is required for AWS provider (single-node mode)
 	// +optional
 	Instance `json:"instance"`
+
+	// Cluster defines multi-node cluster configuration.
+	// When specified, Instance is ignored and nodes are created based on
+	// the cluster specification.
+	// +optional
+	Cluster *ClusterSpec `json:"cluster,omitempty"`
 
 	// +optional
 	Kernel Kernel `json:"kernel"`
@@ -108,6 +114,184 @@ type Image struct {
 	OwnerId *string `json:"ownerId"`
 }
 
+// EtcdTopology defines where etcd runs in a HA cluster.
+// +kubebuilder:validation:Enum=stacked;external
+type EtcdTopology string
+
+const (
+	// EtcdTopologyStacked runs etcd on control-plane nodes (simpler, default)
+	EtcdTopologyStacked EtcdTopology = "stacked"
+	// EtcdTopologyExternal runs etcd on separate dedicated nodes
+	EtcdTopologyExternal EtcdTopology = "external"
+)
+
+// ClusterSpec defines multi-node cluster configuration.
+type ClusterSpec struct {
+	// Region specifies the AWS region for all cluster nodes.
+	// +required
+	Region string `json:"region"`
+
+	// ControlPlane defines the control-plane node configuration.
+	// +required
+	ControlPlane ControlPlaneSpec `json:"controlPlane"`
+
+	// Workers defines the worker node pool configuration.
+	// +optional
+	Workers *WorkerPoolSpec `json:"workers,omitempty"`
+
+	// HighAvailability configures HA settings for the control plane.
+	// +optional
+	HighAvailability *HAConfig `json:"highAvailability,omitempty"`
+}
+
+// ControlPlaneSpec defines control-plane node configuration.
+type ControlPlaneSpec struct {
+	// Count is the number of control-plane nodes.
+	// For HA, use an odd number (1, 3, 5) to maintain etcd quorum.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=7
+	// +kubebuilder:default=1
+	Count int32 `json:"count"`
+
+	// InstanceType specifies the EC2 instance type for control-plane nodes.
+	// +kubebuilder:default="m5.xlarge"
+	// +optional
+	InstanceType string `json:"instanceType,omitempty"`
+
+	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
+	// When set, the AMI is automatically resolved for the region and
+	// architecture.
+	// +optional
+	OS string `json:"os,omitempty"`
+
+	// Image allows explicit AMI specification. If OS is set, this is ignored.
+	// +optional
+	Image *Image `json:"image,omitempty"`
+
+	// Dedicated indicates whether control-plane nodes should be tainted
+	// to prevent workload scheduling (NoSchedule taint).
+	// +kubebuilder:default=false
+	// +optional
+	Dedicated bool `json:"dedicated,omitempty"`
+
+	// RootVolumeSizeGB specifies the root volume size in GB.
+	// +kubebuilder:default=64
+	// +optional
+	RootVolumeSizeGB *int32 `json:"rootVolumeSizeGB,omitempty"`
+
+	// Labels are additional Kubernetes labels to apply to control-plane nodes.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// WorkerPoolSpec defines worker node pool configuration.
+type WorkerPoolSpec struct {
+	// Count is the number of worker nodes.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=1
+	Count int32 `json:"count"`
+
+	// InstanceType specifies the EC2 instance type for worker nodes.
+	// For GPU workloads, use GPU instance types (g4dn, p4d, etc.).
+	// +kubebuilder:default="g4dn.xlarge"
+	// +optional
+	InstanceType string `json:"instanceType,omitempty"`
+
+	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
+	// When set, the AMI is automatically resolved for the region and
+	// architecture.
+	// +optional
+	OS string `json:"os,omitempty"`
+
+	// Image allows explicit AMI specification. If OS is set, this is ignored.
+	// +optional
+	Image *Image `json:"image,omitempty"`
+
+	// RootVolumeSizeGB specifies the root volume size in GB.
+	// +kubebuilder:default=64
+	// +optional
+	RootVolumeSizeGB *int32 `json:"rootVolumeSizeGB,omitempty"`
+
+	// Labels are additional Kubernetes labels to apply to worker nodes.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// HAConfig defines high availability configuration for the control plane.
+type HAConfig struct {
+	// Enabled activates high availability mode.
+	// When true, multiple control-plane nodes are configured with leader
+	// election and an API server load balancer is created.
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// EtcdTopology specifies where etcd runs.
+	// - stacked: etcd runs on control-plane nodes (default, simpler)
+	// - external: etcd runs on separate dedicated nodes (for large clusters)
+	// +kubebuilder:default=stacked
+	// +optional
+	EtcdTopology EtcdTopology `json:"etcdTopology,omitempty"`
+
+	// LoadBalancerType specifies the type of load balancer for the API server.
+	// +kubebuilder:validation:Enum=nlb;alb
+	// +kubebuilder:default=nlb
+	// +optional
+	LoadBalancerType string `json:"loadBalancerType,omitempty"`
+}
+
+// NodeStatus represents the status of a single node in the cluster.
+type NodeStatus struct {
+	// Name is the node's hostname or identifier.
+	Name string `json:"name"`
+
+	// Role indicates whether this is a control-plane or worker node.
+	// +kubebuilder:validation:Enum=control-plane;worker
+	Role string `json:"role"`
+
+	// InstanceID is the cloud provider's instance identifier.
+	InstanceID string `json:"instanceId,omitempty"`
+
+	// PublicIP is the node's public IP address.
+	PublicIP string `json:"publicIp,omitempty"`
+
+	// PrivateIP is the node's private IP address within the VPC.
+	PrivateIP string `json:"privateIp,omitempty"`
+
+	// Phase indicates the current lifecycle phase of the node.
+	// +kubebuilder:validation:Enum=Pending;Provisioning;Running;Ready;Failed;Terminating
+	Phase string `json:"phase"`
+
+	// Message provides additional details about the current phase.
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
+// ClusterStatus represents the status of a multi-node cluster.
+type ClusterStatus struct {
+	// Nodes contains the status of each node in the cluster.
+	// +optional
+	Nodes []NodeStatus `json:"nodes,omitempty"`
+
+	// ControlPlaneEndpoint is the API server endpoint (load balancer DNS for HA).
+	// +optional
+	ControlPlaneEndpoint string `json:"controlPlaneEndpoint,omitempty"`
+
+	// LoadBalancerDNS is the DNS name of the HA load balancer (if HA enabled).
+	// +optional
+	LoadBalancerDNS string `json:"loadBalancerDns,omitempty"`
+
+	// TotalNodes is the total number of nodes in the cluster.
+	TotalNodes int32 `json:"totalNodes,omitempty"`
+
+	// ReadyNodes is the number of nodes in Ready state.
+	ReadyNodes int32 `json:"readyNodes,omitempty"`
+
+	// Phase indicates the overall cluster lifecycle phase.
+	// +kubebuilder:validation:Enum=Pending;Creating;Provisioning;Ready;Degraded;Deleting;Failed
+	// +optional
+	Phase string `json:"phase,omitempty"`
+}
+
 // EnvironmentStatus defines the observed state of the infra provider
 type EnvironmentStatus struct {
 	// +listType=map
@@ -116,6 +300,10 @@ type EnvironmentStatus struct {
 	// Conditions represents the latest available observations of current state.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// Cluster contains status information for multi-node clusters.
+	// Only populated when spec.cluster is defined.
+	// +optional
+	Cluster *ClusterStatus `json:"cluster,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -37,15 +37,19 @@ import (
 )
 
 type options struct {
-	provision  bool
-	cachePath  string
-	cacheFile  string
-	envFile    string
-	kubeconfig string
+	provision      bool
+	nonInteractive bool
+	cachePath      string
+	cacheFile      string
+	envFile        string
+	kubeconfig     string
 
 	cfg   v1alpha1.Environment
 	cache v1alpha1.Environment
 }
+
+// dedicatedCPThreshold is the total node count at which we suggest dedicated control-plane nodes
+const dedicatedCPThreshold = 5
 
 type command struct {
 	log *logger.FunLogger
@@ -72,6 +76,13 @@ func (m command) build() *cli.Command {
 				Aliases:     []string{"p"},
 				Usage:       "Provision the environment",
 				Destination: &opts.provision,
+			},
+			&cli.BoolFlag{
+				Name:        "non-interactive",
+				Aliases:     []string{"n"},
+				Usage:       "Run in non-interactive mode (skip all prompts, use defaults)",
+				Destination: &opts.nonInteractive,
+				EnvVars:     []string{"HOLODECK_NONINTERACTIVE"},
 			},
 			&cli.StringFlag{
 				Name:        "kubeconfig",
@@ -103,6 +114,14 @@ func (m command) build() *cli.Command {
 			// if no containerruntime is specified, default to none
 			if opts.cfg.Spec.ContainerRuntime.Name == "" {
 				opts.cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
+			}
+
+			// Prompt for dedicated control-plane if threshold is met (interactive mode only)
+			if shouldPromptForDedicatedCP(&opts) {
+				if promptDedicatedCP(m.log) {
+					opts.cfg.Spec.Cluster.ControlPlane.Dedicated = true
+					m.log.Info("Control-plane nodes will be dedicated (workloads will not be scheduled on them)")
+				}
 			}
 
 			return nil
@@ -182,6 +201,84 @@ func (m command) run(c *cli.Context, opts *options) error {
 }
 
 func (m *command) showSuccessMessage(instanceID string, opts *options) {
+	// Check if this is a cluster deployment
+	isCluster := opts.cfg.Spec.Cluster != nil
+
+	if isCluster {
+		m.showClusterSuccessMessage(instanceID, opts)
+	} else {
+		m.showSingleNodeSuccessMessage(instanceID, opts)
+	}
+}
+
+func (m *command) showClusterSuccessMessage(instanceID string, opts *options) {
+	cluster := opts.cfg.Spec.Cluster
+	cpCount := cluster.ControlPlane.Count
+	workerCount := int32(0)
+	if cluster.Workers != nil {
+		workerCount = cluster.Workers.Count
+	}
+	totalNodes := cpCount + workerCount
+
+	m.log.Info("\n✅ Successfully created cluster: %s\n", instanceID)
+
+	// Show cluster summary
+	m.log.Info("📊 Cluster Summary:")
+	m.log.Info("   Region: %s", cluster.Region)
+	m.log.Info("   Control Plane Nodes: %d (%s)", cpCount, cluster.ControlPlane.InstanceType)
+	if workerCount > 0 {
+		m.log.Info("   Worker Nodes: %d (%s)", workerCount, cluster.Workers.InstanceType)
+	}
+	m.log.Info("   Total Nodes: %d\n", totalNodes)
+
+	if cluster.HighAvailability != nil && cluster.HighAvailability.Enabled {
+		m.log.Info("   High Availability: Enabled (etcd: %s)\n", cluster.HighAvailability.EtcdTopology)
+	}
+
+	// Show node list if available in status
+	if opts.cache.Status.Cluster != nil && len(opts.cache.Status.Cluster.Nodes) > 0 {
+		m.log.Info("📋 Cluster Nodes:")
+		for _, node := range opts.cache.Status.Cluster.Nodes {
+			m.log.Info("   - %s (%s): %s", node.Name, node.Role, node.PublicIP)
+		}
+		m.log.Info("")
+
+		// Show SSH to first control-plane
+		for _, node := range opts.cache.Status.Cluster.Nodes {
+			if node.Role == "control-plane" {
+				m.log.Info("📋 SSH to Control Plane:")
+				m.log.Info("   ssh -i %s %s@%s\n", opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, node.PublicIP)
+				break
+			}
+		}
+	}
+
+	// Show kubeconfig instructions if provisioned
+	if opts.cfg.Spec.Kubernetes.Install && opts.provision && opts.kubeconfig != "" {
+		absPath, err := filepath.Abs(opts.kubeconfig)
+		if err != nil {
+			absPath = opts.kubeconfig
+		}
+		if _, err := os.Stat(absPath); err == nil {
+			m.log.Info("📋 Kubernetes Access:")
+			m.log.Info("   Kubeconfig saved to: %s", absPath)
+			m.log.Info("   export KUBECONFIG=%s", absPath)
+			m.log.Info("   kubectl get nodes\n")
+		}
+	} else if opts.cfg.Spec.Kubernetes.Install && !opts.provision {
+		m.log.Info("📋 Kubernetes Access:")
+		m.log.Info("   Run with --provision flag to initialize the cluster\n")
+	}
+
+	// Show next steps
+	m.log.Info("📋 Next Steps:")
+	m.log.Info("   - View cluster status: holodeck status %s", instanceID)
+	m.log.Info("   - View live health: holodeck status %s --live", instanceID)
+	m.log.Info("   - List all instances: holodeck list")
+	m.log.Info("   - Delete cluster: holodeck delete %s", instanceID)
+}
+
+func (m *command) showSingleNodeSuccessMessage(instanceID string, opts *options) {
 	m.log.Info("\n✅ Successfully created instance: %s\n", instanceID)
 
 	// Get public DNS name for AWS instances
@@ -299,9 +396,22 @@ func (m *command) provideCleanupInstructions(instanceID string, provisionErr err
 }
 
 func runProvision(log *logger.FunLogger, opts *options) error {
-	var hostUrl string
-
 	log.Info("Provisioning \u2699")
+
+	// Copy cache status into the environment
+	opts.cfg.Status = opts.cache.Status
+
+	// Check if this is a multinode cluster
+	if opts.cfg.Spec.Cluster != nil && opts.cache.Status.Cluster != nil {
+		return runMultinodeProvision(log, opts)
+	}
+
+	// Single-node provisioning
+	return runSingleNodeProvision(log, opts)
+}
+
+func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
+	var hostUrl string
 
 	if opts.cfg.Spec.Provider == v1alpha1.ProviderAWS {
 		for _, p := range opts.cache.Status.Properties {
@@ -319,9 +429,6 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 		return err
 	}
 	defer p.Client.Close() // nolint: errcheck
-
-	// Copy cache status into the environment
-	opts.cfg.Status = opts.cache.Status
 
 	if err = p.Run(opts.cfg); err != nil {
 		// Set degraded condition when provisioning fails
@@ -361,10 +468,169 @@ func runProvision(log *logger.FunLogger, opts *options) error {
 			return nil
 		}
 
+		hostUrl := ""
+		for _, p := range opts.cache.Status.Properties {
+			if p.Name == aws.PublicDnsName {
+				hostUrl = p.Value
+				break
+			}
+		}
 		if err = utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %v", err)
 		}
 	}
 
 	return nil
+}
+
+func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
+	log.Info("Provisioning multinode cluster...")
+
+	// Build node list from cluster status
+	var nodes []provisioner.NodeInfo
+	for _, node := range opts.cache.Status.Cluster.Nodes {
+		nodes = append(nodes, provisioner.NodeInfo{
+			Name:      node.Name,
+			PublicIP:  node.PublicIP,
+			PrivateIP: node.PrivateIP,
+			Role:      node.Role,
+		})
+	}
+
+	if len(nodes) == 0 {
+		return fmt.Errorf("no nodes found in cluster status")
+	}
+
+	// Create cluster provisioner
+	cp := provisioner.NewClusterProvisioner(
+		log,
+		opts.cfg.Spec.PrivateKey,
+		opts.cfg.Spec.Username,
+		&opts.cfg,
+	)
+
+	// Provision the cluster
+	if err := cp.ProvisionCluster(nodes); err != nil {
+		// Set degraded condition when provisioning fails
+		opts.cfg.Status.Conditions = []metav1.Condition{
+			{
+				Type:               v1alpha1.ConditionDegraded,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "ProvisioningFailed",
+				Message:            fmt.Sprintf("Failed to provision multinode cluster: %v", err),
+			},
+		}
+		data, err := jyaml.MarshalYAML(opts.cfg)
+		if err != nil {
+			return fmt.Errorf("failed to marshal environment: %v", err)
+		}
+		if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
+			return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+		}
+		return fmt.Errorf("failed to provision multinode cluster: %v", err)
+	}
+
+	// Set provisioning status to true after successful provisioning
+	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "true"
+	data, err := jyaml.MarshalYAML(opts.cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal environment: %v", err)
+	}
+	if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
+		return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+	}
+
+	// Download kubeconfig from first control-plane node
+	if opts.cfg.Spec.Kubernetes.Install && (opts.cfg.Spec.Kubernetes.KubeConfig != "" || opts.kubeconfig != "") {
+		// Find first control-plane node
+		var hostUrl string
+		for _, node := range nodes {
+			if node.Role == "control-plane" {
+				hostUrl = node.PublicIP
+				break
+			}
+		}
+		if hostUrl != "" {
+			if err := utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
+				return fmt.Errorf("failed to get kubeconfig: %v", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// isNonInteractive checks if we should skip interactive prompts
+func isNonInteractive(opts *options) bool {
+	// Check CLI flag first
+	if opts.nonInteractive {
+		return true
+	}
+	// Check environment variables
+	if os.Getenv("CI") == "true" {
+		return true
+	}
+	if os.Getenv("HOLODECK_NONINTERACTIVE") == "true" {
+		return true
+	}
+	return false
+}
+
+// shouldPromptForDedicatedCP determines if we should prompt the user about dedicated control-plane nodes
+func shouldPromptForDedicatedCP(opts *options) bool {
+	// Skip in non-interactive mode
+	if isNonInteractive(opts) {
+		return false
+	}
+
+	// Only relevant for cluster deployments
+	if opts.cfg.Spec.Cluster == nil {
+		return false
+	}
+
+	// Don't prompt if dedicated is already explicitly set to true
+	if opts.cfg.Spec.Cluster.ControlPlane.Dedicated {
+		return false
+	}
+
+	// Calculate total node count
+	totalNodes := opts.cfg.Spec.Cluster.ControlPlane.Count
+	if opts.cfg.Spec.Cluster.Workers != nil {
+		totalNodes += opts.cfg.Spec.Cluster.Workers.Count
+	}
+
+	// Only prompt if we're at or above the threshold
+	return totalNodes >= dedicatedCPThreshold
+}
+
+// promptDedicatedCP asks the user if they want dedicated control-plane nodes
+func promptDedicatedCP(log *logger.FunLogger) bool {
+	log.Info("")
+	log.Info("╭─────────────────────────────────────────────────────────────────╮")
+	log.Info("│  CLUSTER CONFIGURATION RECOMMENDATION                          │")
+	log.Info("├─────────────────────────────────────────────────────────────────┤")
+	log.Info("│  You're creating a cluster with %d+ nodes.                      │", dedicatedCPThreshold)
+	log.Info("│  For clusters this size, dedicated control-plane nodes are     │")
+	log.Info("│  recommended to ensure stability and prevent resource          │")
+	log.Info("│  contention between system components and workloads.           │")
+	log.Info("│                                                                 │")
+	log.Info("│  When dedicated=true:                                          │")
+	log.Info("│    - Control-plane nodes keep the NoSchedule taint             │")
+	log.Info("│    - User workloads will only run on worker nodes              │")
+	log.Info("│    - System components (etcd, API server) have dedicated       │")
+	log.Info("│      resources                                                 │")
+	log.Info("╰─────────────────────────────────────────────────────────────────╯")
+	log.Info("")
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Enable dedicated control-plane nodes? [y/N]: ")
+
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return false
+	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+	return response == "y" || response == "yes"
 }

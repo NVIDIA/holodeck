@@ -32,6 +32,15 @@ COMPONENT="nvidia-driver"
 DESIRED_VERSION="{{.Version}}"
 DESIRED_BRANCH="{{.Branch}}"
 
+# Check for NVIDIA GPU hardware before attempting installation
+# This allows mixed CPU/GPU clusters to work correctly
+holodeck_log "INFO" "$COMPONENT" "Checking for NVIDIA GPU hardware..."
+if ! lspci 2>/dev/null | grep -qi 'nvidia\|3d controller'; then
+    holodeck_log "INFO" "$COMPONENT" "No NVIDIA GPU detected on this node, skipping driver installation"
+    exit 0
+fi
+holodeck_log "INFO" "$COMPONENT" "NVIDIA GPU detected, proceeding with driver installation"
+
 holodeck_progress "$COMPONENT" 1 5 "Checking existing installation"
 
 # Check if driver is already installed and functional
