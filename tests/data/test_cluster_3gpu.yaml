@@ -18,14 +18,12 @@ spec:
       count: 1
       instanceType: g4dn.xlarge  # GPU instance for control-plane too
       dedicated: false           # Allow workloads on control-plane
-      rootVolume:
-        size: 100
+      rootVolumeSizeGB: 100
 
     workers:
       count: 2
       instanceType: g4dn.xlarge
-      rootVolume:
-        size: 100
+      rootVolumeSizeGB: 100
 
   nvidiaDriver:
     install: true

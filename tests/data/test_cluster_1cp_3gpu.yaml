@@ -18,14 +18,12 @@ spec:
       count: 1
       instanceType: m5.xlarge    # CPU-only for control-plane
       dedicated: true            # No workloads on control-plane
-      rootVolume:
-        size: 100
+      rootVolumeSizeGB: 100
 
     workers:
       count: 3
       instanceType: g4dn.xlarge  # GPU workers
-      rootVolume:
-        size: 100
+      rootVolumeSizeGB: 100
 
   nvidiaDriver:
     install: true

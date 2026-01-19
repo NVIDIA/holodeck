@@ -18,14 +18,12 @@ spec:
       count: 1
       instanceType: t3.large     # Small CPU instance
       dedicated: false           # Allow workloads (since only 2 nodes)
-      rootVolume:
-        size: 50
+      rootVolumeSizeGB: 50
 
     workers:
       count: 1
       instanceType: t3.large     # Small CPU instance
-      rootVolume:
-        size: 50
+      rootVolumeSizeGB: 50
 
   # Minimal software stack (no GPU)
   containerRuntime:
