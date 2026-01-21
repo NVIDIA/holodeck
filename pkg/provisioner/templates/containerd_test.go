@@ -109,15 +109,16 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 		t.Error("template output missing holodeck_progress calls")
 	}
 
-	// Test v1 template specifics - now using apt repository
-	if !strings.Contains(out, "Installing containerd 1.7.26 using apt repository") {
+	// Test v1 template specifics - supports both apt and dnf/yum
+	if !strings.Contains(out, "Installing containerd 1.7.26 using package repository") {
 		t.Error("template output missing version installation message")
 	}
-	if !strings.Contains(out, "containerd.io=1.7.26-1") {
-		t.Error("template output missing containerd apt package with version")
+	// Template now supports multiple package managers, test for version reference
+	if !strings.Contains(out, "1.7.26") {
+		t.Error("template output missing containerd version")
 	}
-	if !strings.Contains(out, "download.docker.com/linux/ubuntu") {
-		t.Error("template output missing Docker repository")
+	if !strings.Contains(out, "download.docker.com") {
+		t.Error("template output missing Docker repository reference")
 	}
 
 	// Test common configuration
