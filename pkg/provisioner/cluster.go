@@ -52,10 +52,11 @@ type ClusterProvisioner struct {
 
 // NodeInfo represents a node to be provisioned
 type NodeInfo struct {
-	Name      string
-	PublicIP  string
-	PrivateIP string
-	Role      string // "control-plane" or "worker"
+	Name        string
+	PublicIP    string
+	PrivateIP   string
+	Role        string // "control-plane" or "worker"
+	SSHUsername string // SSH username for this node (optional, falls back to ClusterProvisioner.UserName)
 }
 
 // NewClusterProvisioner creates a new cluster provisioner
@@ -66,6 +67,16 @@ func NewClusterProvisioner(log *logger.FunLogger, keyPath, userName string, env 
 		UserName:    userName,
 		Environment: env,
 	}
+}
+
+// getUsernameForNode returns the SSH username for a node, preferring the
+// per-node username if set, otherwise falling back to the global username.
+// This supports heterogeneous clusters with different OS per node pool.
+func (cp *ClusterProvisioner) getUsernameForNode(node NodeInfo) string {
+	if node.SSHUsername != "" {
+		return node.SSHUsername
+	}
+	return cp.UserName
 }
 
 // ProvisionCluster provisions a multinode Kubernetes cluster
@@ -151,7 +162,7 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 	for _, node := range nodes {
 		cp.log.Info("Provisioning base dependencies on %s (%s)", node.Name, node.PublicIP)
 
-		provisioner, err := New(cp.log, cp.KeyPath, cp.UserName, node.PublicIP)
+		provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
 		if err != nil {
 			return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 		}
@@ -187,7 +198,7 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 	cp.log.Info("Installing K8s binaries on %s (%s)", node.Name, node.PublicIP)
 
-	client, err := connectOrDie(cp.KeyPath, cp.UserName, node.PublicIP)
+	client, err := connectOrDie(cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -244,7 +255,7 @@ func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 
 // initFirstControlPlane initializes the first control-plane node with kubeadm init
 func (cp *ClusterProvisioner) initFirstControlPlane(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.UserName, node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -343,7 +354,7 @@ func (cp *ClusterProvisioner) extractJoinInfo(provisioner *Provisioner) error {
 
 // joinControlPlane joins an additional control-plane node to the cluster
 func (cp *ClusterProvisioner) joinControlPlane(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.UserName, node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -378,7 +389,7 @@ func (cp *ClusterProvisioner) joinControlPlane(node NodeInfo) error {
 
 // joinWorker joins a worker node to the cluster
 func (cp *ClusterProvisioner) joinWorker(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.UserName, node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -420,7 +431,7 @@ func (cp *ClusterProvisioner) isHAEnabled() bool {
 // configureNodes applies labels, taints, and roles to all cluster nodes
 // This is run from the first control-plane node after all nodes have joined
 func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.UserName, firstCP.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(firstCP), firstCP.PublicIP)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", firstCP.Name, err)
 	}

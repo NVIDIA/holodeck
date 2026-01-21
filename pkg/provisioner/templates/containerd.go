@@ -26,7 +26,7 @@ import (
 )
 
 // containerdV1Template is used for containerd 1.x versions (default 1.7.27)
-// Based on the approach from holodeck v0.2.5 that worked
+// Supports both Debian-based (apt) and RHEL-based (dnf/yum) distributions
 const containerdV1Template = `
 COMPONENT="containerd"
 DESIRED_VERSION="{{.Version}}"
@@ -57,43 +57,98 @@ if systemctl is-active --quiet containerd 2>/dev/null; then
     fi
 fi
 
-holodeck_progress "$COMPONENT" 2 4 "Installing containerd {{.Version}} using apt repository"
+holodeck_progress "$COMPONENT" 2 4 "Installing containerd {{.Version}} using package repository"
 
-# Install required packages
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry ca-certificates curl gnupg
+# Install required packages (OS-agnostic)
+holodeck_retry 3 "$COMPONENT" pkg_update
+holodeck_retry 3 "$COMPONENT" install_packages_with_retry ca-certificates curl
 
-# Add Docker repository (idempotent)
-if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-        sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-else
-    holodeck_log "INFO" "$COMPONENT" "Docker GPG key already present"
-fi
+# Source OS release info once for use in repository configuration
+# shellcheck source=/etc/os-release
+. /etc/os-release
 
-if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
-    echo \
-      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    holodeck_retry 3 "$COMPONENT" sudo apt-get update
-else
-    holodeck_log "INFO" "$COMPONENT" "Docker repository already configured"
-fi
+# Add Docker/containerd repository based on OS family
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        # Debian/Ubuntu: Add Docker apt repository
+        if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+            sudo install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+                sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            sudo chmod a+r /etc/apt/keyrings/docker.gpg
+        else
+            holodeck_log "INFO" "$COMPONENT" "Docker GPG key already present"
+        fi
 
-# Install containerd with specific version if provided
-if [[ -n "{{.Version}}" ]] && [[ "{{.Version}}" != "latest" ]]; then
-    holodeck_log "INFO" "$COMPONENT" "Attempting to install containerd.io={{.Version}}-1"
-    if ! holodeck_retry 3 "$COMPONENT" install_packages_with_retry "containerd.io={{.Version}}-1"; then
-        holodeck_log "WARN" "$COMPONENT" \
-            "Specific version {{.Version}} not found, installing latest"
-        holodeck_retry 3 "$COMPONENT" install_packages_with_retry containerd.io
-    fi
-else
-    holodeck_retry 3 "$COMPONENT" install_packages_with_retry containerd.io
-fi
+        if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
+            echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} \
+              ${VERSION_CODENAME} stable" | \
+              sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+            holodeck_retry 3 "$COMPONENT" pkg_update
+        else
+            holodeck_log "INFO" "$COMPONENT" "Docker repository already configured"
+        fi
+
+        # Install containerd with specific version if provided
+        if [[ -n "{{.Version}}" ]] && [[ "{{.Version}}" != "latest" ]]; then
+            holodeck_log "INFO" "$COMPONENT" "Attempting to install containerd.io={{.Version}}-1"
+            if ! holodeck_retry 3 "$COMPONENT" pkg_install_version "containerd.io" "{{.Version}}-1"; then
+                holodeck_log "WARN" "$COMPONENT" \
+                    "Specific version {{.Version}} not found, installing latest"
+                holodeck_retry 3 "$COMPONENT" pkg_install containerd.io
+            fi
+        else
+            holodeck_retry 3 "$COMPONENT" pkg_install containerd.io
+        fi
+        ;;
+
+    amazon|rhel)
+        # Amazon Linux / RHEL-based: Add Docker dnf/yum repository
+        if [[ ! -f /etc/yum.repos.d/docker-ce.repo ]]; then
+            case "${ID}" in
+                amzn)
+                    # Amazon Linux uses Fedora packages (Docker doesn't provide AL packages)
+                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
+                        https://download.docker.com/linux/fedora/docker-ce.repo
+                    # Replace $releasever with mapped Fedora version from common.go
+                    sudo sed -i "s/\\\$releasever/${HOLODECK_AMZN_FEDORA_VERSION}/g" /etc/yum.repos.d/docker-ce.repo
+                    holodeck_log "INFO" "$COMPONENT" "Using Fedora ${HOLODECK_AMZN_FEDORA_VERSION} repo for Amazon Linux"
+                    ;;
+                fedora)
+                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
+                        https://download.docker.com/linux/fedora/docker-ce.repo
+                    ;;
+                *)
+                    # Rocky, RHEL, CentOS, AlmaLinux
+                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
+                        https://download.docker.com/linux/centos/docker-ce.repo
+                    ;;
+            esac
+            holodeck_retry 3 "$COMPONENT" pkg_update
+        else
+            holodeck_log "INFO" "$COMPONENT" "Docker repository already configured"
+        fi
+
+        # Install containerd
+        if [[ -n "{{.Version}}" ]] && [[ "{{.Version}}" != "latest" ]]; then
+            holodeck_log "INFO" "$COMPONENT" "Attempting to install containerd.io-{{.Version}}"
+            if ! holodeck_retry 3 "$COMPONENT" pkg_install_version "containerd.io" "{{.Version}}"; then
+                holodeck_log "WARN" "$COMPONENT" \
+                    "Specific version {{.Version}} not found, installing latest"
+                holodeck_retry 3 "$COMPONENT" pkg_install containerd.io
+            fi
+        else
+            holodeck_retry 3 "$COMPONENT" pkg_install containerd.io
+        fi
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 3 4 "Configuring containerd"
 

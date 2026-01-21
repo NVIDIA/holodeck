@@ -93,8 +93,9 @@ func (c *command) runList(_ *cli.Context) error {
 
 	for _, img := range ami.All() {
 		notes := ""
+		// containerd now supports DNF/YUM, other components may still need work
 		if img.PackageManager != ami.PackageManagerAPT {
-			notes = "⚠ provisioning not yet supported"
+			notes = "⚠ partial support (containerd only)"
 		}
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			img.ID,

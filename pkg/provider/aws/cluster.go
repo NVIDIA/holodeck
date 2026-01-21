@@ -56,6 +56,7 @@ type InstanceInfo struct {
 	NetworkInterface string
 	Role             string // "control-plane" or "worker"
 	Name             string
+	SSHUsername      string // SSH username for this node's OS (e.g., "ubuntu", "ec2-user")
 }
 
 // NodeRole represents the role of a node in the cluster
@@ -339,7 +340,11 @@ func (p *Provider) createControlPlaneInstances(cache *ClusterCache) error {
 	p.log.Wg.Add(1)
 	go p.log.Loading("Creating %d control-plane instance(s)", count)
 
-	instances, err := p.createInstances(cache, count, NodeRoleControlPlane, cpSpec.InstanceType, cpSpec.RootVolumeSizeGB)
+	instances, err := p.createInstances(
+		cache, count, NodeRoleControlPlane,
+		cpSpec.InstanceType, cpSpec.RootVolumeSizeGB,
+		cpSpec.OS, cpSpec.Image,
+	)
 	if err != nil {
 		p.fail()
 		return err
@@ -367,7 +372,11 @@ func (p *Provider) createWorkerInstances(cache *ClusterCache) error {
 	p.log.Wg.Add(1)
 	go p.log.Loading("Creating %d worker instance(s)", count)
 
-	instances, err := p.createInstances(cache, count, NodeRoleWorker, wSpec.InstanceType, wSpec.RootVolumeSizeGB)
+	instances, err := p.createInstances(
+		cache, count, NodeRoleWorker,
+		wSpec.InstanceType, wSpec.RootVolumeSizeGB,
+		wSpec.OS, wSpec.Image,
+	)
 	if err != nil {
 		p.fail()
 		return err
@@ -379,10 +388,26 @@ func (p *Provider) createWorkerInstances(cache *ClusterCache) error {
 }
 
 // createInstances creates multiple EC2 instances with the specified role
-func (p *Provider) createInstances(cache *ClusterCache, count int, role NodeRole, instanceType string, rootVolumeSizeGB *int32) ([]InstanceInfo, error) {
-	// Get AMI
-	if err := p.setAMI(); err != nil {
-		return nil, fmt.Errorf("error getting AMI: %w", err)
+func (p *Provider) createInstances(
+	cache *ClusterCache,
+	count int,
+	role NodeRole,
+	instanceType string,
+	rootVolumeSizeGB *int32,
+	os string,
+	image *v1alpha1.Image,
+) ([]InstanceInfo, error) {
+	// Resolve AMI for this node pool
+	resolved, err := p.resolveImageForNode(os, image, "")
+	if err != nil {
+		return nil, fmt.Errorf("error resolving AMI: %w", err)
+	}
+	imageID := resolved.ImageID
+
+	// Auto-set SSH username if not already set and we got one from resolution
+	//nolint:staticcheck // Auth is embedded but explicit access is clearer
+	if p.Spec.Auth.Username == "" && resolved.SSHUsername != "" {
+		p.Spec.Auth.Username = resolved.SSHUsername //nolint:staticcheck
 	}
 
 	// Determine volume size
@@ -416,7 +441,7 @@ func (p *Provider) createInstances(cache *ClusterCache, count int, role NodeRole
 			)
 
 			instanceIn := &ec2.RunInstancesInput{
-				ImageId:                           p.Spec.Image.ImageId,
+				ImageId:                           aws.String(imageID),
 				InstanceType:                      types.InstanceType(instanceType),
 				MaxCount:                          aws.Int32(1),
 				MinCount:                          aws.Int32(1),
@@ -487,12 +512,13 @@ func (p *Provider) createInstances(cache *ClusterCache, count int, role NodeRole
 
 			inst := instanceRunning.Reservations[0].Instances[0]
 			info := InstanceInfo{
-				InstanceID: instanceID,
-				PublicDNS:  aws.ToString(inst.PublicDnsName),
-				PublicIP:   aws.ToString(inst.PublicIpAddress),
-				PrivateIP:  aws.ToString(inst.PrivateIpAddress),
-				Role:       string(role),
-				Name:       instanceName,
+				InstanceID:  instanceID,
+				PublicDNS:   aws.ToString(inst.PublicDnsName),
+				PublicIP:    aws.ToString(inst.PublicIpAddress),
+				PrivateIP:   aws.ToString(inst.PrivateIpAddress),
+				Role:        string(role),
+				Name:        instanceName,
+				SSHUsername: resolved.SSHUsername,
 			}
 
 			if len(inst.NetworkInterfaces) > 0 {
@@ -614,23 +640,25 @@ func (p *Provider) updateClusterStatus(cache *ClusterCache) error {
 
 	for _, inst := range cache.ControlPlaneInstances {
 		nodes = append(nodes, v1alpha1.NodeStatus{
-			Name:       inst.Name,
-			Role:       inst.Role,
-			InstanceID: inst.InstanceID,
-			PublicIP:   inst.PublicIP,
-			PrivateIP:  inst.PrivateIP,
-			Phase:      "Ready",
+			Name:        inst.Name,
+			Role:        inst.Role,
+			InstanceID:  inst.InstanceID,
+			PublicIP:    inst.PublicIP,
+			PrivateIP:   inst.PrivateIP,
+			SSHUsername: inst.SSHUsername,
+			Phase:       "Ready",
 		})
 	}
 
 	for _, inst := range cache.WorkerInstances {
 		nodes = append(nodes, v1alpha1.NodeStatus{
-			Name:       inst.Name,
-			Role:       inst.Role,
-			InstanceID: inst.InstanceID,
-			PublicIP:   inst.PublicIP,
-			PrivateIP:  inst.PrivateIP,
-			Phase:      "Ready",
+			Name:        inst.Name,
+			Role:        inst.Role,
+			InstanceID:  inst.InstanceID,
+			PublicIP:    inst.PublicIP,
+			PrivateIP:   inst.PrivateIP,
+			SSHUsername: inst.SSHUsername,
+			Phase:       "Ready",
 		})
 	}
 

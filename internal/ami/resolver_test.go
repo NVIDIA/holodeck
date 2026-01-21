@@ -84,14 +84,20 @@ func TestRegistry_Get(t *testing.T) {
 		wantUser string
 	}{
 		{
+			name:     "ubuntu-24.04 exists",
+			osID:     "ubuntu-24.04",
+			wantOK:   true,
+			wantUser: "ubuntu",
+		},
+		{
 			name:     "ubuntu-22.04 exists",
 			osID:     "ubuntu-22.04",
 			wantOK:   true,
 			wantUser: "ubuntu",
 		},
 		{
-			name:     "ubuntu-24.04 exists",
-			osID:     "ubuntu-24.04",
+			name:     "ubuntu-20.04 exists",
+			osID:     "ubuntu-20.04",
 			wantOK:   true,
 			wantUser: "ubuntu",
 		},
@@ -129,8 +135,9 @@ func TestRegistry_Get(t *testing.T) {
 func TestRegistry_List(t *testing.T) {
 	ids := List()
 	assert.NotEmpty(t, ids)
-	assert.Contains(t, ids, "ubuntu-22.04")
 	assert.Contains(t, ids, "ubuntu-24.04")
+	assert.Contains(t, ids, "ubuntu-22.04")
+	assert.Contains(t, ids, "ubuntu-20.04")
 	assert.Contains(t, ids, "amazon-linux-2023")
 	assert.Contains(t, ids, "rocky-9")
 

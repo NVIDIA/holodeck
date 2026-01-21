@@ -257,6 +257,12 @@ type NodeStatus struct {
 	// PrivateIP is the node's private IP address within the VPC.
 	PrivateIP string `json:"privateIp,omitempty"`
 
+	// SSHUsername is the SSH username for connecting to this node.
+	// This is auto-detected from the OS but can vary per node in heterogeneous
+	// clusters (e.g., "ubuntu" for Ubuntu, "ec2-user" for Amazon Linux).
+	// +optional
+	SSHUsername string `json:"sshUsername,omitempty"`
+
 	// Phase indicates the current lifecycle phase of the node.
 	// +kubebuilder:validation:Enum=Pending;Provisioning;Running;Ready;Failed;Terminating
 	Phase string `json:"phase"`

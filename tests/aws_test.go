@@ -211,7 +211,8 @@ var _ = DescribeTable("AWS Environment E2E",
 	}, Label("k8s-latest")),
 )
 
-// Mark the table as parallel
+// Note: To run tests in parallel, use: ginkgo -p or --procs=N
+// GinkgoParallelProcess() returns the current parallel process index (1-indexed)
 var _ = BeforeEach(func() {
-	GinkgoParallelNode() // This ensures the test runs in parallel; Ginkgo v2 uses Parallel() as a method, but this is a no-op if not in a container
+	_ = GinkgoParallelProcess() // Available for debugging which process is running a test
 })

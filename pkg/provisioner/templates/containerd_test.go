@@ -109,15 +109,26 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 		t.Error("template output missing holodeck_progress calls")
 	}
 
-	// Test v1 template specifics - now using apt repository
-	if !strings.Contains(out, "Installing containerd 1.7.26 using apt repository") {
+	// Test v1 template specifics - supports both apt and dnf/yum
+	if !strings.Contains(out, "Installing containerd 1.7.26 using package repository") {
 		t.Error("template output missing version installation message")
 	}
-	if !strings.Contains(out, "containerd.io=1.7.26-1") {
-		t.Error("template output missing containerd apt package with version")
+	// Template now supports multiple package managers, test for version reference
+	if !strings.Contains(out, "1.7.26") {
+		t.Error("template output missing containerd version")
 	}
-	if !strings.Contains(out, "download.docker.com/linux/ubuntu") {
-		t.Error("template output missing Docker repository")
+	if !strings.Contains(out, "download.docker.com") {
+		t.Error("template output missing Docker repository reference")
+	}
+
+	// Test Amazon Linux Fedora version mapping (P3 fix)
+	// The template uses the HOLODECK_AMZN_FEDORA_VERSION variable set by CommonFunctions
+	if !strings.Contains(out, "HOLODECK_AMZN_FEDORA_VERSION") {
+		t.Error("template output missing Amazon Linux Fedora version variable reference")
+	}
+	// Verify we use the variable instead of hardcoded "39"
+	if strings.Contains(out, `'s/\$releasever/39/g'`) {
+		t.Error("template should use HOLODECK_AMZN_FEDORA_VERSION, not hardcoded 39")
 	}
 
 	// Test common configuration
