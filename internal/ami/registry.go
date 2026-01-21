@@ -73,6 +73,19 @@ var registry = map[string]OSImage{
 		SSMPath:         "", // No SSM support for Rocky Linux
 		Architectures:   []string{"x86_64", "arm64"},
 	},
+	"ubuntu-20.04": {
+		ID:              "ubuntu-20.04",
+		Name:            "Ubuntu 20.04 LTS (Focal Fossa)",
+		Family:          OSFamilyDebian,
+		SSHUsername:     "ubuntu",
+		PackageManager:  PackageManagerAPT,
+		MinRootVolumeGB: 20,
+		OwnerID:         "099720109477",
+		NamePattern:     "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-%s-server-*",
+		SSMPath: "/aws/service/canonical/ubuntu/server/20.04/stable/" +
+			"current/%s/hvm/ebs-gp2/ami-id",
+		Architectures: []string{"x86_64", "arm64"},
+	},
 }
 
 // Get returns an OSImage by ID. Returns nil and false if not found.

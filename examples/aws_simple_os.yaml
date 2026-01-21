@@ -7,6 +7,7 @@
 # Supported OS values (run 'holodeck os list' for current list):
 #   - ubuntu-24.04  : Ubuntu 24.04 LTS (Noble Numbat)
 #   - ubuntu-22.04  : Ubuntu 22.04 LTS (Jammy Jellyfish)
+#   - ubuntu-20.04  : Ubuntu 20.04 LTS (Focal Fossa)
 #   - amazon-linux-2023 : Amazon Linux 2023
 #   - rocky-9       : Rocky Linux 9
 #
