@@ -56,9 +56,9 @@ func TestCommonFunctions_AmazonLinuxFedoraMapping(t *testing.T) {
 		alVersion     string
 		fedoraVersion string
 	}{
-		{"2023", "39"},  // AL2023 → Fedora 39
-		{"2024", "40"},  // AL2024 → Fedora 40
-		{"2)", "35"},    // AL2 → Fedora 35 (partial match in case statement)
+		{"2023", "39"}, // AL2023 → Fedora 39
+		{"2024", "40"}, // AL2024 → Fedora 40
+		{"2)", "35"},   // AL2 → Fedora 35 (partial match in case statement)
 	}
 	for _, m := range mappings {
 		if !strings.Contains(CommonFunctions, m.alVersion) {

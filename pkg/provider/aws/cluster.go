@@ -405,8 +405,9 @@ func (p *Provider) createInstances(
 	imageID := resolved.ImageID
 
 	// Auto-set SSH username if not already set and we got one from resolution
+	//nolint:staticcheck // Auth is embedded but explicit access is clearer
 	if p.Spec.Auth.Username == "" && resolved.SSHUsername != "" {
-		p.Spec.Auth.Username = resolved.SSHUsername
+		p.Spec.Auth.Username = resolved.SSHUsername //nolint:staticcheck
 	}
 
 	// Determine volume size
