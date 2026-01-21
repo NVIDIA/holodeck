@@ -153,18 +153,20 @@ func (p *Provider) resolveImageForNode(os string, image *v1alpha1.Image, arch st
 	}
 
 	// Fall back to legacy AMI lookup for Ubuntu 22.04
-	if err := p.setLegacyAMI(); err != nil {
+	// Use findLegacyAMI to avoid mutating provider state
+	imageID, err := p.findLegacyAMI(arch)
+	if err != nil {
 		return nil, err
 	}
 	return &ResolvedImage{
-		ImageID:     *p.Spec.Image.ImageId,
+		ImageID:     imageID,
 		SSHUsername: "ubuntu",
 	}, nil
 }
 
-// setLegacyAMI implements the original Ubuntu 22.04 default behavior for
-// backward compatibility when OS is not specified.
-func (p *Provider) setLegacyAMI() error {
+// findLegacyAMI looks up the latest Ubuntu 22.04 AMI without mutating state.
+// This is a pure query function safe for use in cluster mode.
+func (p *Provider) findLegacyAMI(arch string) (string, error) {
 	// Default to the official Ubuntu images in the AWS Marketplace
 	awsOwner := []string{"099720109477", "679593333241"}
 	if p.Spec.Image.OwnerId != nil {
@@ -172,8 +174,10 @@ func (p *Provider) setLegacyAMI() error {
 	}
 
 	// Validate and normalize architecture (case-insensitive for backward compatibility)
-	var arch string
-	switch strings.ToLower(p.Spec.Image.Architecture) {
+	if arch == "" {
+		arch = p.Spec.Image.Architecture
+	}
+	switch strings.ToLower(arch) {
 	case "x86_64", "amd64":
 		arch = "x86_64"
 	case "arm64", "aarch64":
@@ -181,7 +185,7 @@ func (p *Provider) setLegacyAMI() error {
 	case "":
 		arch = "x86_64" // Default
 	default:
-		return fmt.Errorf("invalid architecture %s", p.Spec.Image.Architecture)
+		return "", fmt.Errorf("invalid architecture %s", arch)
 	}
 
 	// Ubuntu AMI names use "amd64" not "x86_64"
@@ -213,16 +217,27 @@ func (p *Provider) setLegacyAMI() error {
 
 	images, err := p.describeImages(filter)
 	if err != nil {
-		return fmt.Errorf("failed to describe images: %w", err)
+		return "", fmt.Errorf("failed to describe images: %w", err)
 	}
 
 	if len(images) == 0 {
-		return fmt.Errorf("no images found")
+		return "", fmt.Errorf("no images found for Ubuntu 22.04 (%s)", arch)
 	}
 	sort.Slice(images, func(i, j int) bool {
 		return images[i].CreationDate > images[j].CreationDate
 	})
-	p.Spec.Image.ImageId = &images[0].ImageID
+
+	return images[0].ImageID, nil
+}
+
+// setLegacyAMI implements the original Ubuntu 22.04 default behavior for
+// backward compatibility when OS is not specified. This mutates provider state.
+func (p *Provider) setLegacyAMI() error {
+	imageID, err := p.findLegacyAMI("")
+	if err != nil {
+		return err
+	}
+	p.Spec.Image.ImageId = &imageID
 
 	// Set default username for Ubuntu if not provided
 	//nolint:staticcheck // Auth is embedded but explicit access is clearer

@@ -106,11 +106,12 @@ case "${HOLODECK_OS_FAMILY}" in
             . /etc/os-release
             case "${ID}" in
                 amzn)
-                    # Amazon Linux uses Fedora packages
+                    # Amazon Linux uses Fedora packages (Docker doesn't provide AL packages)
                     sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
                         https://download.docker.com/linux/fedora/docker-ce.repo
-                    # Replace $releasever with appropriate version
-                    sudo sed -i 's/\$releasever/39/g' /etc/yum.repos.d/docker-ce.repo
+                    # Replace $releasever with mapped Fedora version from common.go
+                    sudo sed -i "s/\\\$releasever/${HOLODECK_AMZN_FEDORA_VERSION}/g" /etc/yum.repos.d/docker-ce.repo
+                    holodeck_log "INFO" "$COMPONENT" "Using Fedora ${HOLODECK_AMZN_FEDORA_VERSION} repo for Amazon Linux"
                     ;;
                 fedora)
                     sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \

@@ -121,6 +121,16 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 		t.Error("template output missing Docker repository reference")
 	}
 
+	// Test Amazon Linux Fedora version mapping (P3 fix)
+	// The template uses the HOLODECK_AMZN_FEDORA_VERSION variable set by CommonFunctions
+	if !strings.Contains(out, "HOLODECK_AMZN_FEDORA_VERSION") {
+		t.Error("template output missing Amazon Linux Fedora version variable reference")
+	}
+	// Verify we use the variable instead of hardcoded "39"
+	if strings.Contains(out, `'s/\$releasever/39/g'`) {
+		t.Error("template should use HOLODECK_AMZN_FEDORA_VERSION, not hardcoded 39")
+	}
+
 	// Test common configuration
 	if !strings.Contains(out, "SystemdCgroup \\= true") {
 		t.Error("template output missing SystemdCgroup configuration")

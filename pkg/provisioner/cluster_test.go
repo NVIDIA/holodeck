@@ -399,6 +399,52 @@ func TestNodeInfo(t *testing.T) {
 	assert.Equal(t, "control-plane", node.Role)
 }
 
+func TestClusterProvisioner_getUsernameForNode(t *testing.T) {
+	log := logger.NewLogger()
+
+	tests := []struct {
+		name           string
+		globalUsername string
+		nodeUsername   string
+		expected       string
+	}{
+		{
+			name:           "uses node-specific username when set",
+			globalUsername: "ubuntu",
+			nodeUsername:   "ec2-user",
+			expected:       "ec2-user",
+		},
+		{
+			name:           "falls back to global username when node username empty",
+			globalUsername: "ubuntu",
+			nodeUsername:   "",
+			expected:       "ubuntu",
+		},
+		{
+			name:           "supports heterogeneous clusters",
+			globalUsername: "ubuntu",
+			nodeUsername:   "rocky",
+			expected:       "rocky",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cp := NewClusterProvisioner(log, "/path/to/key", tt.globalUsername, &v1alpha1.Environment{})
+			node := NodeInfo{
+				Name:        "test-node",
+				PublicIP:    "1.2.3.4",
+				PrivateIP:   "10.0.0.1",
+				Role:        "worker",
+				SSHUsername: tt.nodeUsername,
+			}
+
+			result := cp.getUsernameForNode(node)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestClusterHealth(t *testing.T) {
 	health := ClusterHealth{
 		Healthy:         true,

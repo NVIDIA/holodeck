@@ -490,10 +490,11 @@ func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
 	var nodes []provisioner.NodeInfo
 	for _, node := range opts.cache.Status.Cluster.Nodes {
 		nodes = append(nodes, provisioner.NodeInfo{
-			Name:      node.Name,
-			PublicIP:  node.PublicIP,
-			PrivateIP: node.PrivateIP,
-			Role:      node.Role,
+			Name:        node.Name,
+			PublicIP:    node.PublicIP,
+			PrivateIP:   node.PrivateIP,
+			Role:        node.Role,
+			SSHUsername: node.SSHUsername,
 		})
 	}
 

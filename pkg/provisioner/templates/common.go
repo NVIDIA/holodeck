@@ -63,6 +63,39 @@ detect_os_family() {
 
 export HOLODECK_OS_FAMILY=$(detect_os_family)
 
+# Map Amazon Linux version to compatible Fedora version for Docker repos.
+# Docker doesn't provide Amazon Linux packages, so we use Fedora packages.
+# This mapping ensures compatibility as new AL versions are released.
+get_amzn_fedora_version() {
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        if [[ "${ID}" == "amzn" ]]; then
+            case "${VERSION_ID}" in
+                2023)
+                    # Amazon Linux 2023 is based on Fedora 34-36, but Docker
+                    # packages work best with Fedora 39 (tested and stable)
+                    echo "39"
+                    ;;
+                2024*)
+                    # Amazon Linux 2024 (when released) should use Fedora 40+
+                    echo "40"
+                    ;;
+                2)
+                    # Amazon Linux 2 is based on RHEL 7/CentOS 7
+                    # Use Fedora 35 which has compatible glibc
+                    echo "35"
+                    ;;
+                *)
+                    # Default to latest known working version
+                    echo "39"
+                    ;;
+            esac
+        fi
+    fi
+}
+
+export HOLODECK_AMZN_FEDORA_VERSION=$(get_amzn_fedora_version)
+
 # Set environment variables based on OS family
 case "${HOLODECK_OS_FAMILY}" in
     debian)

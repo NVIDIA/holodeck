@@ -56,6 +56,7 @@ type InstanceInfo struct {
 	NetworkInterface string
 	Role             string // "control-plane" or "worker"
 	Name             string
+	SSHUsername      string // SSH username for this node's OS (e.g., "ubuntu", "ec2-user")
 }
 
 // NodeRole represents the role of a node in the cluster
@@ -510,12 +511,13 @@ func (p *Provider) createInstances(
 
 			inst := instanceRunning.Reservations[0].Instances[0]
 			info := InstanceInfo{
-				InstanceID: instanceID,
-				PublicDNS:  aws.ToString(inst.PublicDnsName),
-				PublicIP:   aws.ToString(inst.PublicIpAddress),
-				PrivateIP:  aws.ToString(inst.PrivateIpAddress),
-				Role:       string(role),
-				Name:       instanceName,
+				InstanceID:  instanceID,
+				PublicDNS:   aws.ToString(inst.PublicDnsName),
+				PublicIP:    aws.ToString(inst.PublicIpAddress),
+				PrivateIP:   aws.ToString(inst.PrivateIpAddress),
+				Role:        string(role),
+				Name:        instanceName,
+				SSHUsername: resolved.SSHUsername,
 			}
 
 			if len(inst.NetworkInterfaces) > 0 {
@@ -637,23 +639,25 @@ func (p *Provider) updateClusterStatus(cache *ClusterCache) error {
 
 	for _, inst := range cache.ControlPlaneInstances {
 		nodes = append(nodes, v1alpha1.NodeStatus{
-			Name:       inst.Name,
-			Role:       inst.Role,
-			InstanceID: inst.InstanceID,
-			PublicIP:   inst.PublicIP,
-			PrivateIP:  inst.PrivateIP,
-			Phase:      "Ready",
+			Name:        inst.Name,
+			Role:        inst.Role,
+			InstanceID:  inst.InstanceID,
+			PublicIP:    inst.PublicIP,
+			PrivateIP:   inst.PrivateIP,
+			SSHUsername: inst.SSHUsername,
+			Phase:       "Ready",
 		})
 	}
 
 	for _, inst := range cache.WorkerInstances {
 		nodes = append(nodes, v1alpha1.NodeStatus{
-			Name:       inst.Name,
-			Role:       inst.Role,
-			InstanceID: inst.InstanceID,
-			PublicIP:   inst.PublicIP,
-			PrivateIP:  inst.PrivateIP,
-			Phase:      "Ready",
+			Name:        inst.Name,
+			Role:        inst.Role,
+			InstanceID:  inst.InstanceID,
+			PublicIP:    inst.PublicIP,
+			PrivateIP:   inst.PrivateIP,
+			SSHUsername: inst.SSHUsername,
+			Phase:       "Ready",
 		})
 	}
 
