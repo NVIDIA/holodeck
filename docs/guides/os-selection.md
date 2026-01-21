@@ -50,7 +50,8 @@ holodeck os list
 ```
 
 Output:
-```
+
+```text
 ID                   FAMILY    SSH USER    PACKAGE MGR  ARCHITECTURES
 amazon-linux-2023    amazon    ec2-user    dnf          x86_64, arm64
 rocky-9              rhel      rocky       dnf          x86_64, arm64
@@ -66,7 +67,8 @@ holodeck os describe ubuntu-22.04
 ```
 
 Output:
-```
+
+```text
 ID:              ubuntu-22.04
 Name:            Ubuntu 22.04 LTS (Jammy Jellyfish)
 Family:          debian
@@ -174,10 +176,10 @@ spec:
 Holodeck resolves AMIs using the following priority:
 
 1. **Explicit ImageId**: If `image.imageId` is provided, it is used directly
-2. **OS Field**: If `os` is specified, resolve via:
-   - AWS SSM Parameter Store (fastest, always current)
-   - EC2 DescribeImages API (fallback)
-3. **Legacy Default**: Ubuntu 22.04 (backward compatibility)
+1. **OS Field**: If `os` is specified, resolve via:
+  - AWS SSM Parameter Store (fastest, always current)
+  - EC2 DescribeImages API (fallback)
+1. **Legacy Default**: Ubuntu 22.04 (backward compatibility)
 
 ### SSM Parameter Store
 
@@ -186,7 +188,8 @@ get the latest official AMI ID. This ensures you always get the most current
 image without needing to update your configuration.
 
 Example SSM path for Ubuntu 22.04:
-```
+
+```text
 /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp3/ami-id
 ```
 
@@ -194,7 +197,7 @@ Example SSM path for Ubuntu 22.04:
 
 ### Unknown OS Error
 
-```
+```text
 Error: OS 'ubuntu-23.10' not found
 
 Run 'holodeck os list' to see available operating systems
@@ -204,15 +207,16 @@ Run 'holodeck os list' to see available operating systems
 
 ### Architecture Not Supported
 
-```
-Error: OS ubuntu-22.04 does not support architecture ppc64le (supported: x86_64, arm64)
+```text
+Error: OS ubuntu-22.04 does not support architecture ppc64le
+       (supported: x86_64, arm64)
 ```
 
 **Solution**: Use a supported architecture (x86_64 or arm64).
 
 ### AMI Not Found in Region
 
-```
+```text
 Error: no images found for ubuntu-22.04 in region ap-northeast-3
 ```
 
@@ -221,8 +225,8 @@ region or use an explicit AMI ID.
 
 ## Adding New Operating Systems
 
-To request support for additional operating systems, please open an issue
-at https://github.com/NVIDIA/holodeck/issues with:
+To request support for additional operating systems, please
+[open an issue](https://github.com/NVIDIA/holodeck/issues) with:
 
 - OS name and version
 - AWS owner ID for the official AMIs
