@@ -116,7 +116,13 @@ func WithAMIResolver(resolver *ami.Resolver) Option {
 func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string,
 	opts ...Option) (*Provider, error) {
 	// Create an AWS session and configure the EC2 client
-	region := env.Spec.Region
+	// For cluster deployments, use cluster region; otherwise use instance region
+	var region string
+	if env.Spec.Cluster != nil && env.Spec.Cluster.Region != "" {
+		region = env.Spec.Cluster.Region
+	} else {
+		region = env.Spec.Region
+	}
 	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
 		region = envRegion
 	}

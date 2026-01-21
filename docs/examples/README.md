@@ -27,7 +27,8 @@ holodeck create -f examples/aws_kind.yaml
 
 ### 3. Generic v1alpha1 Environment
 
-**File:** [`examples/v1alpha1_environment.yaml`](../../examples/v1alpha1_environment.yaml)
+**File:**
+[`examples/v1alpha1_environment.yaml`](../../examples/v1alpha1_environment.yaml)
 
 A generic example showing the full v1alpha1 environment spec, including
 provider, instance, and Kubernetes options.
@@ -48,6 +49,46 @@ Use with the `kubeadm` installer.
 **File:** [`examples/kind.yaml`](../../examples/kind.yaml)
 
 A sample kind cluster configuration for use with the kind installer.
+
+---
+
+## Multinode Cluster Examples
+
+### 6. Simple Cluster (1 CP + 2 Workers)
+
+**File:**
+[`examples/aws_cluster_simple.yaml`](../../examples/aws_cluster_simple.yaml)
+
+A basic multinode Kubernetes cluster with 1 control plane and 2 GPU worker
+nodes.
+
+```bash
+holodeck create -f examples/aws_cluster_simple.yaml --provision
+```
+
+### 7. HA Cluster (3 CP + Workers)
+
+**File:** [`examples/aws_cluster_ha.yaml`](../../examples/aws_cluster_ha.yaml)
+
+A high-availability cluster with 3 control plane nodes for production workloads.
+
+```bash
+holodeck create -f examples/aws_cluster_ha.yaml --provision
+```
+
+### 8. Minimal Cluster (No GPU)
+
+**File:**
+[`examples/aws_cluster_minimal.yaml`](../../examples/aws_cluster_minimal.yaml)
+
+A minimal cluster configuration for testing without GPU instances.
+
+```bash
+holodeck create -f examples/aws_cluster_minimal.yaml --provision
+```
+
+See the [Multinode Clusters Guide](../guides/multinode-clusters.md) for detailed
+configuration options.
 
 ---
 
@@ -85,7 +126,8 @@ spec:
 
 - **Simplified Configuration**: No need to manually find and specify your
   public IP
-- **Dynamic IP Support**: Works with changing IP addresses (DHCP, mobile networks)
+- **Dynamic IP Support**: Works with changing IP addresses (DHCP, mobile
+  networks)
 - **Reduced Errors**: Eliminates "CIDR block malformed" errors
 - **Better Security**: Ensures only your current public IP has access
 
@@ -105,4 +147,5 @@ spec:
 ---
 
 For more details on configuration options, see the
-[Command Reference](../commands/README.md) and [Quick Start Guide](../quick-start.md).
+[Command Reference](../commands/README.md) and
+[Quick Start Guide](../quick-start.md).

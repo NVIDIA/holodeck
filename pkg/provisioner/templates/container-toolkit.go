@@ -33,6 +33,15 @@ VERSION="{{.Version}}"
 CONTAINER_RUNTIME="{{.ContainerRuntime}}"
 ENABLE_CDI="{{.EnableCDI}}"
 
+# Check for NVIDIA GPU hardware before attempting installation
+# This allows mixed CPU/GPU clusters to work correctly
+holodeck_log "INFO" "$COMPONENT" "Checking for NVIDIA GPU hardware..."
+if ! lspci 2>/dev/null | grep -qi 'nvidia\|3d controller'; then
+    holodeck_log "INFO" "$COMPONENT" "No NVIDIA GPU detected on this node, skipping toolkit installation"
+    exit 0
+fi
+holodeck_log "INFO" "$COMPONENT" "NVIDIA GPU detected, proceeding with toolkit installation"
+
 holodeck_progress "$COMPONENT" 1 4 "Checking existing installation"
 
 # Check if NVIDIA Container Toolkit is already installed and functional

@@ -93,7 +93,7 @@ func (m *command) run(c *cli.Context) error {
 
 	// Create a tabwriter for formatted output
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	if _, err := fmt.Fprintln(w, "INSTANCE ID\tNAME\tPROVIDER\tSTATUS\tPROVISIONED\tCREATED\tAGE"); err != nil {
+	if _, err := fmt.Fprintln(w, "INSTANCE ID\tNAME\tPROVIDER\tTYPE\tNODES\tSTATUS\tPROVISIONED\tAGE"); err != nil {
 		return fmt.Errorf("failed to write header: %v", err)
 	}
 
@@ -104,13 +104,28 @@ func (m *command) run(c *cli.Context) error {
 		}
 
 		age := time.Since(instance.CreatedAt).Round(time.Second)
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%v\t%s\t%s\n",
-			instance.ID, // Show full instance ID
+		instanceType := "single"
+		nodes := "1"
+		if instance.IsCluster && instance.ClusterInfo != nil {
+			if instance.ClusterInfo.HAEnabled {
+				instanceType = "cluster-ha"
+			} else {
+				instanceType = "cluster"
+			}
+			nodes = fmt.Sprintf("%d/%d",
+				instance.ClusterInfo.ReadyNodes,
+				instance.ClusterInfo.TotalNodes,
+			)
+		}
+
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%v\t%s\n",
+			instance.ID,
 			instance.Name,
 			instance.Provider,
+			instanceType,
+			nodes,
 			instance.Status,
 			instance.Provisioned,
-			instance.CreatedAt.Format("2006-01-02 15:04:05"),
 			age,
 		); err != nil {
 			return fmt.Errorf("failed to write instance data: %v", err)

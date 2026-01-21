@@ -38,7 +38,9 @@ holodeck create -f environment.yaml --kubeconfig=mykubeconfig --cachepath=/tmp/h
 
 ## Configuration File Format
 
-The environment configuration file should be in YAML format:
+The environment configuration file should be in YAML format.
+
+### Single Instance
 
 ```yaml
 apiVersion: holodeck.nvidia.com/v1alpha1
@@ -55,6 +57,39 @@ spec:
     install: true
     version: v1.28.5
 ```
+
+### Multinode Cluster
+
+For multinode Kubernetes clusters, use the `cluster` block instead of
+`instance`:
+
+```yaml
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: my-cluster
+spec:
+  provider: aws
+  auth:
+    keyName: my-key
+    privateKey: ~/.ssh/my-key.pem
+
+  cluster:
+    region: us-west-2
+    controlPlane:
+      count: 1
+      instanceType: m5.xlarge
+    workers:
+      count: 2
+      instanceType: g4dn.xlarge
+
+  kubernetes:
+    install: true
+    installer: kubeadm
+```
+
+See the [Multinode Clusters Guide](../guides/multinode-clusters.md) for detailed
+configuration options and examples.
 
 ## Automated IP Detection
 
@@ -75,7 +110,8 @@ the configuration file.
 
 ### Configuration
 
-The `ingressIpRanges` field in your configuration is now optional for AWS environments:
+The `ingressIpRanges` field in your configuration is now optional for AWS
+environments:
 
 ```yaml
 spec:

@@ -48,6 +48,21 @@ type Instance struct {
 	Status      string
 	CacheFile   string
 	Provisioned bool
+
+	// Cluster information (nil for single-node)
+	IsCluster   bool
+	ClusterInfo *ClusterInfo
+}
+
+// ClusterInfo holds summary information about a multinode cluster
+type ClusterInfo struct {
+	Region               string
+	ControlPlaneCount    int32
+	WorkerCount          int32
+	TotalNodes           int32
+	ReadyNodes           int32
+	ControlPlaneEndpoint string
+	HAEnabled            bool
 }
 
 // Manager handles instance operations
@@ -189,7 +204,28 @@ func (m *Manager) ListInstances() ([]Instance, error) {
 			Status:      status,
 			CacheFile:   cacheFile,
 			Provisioned: env.Labels[InstanceProvisionedLabelKey] == "true",
+			IsCluster:   env.Spec.Cluster != nil,
 		}
+
+		// Add cluster info if available
+		if env.Spec.Cluster != nil {
+			instance.ClusterInfo = &ClusterInfo{
+				Region:            env.Spec.Cluster.Region,
+				ControlPlaneCount: env.Spec.Cluster.ControlPlane.Count,
+			}
+			if env.Spec.Cluster.Workers != nil {
+				instance.ClusterInfo.WorkerCount = env.Spec.Cluster.Workers.Count
+			}
+			if env.Spec.Cluster.HighAvailability != nil {
+				instance.ClusterInfo.HAEnabled = env.Spec.Cluster.HighAvailability.Enabled
+			}
+			if env.Status.Cluster != nil {
+				instance.ClusterInfo.TotalNodes = env.Status.Cluster.TotalNodes
+				instance.ClusterInfo.ReadyNodes = env.Status.Cluster.ReadyNodes
+				instance.ClusterInfo.ControlPlaneEndpoint = env.Status.Cluster.ControlPlaneEndpoint
+			}
+		}
+
 		instances = append(instances, instance)
 	}
 
@@ -213,14 +249,37 @@ func (m *Manager) GetInstance(instanceID string) (*Instance, error) {
 	// Get instance status from provider
 	status := m.getProviderStatus(env, cacheFile)
 
-	return &Instance{
-		ID:        instanceID,
-		Name:      env.Name,
-		Provider:  env.Spec.Provider,
-		CreatedAt: fileInfo.ModTime(),
-		Status:    status,
-		CacheFile: cacheFile,
-	}, nil
+	instance := &Instance{
+		ID:          instanceID,
+		Name:        env.Name,
+		Provider:    env.Spec.Provider,
+		CreatedAt:   fileInfo.ModTime(),
+		Status:      status,
+		CacheFile:   cacheFile,
+		Provisioned: env.Labels[InstanceProvisionedLabelKey] == "true",
+		IsCluster:   env.Spec.Cluster != nil,
+	}
+
+	// Add cluster info if available
+	if env.Spec.Cluster != nil {
+		instance.ClusterInfo = &ClusterInfo{
+			Region:            env.Spec.Cluster.Region,
+			ControlPlaneCount: env.Spec.Cluster.ControlPlane.Count,
+		}
+		if env.Spec.Cluster.Workers != nil {
+			instance.ClusterInfo.WorkerCount = env.Spec.Cluster.Workers.Count
+		}
+		if env.Spec.Cluster.HighAvailability != nil {
+			instance.ClusterInfo.HAEnabled = env.Spec.Cluster.HighAvailability.Enabled
+		}
+		if env.Status.Cluster != nil {
+			instance.ClusterInfo.TotalNodes = env.Status.Cluster.TotalNodes
+			instance.ClusterInfo.ReadyNodes = env.Status.Cluster.ReadyNodes
+			instance.ClusterInfo.ControlPlaneEndpoint = env.Status.Cluster.ControlPlaneEndpoint
+		}
+	}
+
+	return instance, nil
 }
 
 // DeleteInstance removes an instance
