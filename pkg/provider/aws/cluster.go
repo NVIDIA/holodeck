@@ -339,7 +339,11 @@ func (p *Provider) createControlPlaneInstances(cache *ClusterCache) error {
 	p.log.Wg.Add(1)
 	go p.log.Loading("Creating %d control-plane instance(s)", count)
 
-	instances, err := p.createInstances(cache, count, NodeRoleControlPlane, cpSpec.InstanceType, cpSpec.RootVolumeSizeGB)
+	instances, err := p.createInstances(
+		cache, count, NodeRoleControlPlane,
+		cpSpec.InstanceType, cpSpec.RootVolumeSizeGB,
+		cpSpec.OS, cpSpec.Image,
+	)
 	if err != nil {
 		p.fail()
 		return err
@@ -367,7 +371,11 @@ func (p *Provider) createWorkerInstances(cache *ClusterCache) error {
 	p.log.Wg.Add(1)
 	go p.log.Loading("Creating %d worker instance(s)", count)
 
-	instances, err := p.createInstances(cache, count, NodeRoleWorker, wSpec.InstanceType, wSpec.RootVolumeSizeGB)
+	instances, err := p.createInstances(
+		cache, count, NodeRoleWorker,
+		wSpec.InstanceType, wSpec.RootVolumeSizeGB,
+		wSpec.OS, wSpec.Image,
+	)
 	if err != nil {
 		p.fail()
 		return err
@@ -379,10 +387,25 @@ func (p *Provider) createWorkerInstances(cache *ClusterCache) error {
 }
 
 // createInstances creates multiple EC2 instances with the specified role
-func (p *Provider) createInstances(cache *ClusterCache, count int, role NodeRole, instanceType string, rootVolumeSizeGB *int32) ([]InstanceInfo, error) {
-	// Get AMI
-	if err := p.setAMI(); err != nil {
-		return nil, fmt.Errorf("error getting AMI: %w", err)
+func (p *Provider) createInstances(
+	cache *ClusterCache,
+	count int,
+	role NodeRole,
+	instanceType string,
+	rootVolumeSizeGB *int32,
+	os string,
+	image *v1alpha1.Image,
+) ([]InstanceInfo, error) {
+	// Resolve AMI for this node pool
+	resolved, err := p.resolveImageForNode(os, image, "")
+	if err != nil {
+		return nil, fmt.Errorf("error resolving AMI: %w", err)
+	}
+	imageID := resolved.ImageID
+
+	// Auto-set SSH username if not already set and we got one from resolution
+	if p.Spec.Auth.Username == "" && resolved.SSHUsername != "" {
+		p.Spec.Auth.Username = resolved.SSHUsername
 	}
 
 	// Determine volume size
@@ -416,7 +439,7 @@ func (p *Provider) createInstances(cache *ClusterCache, count int, role NodeRole
 			)
 
 			instanceIn := &ec2.RunInstancesInput{
-				ImageId:                           p.Spec.Image.ImageId,
+				ImageId:                           aws.String(imageID),
 				InstanceType:                      types.InstanceType(instanceType),
 				MaxCount:                          aws.Int32(1),
 				MinCount:                          aws.Int32(1),

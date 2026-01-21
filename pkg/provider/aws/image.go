@@ -23,6 +23,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -96,6 +98,68 @@ func (p *Provider) resolveOSToAMI() error {
 	}
 
 	return nil
+}
+
+// ResolvedImage contains the resolved AMI information for instance creation.
+type ResolvedImage struct {
+	ImageID     string
+	SSHUsername string
+}
+
+// resolveImageForNode resolves the AMI for a node based on OS or explicit Image.
+// This method does not mutate provider state, making it safe for cluster mode
+// where different node pools may use different images.
+func (p *Provider) resolveImageForNode(os string, image *v1alpha1.Image, arch string) (*ResolvedImage, error) {
+	// If explicit ImageId is provided, use it
+	if image != nil && image.ImageId != nil && *image.ImageId != "" {
+		return &ResolvedImage{
+			ImageID:     *image.ImageId,
+			SSHUsername: "", // Username must be provided in auth config
+		}, nil
+	}
+
+	// Determine architecture
+	if arch == "" {
+		if image != nil && image.Architecture != "" {
+			arch = image.Architecture
+		} else {
+			arch = "x86_64" // Default
+		}
+	}
+
+	// If OS is specified, resolve via AMI resolver
+	if os != "" {
+		resolved, err := p.amiResolver.Resolve(context.TODO(), os, arch)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve AMI for OS %s: %w", os, err)
+		}
+		return &ResolvedImage{
+			ImageID:     resolved.ImageID,
+			SSHUsername: resolved.SSHUsername,
+		}, nil
+	}
+
+	// Fall back to legacy behavior: use Instance.OS or default Ubuntu 22.04
+	//nolint:staticcheck // Instance is embedded but explicit access is clearer
+	if p.Spec.Instance.OS != "" {
+		resolved, err := p.amiResolver.Resolve(context.TODO(), p.Spec.Instance.OS, arch)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve AMI for OS %s: %w", p.Spec.Instance.OS, err)
+		}
+		return &ResolvedImage{
+			ImageID:     resolved.ImageID,
+			SSHUsername: resolved.SSHUsername,
+		}, nil
+	}
+
+	// Fall back to legacy AMI lookup for Ubuntu 22.04
+	if err := p.setLegacyAMI(); err != nil {
+		return nil, err
+	}
+	return &ResolvedImage{
+		ImageID:     *p.Spec.Image.ImageId,
+		SSHUsername: "ubuntu",
+	}, nil
 }
 
 // setLegacyAMI implements the original Ubuntu 22.04 default behavior for
