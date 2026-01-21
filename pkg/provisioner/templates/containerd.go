@@ -63,6 +63,10 @@ holodeck_progress "$COMPONENT" 2 4 "Installing containerd {{.Version}} using pac
 holodeck_retry 3 "$COMPONENT" pkg_update
 holodeck_retry 3 "$COMPONENT" install_packages_with_retry ca-certificates curl
 
+# Source OS release info once for use in repository configuration
+# shellcheck source=/etc/os-release
+. /etc/os-release
+
 # Add Docker/containerd repository based on OS family
 case "${HOLODECK_OS_FAMILY}" in
     debian)
@@ -77,7 +81,6 @@ case "${HOLODECK_OS_FAMILY}" in
         fi
 
         if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
-            . /etc/os-release
             echo \
               "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} \
               ${VERSION_CODENAME} stable" | \
@@ -103,7 +106,6 @@ case "${HOLODECK_OS_FAMILY}" in
     amazon|rhel)
         # Amazon Linux / RHEL-based: Add Docker dnf/yum repository
         if [[ ! -f /etc/yum.repos.d/docker-ce.repo ]]; then
-            . /etc/os-release
             case "${ID}" in
                 amzn)
                     # Amazon Linux uses Fedora packages (Docker doesn't provide AL packages)
