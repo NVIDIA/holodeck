@@ -28,24 +28,41 @@ type EnvironmentSpec struct {
 	Auth `json:"auth"`
 	// Instance is required for AWS provider (single-node mode)
 	// +optional
+	// +optional
+
 	Instance `json:"instance"`
 
 	// Cluster defines multi-node cluster configuration.
 	// When specified, Instance is ignored and nodes are created based on
 	// the cluster specification.
 	// +optional
+	// +optional
+
 	Cluster *ClusterSpec `json:"cluster,omitempty"`
 
 	// +optional
+	// +optional
+
 	Kernel Kernel `json:"kernel"`
 	// +optional
+	// +optional
+
 	NVIDIADriver NVIDIADriver `json:"nvidiaDriver"`
 	// +optional
+	// +optional
+
 	ContainerRuntime ContainerRuntime `json:"containerRuntime"`
 	// +optional
+	// +optional
+
 	NVIDIAContainerToolkit NVIDIAContainerToolkit `json:"nvidiaContainerToolkit"`
 	// +optional
+	// +optional
+
 	Kubernetes Kubernetes `json:"kubernetes"`
+
+	// +optional
+	LoadBalancer *LoadBalancer `json:"loadBalancer,omitempty"`
 }
 
 type Provider string
@@ -74,18 +91,28 @@ type Instance struct {
 	// architecture. Takes precedence over Image.ImageId if both are specified.
 	// Run 'holodeck os list' for available options.
 	// +optional
+	// +optional
+
 	OS string `json:"os,omitempty"`
 
 	// Image allows explicit AMI specification. If OS is set, ImageId is
 	// automatically resolved and other Image fields are ignored.
 	// +optional
+	// +optional
+
 	Image Image `json:"image"`
 
 	// +optional
+	// +optional
+
 	IngressIpRanges []string `json:"ingressIpRanges"`
 	// +optional
+	// +optional
+
 	HostUrl string `json:"hostUrl"`
 	// +optional
+	// +optional
+
 	// if not set, the default size is 64GB
 	RootVolumeSizeGB *int32 `json:"rootVolumeSizeGB"`
 }
@@ -137,10 +164,14 @@ type ClusterSpec struct {
 
 	// Workers defines the worker node pool configuration.
 	// +optional
+	// +optional
+
 	Workers *WorkerPoolSpec `json:"workers,omitempty"`
 
 	// HighAvailability configures HA settings for the control plane.
 	// +optional
+	// +optional
+
 	HighAvailability *HAConfig `json:"highAvailability,omitempty"`
 }
 
@@ -156,31 +187,43 @@ type ControlPlaneSpec struct {
 	// InstanceType specifies the EC2 instance type for control-plane nodes.
 	// +kubebuilder:default="m5.xlarge"
 	// +optional
+	// +optional
+
 	InstanceType string `json:"instanceType,omitempty"`
 
 	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
 	// When set, the AMI is automatically resolved for the region and
 	// architecture.
 	// +optional
+	// +optional
+
 	OS string `json:"os,omitempty"`
 
 	// Image allows explicit AMI specification. If OS is set, this is ignored.
 	// +optional
+	// +optional
+
 	Image *Image `json:"image,omitempty"`
 
 	// Dedicated indicates whether control-plane nodes should be tainted
 	// to prevent workload scheduling (NoSchedule taint).
 	// +kubebuilder:default=false
 	// +optional
+	// +optional
+
 	Dedicated bool `json:"dedicated,omitempty"`
 
 	// RootVolumeSizeGB specifies the root volume size in GB.
 	// +kubebuilder:default=64
 	// +optional
+	// +optional
+
 	RootVolumeSizeGB *int32 `json:"rootVolumeSizeGB,omitempty"`
 
 	// Labels are additional Kubernetes labels to apply to control-plane nodes.
 	// +optional
+	// +optional
+
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
@@ -195,25 +238,35 @@ type WorkerPoolSpec struct {
 	// For GPU workloads, use GPU instance types (g4dn, p4d, etc.).
 	// +kubebuilder:default="g4dn.xlarge"
 	// +optional
+	// +optional
+
 	InstanceType string `json:"instanceType,omitempty"`
 
 	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
 	// When set, the AMI is automatically resolved for the region and
 	// architecture.
 	// +optional
+	// +optional
+
 	OS string `json:"os,omitempty"`
 
 	// Image allows explicit AMI specification. If OS is set, this is ignored.
 	// +optional
+	// +optional
+
 	Image *Image `json:"image,omitempty"`
 
 	// RootVolumeSizeGB specifies the root volume size in GB.
 	// +kubebuilder:default=64
 	// +optional
+	// +optional
+
 	RootVolumeSizeGB *int32 `json:"rootVolumeSizeGB,omitempty"`
 
 	// Labels are additional Kubernetes labels to apply to worker nodes.
 	// +optional
+	// +optional
+
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
@@ -230,12 +283,16 @@ type HAConfig struct {
 	// - external: etcd runs on separate dedicated nodes (for large clusters)
 	// +kubebuilder:default=stacked
 	// +optional
+	// +optional
+
 	EtcdTopology EtcdTopology `json:"etcdTopology,omitempty"`
 
 	// LoadBalancerType specifies the type of load balancer for the API server.
 	// +kubebuilder:validation:Enum=nlb;alb
 	// +kubebuilder:default=nlb
 	// +optional
+	// +optional
+
 	LoadBalancerType string `json:"loadBalancerType,omitempty"`
 }
 
@@ -261,6 +318,8 @@ type NodeStatus struct {
 	// This is auto-detected from the OS but can vary per node in heterogeneous
 	// clusters (e.g., "ubuntu" for Ubuntu, "ec2-user" for Amazon Linux).
 	// +optional
+	// +optional
+
 	SSHUsername string `json:"sshUsername,omitempty"`
 
 	// Phase indicates the current lifecycle phase of the node.
@@ -269,6 +328,8 @@ type NodeStatus struct {
 
 	// Message provides additional details about the current phase.
 	// +optional
+	// +optional
+
 	Message string `json:"message,omitempty"`
 }
 
@@ -276,14 +337,20 @@ type NodeStatus struct {
 type ClusterStatus struct {
 	// Nodes contains the status of each node in the cluster.
 	// +optional
+	// +optional
+
 	Nodes []NodeStatus `json:"nodes,omitempty"`
 
 	// ControlPlaneEndpoint is the API server endpoint (load balancer DNS for HA).
 	// +optional
+	// +optional
+
 	ControlPlaneEndpoint string `json:"controlPlaneEndpoint,omitempty"`
 
 	// LoadBalancerDNS is the DNS name of the HA load balancer (if HA enabled).
 	// +optional
+	// +optional
+
 	LoadBalancerDNS string `json:"loadBalancerDns,omitempty"`
 
 	// TotalNodes is the total number of nodes in the cluster.
@@ -295,6 +362,8 @@ type ClusterStatus struct {
 	// Phase indicates the overall cluster lifecycle phase.
 	// +kubebuilder:validation:Enum=Pending;Creating;Provisioning;Ready;Degraded;Deleting;Failed
 	// +optional
+	// +optional
+
 	Phase string `json:"phase,omitempty"`
 }
 
@@ -305,10 +374,14 @@ type EnvironmentStatus struct {
 	Properties []Properties `json:"properties"`
 	// Conditions represents the latest available observations of current state.
 	// +optional
+	// +optional
+
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// Cluster contains status information for multi-node clusters.
 	// Only populated when spec.cluster is defined.
 	// +optional
+	// +optional
+
 	Cluster *ClusterStatus `json:"cluster,omitempty"`
 }
 
@@ -348,6 +421,8 @@ type Auth struct {
 	// Username for the SSH connection.
 	// Auto-detected from OS if not specified and OS field is set.
 	// +optional
+	// +optional
+
 	Username string `json:"username,omitempty"`
 	// Path to the public key file on the local machine
 	PublicKey string `json:"publicKey"`
@@ -360,9 +435,13 @@ type NVIDIADriver struct {
 	// Branch specifies the driver branch.
 	// If a version is specified, this takes precedence.
 	// +optional
+	// +optional
+
 	Branch string `json:"branch"`
 	// If not set the latest stable version will be used
 	// +optional
+	// +optional
+
 	Version string `json:"version"`
 }
 
@@ -372,6 +451,8 @@ type ContainerRuntime struct {
 	Name ContainerRuntimeName `json:"name"`
 	// If not set the latest stable version will be used
 	// +optional
+	// +optional
+
 	Version string `json:"version"`
 }
 
@@ -413,6 +494,8 @@ type K8sGitSpec struct {
 	// Repo is the git repository URL.
 	// +kubebuilder:default="https://github.com/kubernetes/kubernetes.git"
 	// +optional
+	// +optional
+
 	Repo string `json:"repo,omitempty"`
 
 	// Ref is the git reference (commit SHA, tag, branch, or PR ref).
@@ -427,11 +510,15 @@ type K8sLatestSpec struct {
 	// Track specifies the branch to track at provision time.
 	// +kubebuilder:default=master
 	// +optional
+	// +optional
+
 	Track string `json:"track,omitempty"`
 
 	// Repo is the git repository URL.
 	// +kubebuilder:default="https://github.com/kubernetes/kubernetes.git"
 	// +optional
+	// +optional
+
 	Repo string `json:"repo,omitempty"`
 }
 
@@ -442,74 +529,108 @@ type Kubernetes struct {
 	// Source determines installation method.
 	// +kubebuilder:default=release
 	// +optional
+	// +optional
+
 	Source K8sSource `json:"source,omitempty"`
 
 	// Release source configuration (when source=release).
 	// +optional
+	// +optional
+
 	Release *K8sReleaseSpec `json:"release,omitempty"`
 
 	// Git source configuration (when source=git).
 	// +optional
+	// +optional
+
 	Git *K8sGitSpec `json:"git,omitempty"`
 
 	// Latest source configuration (when source=latest).
 	// +optional
+	// +optional
+
 	Latest *K8sLatestSpec `json:"latest,omitempty"`
 
 	// KubernetesInstaller specifies the installer to use.
 	// +kubebuilder:validation:Enum=kubeadm;kind;microk8s
 	// +kubebuilder:default=kubeadm
 	// +optional
+	// +optional
+
 	KubernetesInstaller string `json:"Installer,omitempty"`
 
 	// KubeConfig is the path to the kubeconfig file on the local machine.
 	// +optional
+	// +optional
+
 	KubeConfig string `json:"kubeConfig,omitempty"`
 
 	// KubernetesVersion is deprecated, use Release.Version instead.
 	// Preserved for backward compatibility.
 	// +optional
+	// +optional
+
 	KubernetesVersion string `json:"Version,omitempty"`
 
 	// KubernetesFeatures is a list of Kubernetes features to enable.
 	// +optional
+	// +optional
+
 	KubernetesFeatures []string `json:"Features,omitempty"`
 
 	// KubeletReleaseVersion specifies the kubelet release version.
 	// +optional
+	// +optional
+
 	KubeletReleaseVersion string `json:"KubeletReleaseVersion,omitempty"`
 
 	// Arch specifies the architecture (e.g., "amd64", "arm64").
 	// +optional
+	// +optional
+
 	Arch string `json:"Arch,omitempty"`
 
 	// CniPluginsVersion specifies the CNI plugins version.
 	// +optional
+	// +optional
+
 	CniPluginsVersion string `json:"CniPluginsVersion,omitempty"`
 
 	// CalicoVersion specifies the Calico version.
 	// +optional
+	// +optional
+
 	CalicoVersion string `json:"CalicoVersion,omitempty"`
 
 	// CrictlVersion specifies the crictl version.
 	// +optional
+	// +optional
+
 	CrictlVersion string `json:"CrictlVersion,omitempty"`
 
 	// K8sEndpointHost is the Kubernetes API endpoint host.
 	// +optional
+	// +optional
+
 	K8sEndpointHost string `json:"K8sEndpointHost,omitempty"`
 
 	// K8sFeatureGates is a set of key=value pairs that describe feature gates
 	// for alpha/experimental features.
 	// +optional
+	// +optional
+
 	K8sFeatureGates []string `json:"K8sFeatureGates,omitempty"`
 
 	// KubeAdmConfig is the path to the kubeadm config file on the local machine.
 	// +optional
+	// +optional
+
 	KubeAdmConfig string `json:"kubeAdmConfig,omitempty"`
 
 	// KindConfig is the path to the KIND config file (KIND installer only).
 	// +optional
+	// +optional
+
 	KindConfig string `json:"kindConfig,omitempty"`
 }
 
@@ -537,10 +658,14 @@ type CTKPackageSpec struct {
 	// +kubebuilder:validation:Enum=stable;experimental
 	// +kubebuilder:default=stable
 	// +optional
+	// +optional
+
 	Channel string `json:"channel,omitempty"`
 
 	// Version pins to a specific package version (e.g., "1.17.3-1").
 	// +optional
+	// +optional
+
 	Version string `json:"version,omitempty"`
 }
 
@@ -549,6 +674,8 @@ type CTKGitSpec struct {
 	// Repo is the git repository URL.
 	// +kubebuilder:default="https://github.com/NVIDIA/nvidia-container-toolkit.git"
 	// +optional
+	// +optional
+
 	Repo string `json:"repo,omitempty"`
 
 	// Ref is the git reference (commit SHA, tag, branch, or PR ref).
@@ -562,11 +689,15 @@ type CTKLatestSpec struct {
 	// Track specifies the branch to track at provision time.
 	// +kubebuilder:default=main
 	// +optional
+	// +optional
+
 	Track string `json:"track,omitempty"`
 
 	// Repo is the git repository URL.
 	// +kubebuilder:default="https://github.com/NVIDIA/nvidia-container-toolkit.git"
 	// +optional
+	// +optional
+
 	Repo string `json:"repo,omitempty"`
 }
 
@@ -577,34 +708,58 @@ type NVIDIAContainerToolkit struct {
 	// Source determines installation method.
 	// +kubebuilder:default=package
 	// +optional
+	// +optional
+
 	Source CTKSource `json:"source,omitempty"`
 
 	// Package source configuration (when source=package).
 	// +optional
+	// +optional
+
 	Package *CTKPackageSpec `json:"package,omitempty"`
 
 	// Git source configuration (when source=git).
 	// +optional
+	// +optional
+
 	Git *CTKGitSpec `json:"git,omitempty"`
 
 	// Latest source configuration (when source=latest).
 	// +optional
+	// +optional
+
 	Latest *CTKLatestSpec `json:"latest,omitempty"`
 
 	// EnableCDI enables the Container Device Interface (CDI) in the selected
 	// container runtime.
 	// +optional
+	// +optional
+
 	EnableCDI bool `json:"enableCDI,omitempty"`
 
 	// Version is deprecated, use Package.Version instead.
 	// +optional
+	// +optional
+
 	Version string `json:"version,omitempty"`
 }
 
-// Kernel defines the kernel configuration
+
+// LoadBalancer defines load balancer configuration for HA clusters
+type LoadBalancer struct {
+	// Enabled enables creation of a Network Load Balancer
+	Enabled bool `json:"enabled,omitempty"`
+	// Type is the load balancer type: "nlb" (default) or "alb"
+	Type string `json:"type,omitempty"`
+	// HealthCheckPath for ALB health checks
+	HealthCheckPath string `json:"healthCheckPath,omitempty"`
+}
+
 type Kernel struct {
 	// Version specifies the kernel version to install
 	// If not set, no kernel changes will be made
 	// +optional
+	// +optional
+
 	Version string `json:"version,omitempty"`
 }

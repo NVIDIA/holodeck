@@ -26,6 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 )
 
 const (
@@ -51,7 +52,59 @@ func (p *Provider) Delete() error {
 	return nil
 }
 
+// deleteNLBForCluster deletes the NLB for a cluster by looking it up by DNS name
+func (p *Provider) deleteNLBForCluster(cache *ClusterCache) error {
+	if cache.LoadBalancerDNS == "" {
+		return nil
+	}
+
+	// Describe load balancers to find the one matching our DNS name
+	ctx, cancel := context.WithTimeout(context.Background(), elbv2APITimeout)
+	defer cancel()
+
+	describeInput := &elasticloadbalancingv2.DescribeLoadBalancersInput{}
+	describeOutput, err := p.elbv2.DescribeLoadBalancers(ctx, describeInput)
+	if err != nil {
+		return fmt.Errorf("error describing load balancers: %v", err)
+	}
+
+	// Find load balancer by DNS name
+	for _, lb := range describeOutput.LoadBalancers {
+		if aws.ToString(lb.DNSName) == cache.LoadBalancerDNS {
+			cache.LoadBalancerArn = aws.ToString(lb.LoadBalancerArn)
+			// Also get target group ARN if available
+			// Describe target groups for this LB
+			tgInput := &elasticloadbalancingv2.DescribeTargetGroupsInput{
+				LoadBalancerArn: lb.LoadBalancerArn,
+			}
+			tgOutput, err := p.elbv2.DescribeTargetGroups(ctx, tgInput)
+			if err == nil && len(tgOutput.TargetGroups) > 0 {
+				cache.TargetGroupArn = aws.ToString(tgOutput.TargetGroups[0].TargetGroupArn)
+			}
+			return p.deleteNLB(cache)
+		}
+	}
+
+	return nil
+}
+
 func (p *Provider) delete(cache *AWS) error {
+	// Phase 0: Delete Load Balancer (for clusters with HA)
+	if p.IsMultinode() && p.Environment.Status.Cluster != nil {
+		if lbDNS := p.Environment.Status.Cluster.LoadBalancerDNS; lbDNS != "" {
+			// Create ClusterCache from status to get LoadBalancerArn
+			clusterCache := &ClusterCache{AWS: *cache}
+			clusterCache.LoadBalancerDNS = lbDNS
+			// Try to get ARN from status properties or reconstruct from DNS
+			// For now, we'll need to describe the LB to get ARN
+			// But we can also store it in status.Cluster properties
+			// Actually, let's check if we can get it from the environment status
+			if err := p.deleteNLBForCluster(clusterCache); err != nil {
+				p.log.Warning("Error deleting load balancer: %v", err)
+			}
+		}
+	}
+
 	// Phase 1: Terminate EC2 instances
 	if err := p.deleteEC2Instances(cache); err != nil {
 		return fmt.Errorf("failed to delete EC2 instances: %w", err)
