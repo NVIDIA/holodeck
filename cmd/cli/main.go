@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/cli/get"
 	"github.com/NVIDIA/holodeck/cmd/cli/list"
 	oscmd "github.com/NVIDIA/holodeck/cmd/cli/os"
+	"github.com/NVIDIA/holodeck/cmd/cli/provision"
 	"github.com/NVIDIA/holodeck/cmd/cli/scp"
 	"github.com/NVIDIA/holodeck/cmd/cli/ssh"
 	"github.com/NVIDIA/holodeck/cmd/cli/status"
@@ -117,6 +118,7 @@ Examples:
 		get.NewCommand(log),
 		list.NewCommand(log),
 		oscmd.NewCommand(log),
+		provision.NewCommand(log),
 		scp.NewCommand(log),
 		ssh.NewCommand(log),
 		status.NewCommand(log),
