@@ -409,6 +409,22 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		p.fail()
 		return fmt.Errorf("fail to tag network to instance: %v", err)
 	}
+
+	// Disable Source/Destination Check for Calico networking
+	// This is required for Kubernetes CNI plugins (Calico, Flannel, etc.) to work correctly
+	// See: https://github.com/NVIDIA/holodeck/issues/586
+	_, err = p.ec2.ModifyNetworkInterfaceAttribute(context.TODO(),
+		&ec2.ModifyNetworkInterfaceAttributeInput{
+			NetworkInterfaceId: aws.String(networkInterfaceId),
+			SourceDestCheck: &types.AttributeBooleanValue{
+				Value: aws.Bool(false),
+			},
+		})
+	if err != nil {
+		p.fail()
+		return fmt.Errorf("error disabling source/dest check: %v", err)
+	}
+
 	p.done()
 	return nil
 }
