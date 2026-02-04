@@ -11,6 +11,8 @@ commands.
 - [list](list.md) - List all environments
 - [status](status.md) - Check the status of an environment
 - [dryrun](dryrun.md) - Perform a dry run of environment creation
+- [provision](provision.md) - Provision or re-provision an existing instance
+- [validate](validate.md) - Validate an environment file before creating an instance
 
 ## Command Usage
 
@@ -39,6 +41,12 @@ holodeck [command] --help
 holodeck create -f environment.yaml
 ```
 
+### Validate an Environment File
+
+```bash
+holodeck validate -f environment.yaml
+```
+
 ### List Environments
 
 ```bash
@@ -49,6 +57,12 @@ holodeck list
 
 ```bash
 holodeck status <instance-id>
+```
+
+### Provision an Existing Instance
+
+```bash
+holodeck provision <instance-id>
 ```
 
 ### Delete an Environment
