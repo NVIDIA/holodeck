@@ -82,7 +82,7 @@ func (p *Provisioner) waitForNodeReboot() error {
 		// Try to create a new session to check if connection is alive
 		session, err := p.Client.NewSession()
 		if err == nil {
-			session.Close() // nolint:errcheck, gosec
+			_ = session.Close()
 			// Connection is alive, close it
 			if err := p.Client.Close(); err != nil {
 				return fmt.Errorf("failed to close ssh client: %w", err)
@@ -187,7 +187,7 @@ func (p *Provisioner) resetConnection() error {
 		// Try to create a new session to check if connection is alive
 		session, err := p.Client.NewSession()
 		if err == nil {
-			session.Close() // nolint:errcheck, gosec
+			_ = session.Close()
 			// Connection is alive, close it
 			if err := p.Client.Close(); err != nil {
 				return fmt.Errorf("failed to close ssh client: %w", err)
@@ -219,13 +219,13 @@ func (p *Provisioner) provision() error {
 	session.Stderr = writer
 
 	go func() {
-		defer writer.Close() // nolint:errcheck, gosec
+		defer func() { _ = writer.Close() }()
 		_, err := io.Copy(os.Stdout, reader)
 		if err != nil {
 			log.Fatalf("Failed to copy from reader: %v", err)
 		}
 	}()
-	defer session.Close() // nolint:errcheck, gosec
+	defer func() { _ = session.Close() }()
 
 	script := p.tpl.String()
 
@@ -250,7 +250,7 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer session.Close() // nolint:errcheck, gosec
+	defer func() { _ = session.Close() }()
 
 	// create remote directory if it does not exist
 	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
@@ -289,7 +289,7 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	}
 
 	// Close the writing pipe and wait for the session to finish
-	remoteFile.Close() // nolint:errcheck, gosec
+	_ = remoteFile.Close()
 	if err := session.Wait(); err != nil {
 		return fmt.Errorf("failed to wait for command to complete: %w", err)
 	}
@@ -340,10 +340,10 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
-		session.Close() // nolint:errcheck, gosec
+		_ = session.Close()
 		return fmt.Errorf("failed to create directory on remote host: %w", err)
 	}
-	session.Close() // nolint:errcheck, gosec
+	_ = session.Close()
 
 	// Move the temporary file to the final destination
 	session, err = p.Client.NewSession()
@@ -351,10 +351,10 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 	if err := session.Run(fmt.Sprintf("sudo mv %s %s", tempRemotePath, remoteFilePath)); err != nil {
-		session.Close() // nolint:errcheck, gosec
+		_ = session.Close()
 		return fmt.Errorf("failed to move kubeadm config to final destination: %w", err)
 	}
-	session.Close() // nolint:errcheck, gosec
+	_ = session.Close()
 
 	return nil
 }
@@ -366,21 +366,21 @@ func (p *Provisioner) copyFileToRemoteSFTP(localPath, remotePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to start SFTP session: %w", err)
 	}
-	defer client.Close() // nolint:errcheck, gosec
+	defer func() { _ = client.Close() }()
 
 	// Open local file
 	localFile, err := os.Open(localPath) // nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %w", err)
 	}
-	defer localFile.Close() // nolint:errcheck, gosec
+	defer func() { _ = localFile.Close() }()
 
 	// Open remote file for writing
 	remoteFile, err := client.Create(remotePath)
 	if err != nil {
 		return fmt.Errorf("failed to create remote file: %w", err)
 	}
-	defer remoteFile.Close() // nolint:errcheck, gosec
+	defer func() { _ = remoteFile.Close() }()
 
 	// Copy local file to remote file
 	if _, err := remoteFile.ReadFrom(localFile); err != nil {

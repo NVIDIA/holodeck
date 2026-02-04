@@ -40,40 +40,64 @@ func (p *Provider) Create() error {
 	// Single-node deployment
 	cache := new(AWS)
 
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources") // nolint:errcheck, gosec, staticcheck
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources"); err != nil {
+		p.log.Warning("Failed to update progressing condition: %v", err)
+	}
 
 	if err := p.createVPC(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC") // nolint:errcheck, gosec, staticcheck
+		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC"); updateErr != nil {
+			p.log.Warning("Failed to update degraded condition: %v", updateErr)
+		}
 		return fmt.Errorf("error creating VPC: %w", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "VPC created") // nolint:errcheck, gosec, staticcheck
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "VPC created"); err != nil {
+		p.log.Warning("Failed to update progressing condition: %v", err)
+	}
 
 	if err := p.createSubnet(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet") // nolint:errcheck, gosec, staticcheck
+		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet"); updateErr != nil {
+			p.log.Warning("Failed to update degraded condition: %v", updateErr)
+		}
 		return fmt.Errorf("error creating subnet: %w", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created") // nolint:errcheck, gosec, staticcheck
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created"); err != nil {
+		p.log.Warning("Failed to update progressing condition: %v", err)
+	}
 
 	if err := p.createInternetGateway(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway") // nolint:errcheck, gosec, staticcheck
+		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway"); updateErr != nil {
+			p.log.Warning("Failed to update degraded condition: %v", updateErr)
+		}
 		return fmt.Errorf("error creating Internet Gateway: %w", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created") // nolint:errcheck, gosec, staticcheck
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created"); err != nil {
+		p.log.Warning("Failed to update progressing condition: %v", err)
+	}
 
 	if err := p.createRouteTable(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table") // nolint:errcheck, gosec, staticcheck
+		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table"); updateErr != nil {
+			p.log.Warning("Failed to update degraded condition: %v", updateErr)
+		}
 		return fmt.Errorf("error creating route table: %w", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created") // nolint:errcheck, gosec, staticcheck
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created"); err != nil {
+		p.log.Warning("Failed to update progressing condition: %v", err)
+	}
 
 	if err := p.createSecurityGroup(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group") // nolint:errcheck, gosec, staticcheck
+		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group"); updateErr != nil {
+			p.log.Warning("Failed to update degraded condition: %v", updateErr)
+		}
 		return fmt.Errorf("error creating security group: %w", err)
 	}
-	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created") // nolint:errcheck, gosec, staticcheck
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created"); err != nil {
+		p.log.Warning("Failed to update progressing condition: %v", err)
+	}
 
 	if err := p.createEC2Instance(cache); err != nil {
-		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance") // nolint:errcheck, gosec, staticcheck
+		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance"); updateErr != nil {
+			p.log.Warning("Failed to update degraded condition: %v", updateErr)
+		}
 		return fmt.Errorf("error creating EC2 instance: %w", err)
 	}
 
