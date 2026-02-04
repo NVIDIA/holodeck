@@ -450,7 +450,7 @@ func (m *command) validateComponents(env *v1alpha1.Environment) []ValidationResu
 }
 
 func (m *command) printResults(results []ValidationResult) {
-	fmt.Println("\n=== Validation Results ===\n")
+	fmt.Println("\n=== Validation Results ===")
 
 	for _, r := range results {
 		icon := "✓"
