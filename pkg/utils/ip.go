@@ -79,7 +79,7 @@ func getIPFromHTTPService(ctx context.Context, url string, timeout time.Duration
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("error creating request for %s: %v", url, err)
+		return "", fmt.Errorf("error creating request for %s: %w", url, err)
 	}
 
 	// Set user agent to avoid being blocked
@@ -88,7 +88,7 @@ func getIPFromHTTPService(ctx context.Context, url string, timeout time.Duration
 	// Make the request
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("error fetching IP from %s: %v", url, err)
+		return "", fmt.Errorf("error fetching IP from %s: %w", url, err)
 	}
 	defer resp.Body.Close() // nolint:errcheck, gosec, staticcheck
 
@@ -100,7 +100,7 @@ func getIPFromHTTPService(ctx context.Context, url string, timeout time.Duration
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading response from %s: %v", url, err)
+		return "", fmt.Errorf("error reading response from %s: %w", url, err)
 	}
 
 	// Clean the IP address (remove whitespace and newlines)

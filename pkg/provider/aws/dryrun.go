@@ -37,7 +37,7 @@ func (p *Provider) DryRun() error {
 	err = p.checkImages()
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("failed to get images: %v", err)
+		return fmt.Errorf("failed to get images: %w", err)
 	}
 	p.done()
 

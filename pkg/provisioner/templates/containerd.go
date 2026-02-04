@@ -418,7 +418,7 @@ func (t *Containerd) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error 
 	containerdTemplate := template.Must(template.New("containerd").Parse(templateContent))
 	err := containerdTemplate.Execute(tpl, t)
 	if err != nil {
-		return fmt.Errorf("failed to execute containerd template: %v", err)
+		return fmt.Errorf("failed to execute containerd template: %w", err)
 	}
 	return nil
 }

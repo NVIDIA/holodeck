@@ -127,7 +127,7 @@ func NewCriO(env v1alpha1.Environment) *CriO {
 func (t *CriO) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	criOTemplate := template.Must(template.New("crio").Parse(criOTemplate))
 	if err := criOTemplate.Execute(tpl, t); err != nil {
-		return fmt.Errorf("failed to execute crio template: %v", err)
+		return fmt.Errorf("failed to execute crio template: %w", err)
 	}
 
 	return nil

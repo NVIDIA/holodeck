@@ -41,11 +41,11 @@ const (
 func (p *Provider) Delete() error {
 	cache, err := p.unmarsalCache()
 	if err != nil {
-		return fmt.Errorf("error retrieving cache: %v", err)
+		return fmt.Errorf("error retrieving cache: %w", err)
 	}
 
 	if err := p.delete(cache); err != nil {
-		return fmt.Errorf("error destroying AWS resources: %v", err)
+		return fmt.Errorf("error destroying AWS resources: %w", err)
 	}
 
 	return nil
@@ -54,17 +54,17 @@ func (p *Provider) Delete() error {
 func (p *Provider) delete(cache *AWS) error {
 	// Phase 1: Terminate EC2 instances
 	if err := p.deleteEC2Instances(cache); err != nil {
-		return fmt.Errorf("failed to delete EC2 instances: %v", err)
+		return fmt.Errorf("failed to delete EC2 instances: %w", err)
 	}
 
 	// Phase 2: Delete Security Groups
 	if err := p.deleteSecurityGroups(cache); err != nil {
-		return fmt.Errorf("failed to delete security groups: %v", err)
+		return fmt.Errorf("failed to delete security groups: %w", err)
 	}
 
 	// Phase 3: Delete VPC and related resources
 	if err := p.deleteVPCResources(cache); err != nil {
-		return fmt.Errorf("failed to delete VPC resources: %v", err)
+		return fmt.Errorf("failed to delete VPC resources: %w", err)
 	}
 
 	return nil
@@ -104,7 +104,7 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 	}
 
 	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Terminating EC2 instances"); err != nil {
-		p.log.Error(fmt.Errorf("failed to update progressing condition: %v", err))
+		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))
 	}
 
 	// Terminate all instances with retries
@@ -127,9 +127,9 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 
 	if err != nil {
 		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error terminating EC2 instances"); err != nil {
-			p.log.Error(fmt.Errorf("failed to update degraded condition: %v", err))
+			p.log.Error(fmt.Errorf("failed to update degraded condition: %w", err))
 		}
-		return fmt.Errorf("error terminating instances: %v", err)
+		return fmt.Errorf("error terminating instances: %w", err)
 	}
 
 	// Wait for all instances to terminate in parallel
@@ -196,7 +196,7 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 	}
 
 	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting security group"); err != nil {
-		p.log.Error(fmt.Errorf("failed to update progressing condition: %v", err))
+		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))
 	}
 
 	// Delete security group with retries
@@ -224,9 +224,9 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 
 	if err != nil {
 		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting security group"); err != nil {
-			p.log.Error(fmt.Errorf("failed to update degraded condition: %v", err))
+			p.log.Error(fmt.Errorf("failed to update degraded condition: %w", err))
 		}
-		return fmt.Errorf("error deleting security group %s: %v", cache.SecurityGroupid, err)
+		return fmt.Errorf("error deleting security group %s: %w", cache.SecurityGroupid, err)
 	}
 
 	// Verify deletion
@@ -245,7 +245,7 @@ func (p *Provider) deleteVPCResources(cache *AWS) error {
 	defer p.done()
 
 	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting VPC resources"); err != nil {
-		p.log.Error(fmt.Errorf("failed to update progressing condition: %v", err))
+		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))
 	}
 
 	// Step 1: Delete Subnet
@@ -294,7 +294,7 @@ func (p *Provider) deleteSubnet(cache *AWS) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("error deleting subnet %s: %v", cache.Subnetid, err)
+		return fmt.Errorf("error deleting subnet %s: %w", cache.Subnetid, err)
 	}
 
 	// Verify deletion
@@ -340,7 +340,7 @@ func (p *Provider) deleteRouteTable(cache *AWS) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("error deleting route table %s: %v", cache.RouteTable, err)
+		return fmt.Errorf("error deleting route table %s: %w", cache.RouteTable, err)
 	}
 
 	p.log.Info("Route table %s successfully deleted", cache.RouteTable)
@@ -373,7 +373,7 @@ func (p *Provider) deleteInternetGateway(cache *AWS) error {
 		})
 
 		if err != nil {
-			return fmt.Errorf("error detaching Internet Gateway %s: %v", cache.InternetGwid, err)
+			return fmt.Errorf("error detaching Internet Gateway %s: %w", cache.InternetGwid, err)
 		}
 
 		// Wait a bit after detachment
@@ -398,7 +398,7 @@ func (p *Provider) deleteInternetGateway(cache *AWS) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("error deleting Internet Gateway %s: %v", cache.InternetGwid, err)
+		return fmt.Errorf("error deleting Internet Gateway %s: %w", cache.InternetGwid, err)
 	}
 
 	p.log.Info("Internet Gateway %s successfully deleted", cache.InternetGwid)
@@ -437,7 +437,7 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("error deleting VPC %s: %v", cache.Vpcid, err)
+		return fmt.Errorf("error deleting VPC %s: %w", cache.Vpcid, err)
 	}
 
 	// Verify deletion

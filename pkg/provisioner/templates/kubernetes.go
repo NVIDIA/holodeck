@@ -1642,7 +1642,7 @@ func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error 
 	)
 
 	if err := kubernetesTemplate.Execute(tpl, k); err != nil {
-		return fmt.Errorf("failed to execute kubernetes template: %v", err)
+		return fmt.Errorf("failed to execute kubernetes template: %w", err)
 	}
 
 	return nil
@@ -1681,14 +1681,14 @@ func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
 		if !filepath.IsAbs(kubeAdmConfigPath) {
 			cwd, err := os.Getwd()
 			if err != nil {
-				return &KubeadmConfig{}, fmt.Errorf("failed to get current working directory: %v", err)
+				return &KubeadmConfig{}, fmt.Errorf("failed to get current working directory: %w", err)
 			}
 
 			kubeAdmConfigPath = filepath.Join(cwd, strings.TrimPrefix(env.Spec.Kubernetes.KubeAdmConfig, "./"))
 		}
 		data, err := os.ReadFile(kubeAdmConfigPath) // nolint:gosec
 		if err != nil {
-			return &KubeadmConfig{}, fmt.Errorf("failed to read kubeadm config file: %v", err)
+			return &KubeadmConfig{}, fmt.Errorf("failed to read kubeadm config file: %w", err)
 		}
 
 		kConfig.Template = string(data)
