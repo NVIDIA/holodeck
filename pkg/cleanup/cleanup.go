@@ -40,6 +40,16 @@ var (
 	runIDPattern = regexp.MustCompile(`^\d+$`)
 )
 
+// Default timeouts for cleanup operations
+const (
+	// DefaultOperationTimeout is the default timeout for individual AWS API operations
+	DefaultOperationTimeout = 30 * time.Second
+	// DefaultInstanceTerminationTimeout is the timeout for waiting for instances to terminate
+	DefaultInstanceTerminationTimeout = 10 * time.Minute
+	// DefaultVPCDeleteRetryDelay is the delay between VPC deletion retries
+	DefaultVPCDeleteRetryDelay = 30 * time.Second
+)
+
 // safeString safely dereferences a string pointer, returning "<nil>" if the pointer is nil
 func safeString(s *string) string {
 	if s == nil {
@@ -94,8 +104,9 @@ func New(log *logger.FunLogger, region string,
 	return c, nil
 }
 
-// GetTagValue retrieves a tag value for a given VPC
-func (c *Cleaner) GetTagValue(vpcID, key string) (string, error) {
+// GetTagValue retrieves a tag value for a given VPC.
+// The provided context controls cancellation and timeout for the AWS API call.
+func (c *Cleaner) GetTagValue(ctx context.Context, vpcID, key string) (string, error) {
 	input := &ec2.DescribeTagsInput{
 		Filters: []types.Filter{
 			{
@@ -109,7 +120,7 @@ func (c *Cleaner) GetTagValue(vpcID, key string) (string, error) {
 		},
 	}
 
-	result, err := c.ec2.DescribeTags(context.Background(), input)
+	result, err := c.ec2.DescribeTags(ctx, input)
 	if err != nil {
 		return "", fmt.Errorf("failed to describe tags: %w", err)
 	}
@@ -128,8 +139,9 @@ type GitHubJobsResponse struct {
 	} `json:"jobs"`
 }
 
-// CheckGitHubJobsCompleted checks if all GitHub jobs are completed
-func (c *Cleaner) CheckGitHubJobsCompleted(repository, runID, token string) (bool, error) {
+// CheckGitHubJobsCompleted checks if all GitHub jobs are completed.
+// The provided context controls cancellation and timeout for the HTTP request.
+func (c *Cleaner) CheckGitHubJobsCompleted(ctx context.Context, repository, runID, token string) (bool, error) {
 	// Validate input parameters to prevent URL injection
 	if !repoPattern.MatchString(repository) {
 		return false, fmt.Errorf("invalid repository format: %s", repository)
@@ -140,7 +152,7 @@ func (c *Cleaner) CheckGitHubJobsCompleted(repository, runID, token string) (boo
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/actions/runs/%s/jobs", repository, runID)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -185,15 +197,16 @@ func (c *Cleaner) CheckGitHubJobsCompleted(repository, runID, token string) (boo
 	return true, nil
 }
 
-// CleanupVPC checks job status and deletes VPC resources if jobs are completed
-func (c *Cleaner) CleanupVPC(vpcID string) error {
+// CleanupVPC checks job status and deletes VPC resources if jobs are completed.
+// The provided context controls cancellation and timeout for all operations.
+func (c *Cleaner) CleanupVPC(ctx context.Context, vpcID string) error {
 	// Get GitHub-related tags
-	repository, err := c.GetTagValue(vpcID, "GitHubRepository")
+	repository, err := c.GetTagValue(ctx, vpcID, "GitHubRepository")
 	if err != nil {
 		return fmt.Errorf("failed to get GitHubRepository tag: %w", err)
 	}
 
-	runID, err := c.GetTagValue(vpcID, "GitHubRunId")
+	runID, err := c.GetTagValue(ctx, vpcID, "GitHubRunId")
 	if err != nil {
 		return fmt.Errorf("failed to get GitHubRunId tag: %w", err)
 	}
@@ -204,7 +217,7 @@ func (c *Cleaner) CleanupVPC(vpcID string) error {
 		c.log.Warning("GITHUB_TOKEN not set, skipping job status check")
 	} else if repository != "" && runID != "" {
 		// Check if jobs are completed
-		completed, err := c.CheckGitHubJobsCompleted(repository, runID, token)
+		completed, err := c.CheckGitHubJobsCompleted(ctx, repository, runID, token)
 		if err != nil {
 			c.log.Warning("Failed to check GitHub job status: %v", err)
 		} else if !completed {
@@ -213,40 +226,67 @@ func (c *Cleaner) CleanupVPC(vpcID string) error {
 	}
 
 	c.log.Info("All jobs completed or no job information found, proceeding with cleanup of VPC %s", vpcID)
-	return c.DeleteVPCResources(vpcID)
+	return c.DeleteVPCResources(ctx, vpcID)
 }
 
-// DeleteVPCResources deletes all resources associated with a VPC
-func (c *Cleaner) DeleteVPCResources(vpcID string) error {
+// DeleteVPCResources deletes all resources associated with a VPC.
+// The provided context controls cancellation and timeout for all operations.
+// If the context is cancelled, cleanup will stop and return an error.
+func (c *Cleaner) DeleteVPCResources(ctx context.Context, vpcID string) error {
 	c.log.Info("Starting cleanup of resources in VPC: %s", vpcID)
 
+	// Check for context cancellation before each step
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cleanup cancelled: %w", err)
+	}
+
 	// Delete instances
-	if err := c.deleteInstances(vpcID); err != nil {
+	if err := c.deleteInstances(ctx, vpcID); err != nil {
 		return fmt.Errorf("failed to delete instances: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cleanup cancelled after instance deletion: %w", err)
+	}
+
 	// Delete security groups
-	if err := c.deleteSecurityGroups(vpcID); err != nil {
+	if err := c.deleteSecurityGroups(ctx, vpcID); err != nil {
 		return fmt.Errorf("failed to delete security groups: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cleanup cancelled after security group deletion: %w", err)
+	}
+
 	// Delete subnets
-	if err := c.deleteSubnets(vpcID); err != nil {
+	if err := c.deleteSubnets(ctx, vpcID); err != nil {
 		return fmt.Errorf("failed to delete subnets: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cleanup cancelled after subnet deletion: %w", err)
+	}
+
 	// Delete route tables
-	if err := c.deleteRouteTables(vpcID); err != nil {
+	if err := c.deleteRouteTables(ctx, vpcID); err != nil {
 		return fmt.Errorf("failed to delete route tables: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cleanup cancelled after route table deletion: %w", err)
+	}
+
 	// Delete internet gateways
-	if err := c.deleteInternetGateways(vpcID); err != nil {
+	if err := c.deleteInternetGateways(ctx, vpcID); err != nil {
 		return fmt.Errorf("failed to delete internet gateways: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cleanup cancelled after internet gateway deletion: %w", err)
+	}
+
 	// Delete VPC with retry
-	if err := c.deleteVPC(vpcID); err != nil {
+	if err := c.deleteVPC(ctx, vpcID); err != nil {
 		return fmt.Errorf("failed to delete VPC: %w", err)
 	}
 
@@ -254,7 +294,7 @@ func (c *Cleaner) DeleteVPCResources(vpcID string) error {
 	return nil
 }
 
-func (c *Cleaner) deleteInstances(vpcID string) error {
+func (c *Cleaner) deleteInstances(ctx context.Context, vpcID string) error {
 	// Describe instances in the VPC
 	input := &ec2.DescribeInstancesInput{
 		Filters: []types.Filter{
@@ -269,7 +309,7 @@ func (c *Cleaner) deleteInstances(vpcID string) error {
 		},
 	}
 
-	result, err := c.ec2.DescribeInstances(context.Background(), input)
+	result, err := c.ec2.DescribeInstances(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to describe instances: %w", err)
 	}
@@ -291,18 +331,18 @@ func (c *Cleaner) deleteInstances(vpcID string) error {
 		InstanceIds: instanceIDs,
 	}
 
-	_, err = c.ec2.TerminateInstances(context.Background(), terminateInput)
+	_, err = c.ec2.TerminateInstances(ctx, terminateInput)
 	if err != nil {
 		return fmt.Errorf("failed to terminate instances: %w", err)
 	}
 
 	c.log.Info("Terminated %d instances, waiting for termination", len(instanceIDs))
 
-	// Wait for instances to terminate
+	// Wait for instances to terminate with timeout
 	waiter := ec2.NewInstanceTerminatedWaiter(c.ec2)
-	err = waiter.Wait(context.Background(), &ec2.DescribeInstancesInput{
+	err = waiter.Wait(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: instanceIDs,
-	}, 10*time.Minute)
+	}, DefaultInstanceTerminationTimeout)
 	if err != nil {
 		return fmt.Errorf("failed waiting for instances to terminate: %w", err)
 	}
@@ -310,7 +350,7 @@ func (c *Cleaner) deleteInstances(vpcID string) error {
 	return nil
 }
 
-func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
+func (c *Cleaner) deleteSecurityGroups(ctx context.Context, vpcID string) error {
 	// Describe security groups
 	input := &ec2.DescribeSecurityGroupsInput{
 		Filters: []types.Filter{
@@ -321,7 +361,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 		},
 	}
 
-	result, err := c.ec2.DescribeSecurityGroups(context.Background(), input)
+	result, err := c.ec2.DescribeSecurityGroups(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to describe security groups: %w", err)
 	}
@@ -341,6 +381,11 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 
 	// First, detach security groups from ENIs
 	for _, sg := range nonDefaultSGs {
+		// Check for context cancellation
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context cancelled during security group cleanup: %w", err)
+		}
+
 		// Find ENIs using this security group
 		eniInput := &ec2.DescribeNetworkInterfacesInput{
 			Filters: []types.Filter{
@@ -351,7 +396,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 			},
 		}
 
-		eniResult, err := c.ec2.DescribeNetworkInterfaces(context.Background(), eniInput)
+		eniResult, err := c.ec2.DescribeNetworkInterfaces(ctx, eniInput)
 		if err != nil {
 			c.log.Warning("Failed to describe ENIs for security group %s: %v", safeString(sg.GroupId), err)
 			continue
@@ -365,7 +410,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 					Groups:             []string{defaultSGID},
 				}
 
-				_, err = c.ec2.ModifyNetworkInterfaceAttribute(context.Background(), modifyInput)
+				_, err = c.ec2.ModifyNetworkInterfaceAttribute(ctx, modifyInput)
 				if err != nil {
 					c.log.Warning("Failed to modify ENI %s: %v", safeString(eni.NetworkInterfaceId), err)
 				}
@@ -379,7 +424,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 			GroupId: sg.GroupId,
 		}
 
-		_, err = c.ec2.DeleteSecurityGroup(context.Background(), deleteInput)
+		_, err = c.ec2.DeleteSecurityGroup(ctx, deleteInput)
 		if err != nil {
 			c.log.Warning("Failed to delete security group %s: %v", safeString(sg.GroupId), err)
 		}
@@ -389,7 +434,7 @@ func (c *Cleaner) deleteSecurityGroups(vpcID string) error {
 	return nil
 }
 
-func (c *Cleaner) deleteSubnets(vpcID string) error {
+func (c *Cleaner) deleteSubnets(ctx context.Context, vpcID string) error {
 	// Describe subnets
 	input := &ec2.DescribeSubnetsInput{
 		Filters: []types.Filter{
@@ -400,7 +445,7 @@ func (c *Cleaner) deleteSubnets(vpcID string) error {
 		},
 	}
 
-	result, err := c.ec2.DescribeSubnets(context.Background(), input)
+	result, err := c.ec2.DescribeSubnets(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to describe subnets: %w", err)
 	}
@@ -411,7 +456,7 @@ func (c *Cleaner) deleteSubnets(vpcID string) error {
 			SubnetId: subnet.SubnetId,
 		}
 
-		_, err = c.ec2.DeleteSubnet(context.Background(), deleteInput)
+		_, err = c.ec2.DeleteSubnet(ctx, deleteInput)
 		if err != nil {
 			c.log.Warning("Failed to delete subnet %s: %v", safeString(subnet.SubnetId), err)
 		}
@@ -421,7 +466,7 @@ func (c *Cleaner) deleteSubnets(vpcID string) error {
 	return nil
 }
 
-func (c *Cleaner) deleteRouteTables(vpcID string) error {
+func (c *Cleaner) deleteRouteTables(ctx context.Context, vpcID string) error {
 	// Describe route tables
 	input := &ec2.DescribeRouteTablesInput{
 		Filters: []types.Filter{
@@ -432,7 +477,7 @@ func (c *Cleaner) deleteRouteTables(vpcID string) error {
 		},
 	}
 
-	result, err := c.ec2.DescribeRouteTables(context.Background(), input)
+	result, err := c.ec2.DescribeRouteTables(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to describe route tables: %w", err)
 	}
@@ -467,7 +512,7 @@ func (c *Cleaner) deleteRouteTables(vpcID string) error {
 						RouteTableId:  &mainRouteTableID,
 					}
 
-					_, err = c.ec2.ReplaceRouteTableAssociation(context.Background(), replaceInput)
+					_, err = c.ec2.ReplaceRouteTableAssociation(ctx, replaceInput)
 					if err != nil {
 						c.log.Warning("Failed to replace route table association: %v", err)
 					}
@@ -482,7 +527,7 @@ func (c *Cleaner) deleteRouteTables(vpcID string) error {
 			RouteTableId: rt.RouteTableId,
 		}
 
-		_, err = c.ec2.DeleteRouteTable(context.Background(), deleteInput)
+		_, err = c.ec2.DeleteRouteTable(ctx, deleteInput)
 		if err != nil {
 			c.log.Warning("Failed to delete route table %s: %v", safeString(rt.RouteTableId), err)
 		}
@@ -492,7 +537,7 @@ func (c *Cleaner) deleteRouteTables(vpcID string) error {
 	return nil
 }
 
-func (c *Cleaner) deleteInternetGateways(vpcID string) error {
+func (c *Cleaner) deleteInternetGateways(ctx context.Context, vpcID string) error {
 	// Describe internet gateways
 	input := &ec2.DescribeInternetGatewaysInput{
 		Filters: []types.Filter{
@@ -503,7 +548,7 @@ func (c *Cleaner) deleteInternetGateways(vpcID string) error {
 		},
 	}
 
-	result, err := c.ec2.DescribeInternetGateways(context.Background(), input)
+	result, err := c.ec2.DescribeInternetGateways(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to describe internet gateways: %w", err)
 	}
@@ -516,7 +561,7 @@ func (c *Cleaner) deleteInternetGateways(vpcID string) error {
 			VpcId:             &vpcID,
 		}
 
-		_, err = c.ec2.DetachInternetGateway(context.Background(), detachInput)
+		_, err = c.ec2.DetachInternetGateway(ctx, detachInput)
 		if err != nil {
 			c.log.Warning("Failed to detach internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
 		}
@@ -526,7 +571,7 @@ func (c *Cleaner) deleteInternetGateways(vpcID string) error {
 			InternetGatewayId: igw.InternetGatewayId,
 		}
 
-		_, err = c.ec2.DeleteInternetGateway(context.Background(), deleteInput)
+		_, err = c.ec2.DeleteInternetGateway(ctx, deleteInput)
 		if err != nil {
 			c.log.Warning("Failed to delete internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
 		}
@@ -536,17 +581,22 @@ func (c *Cleaner) deleteInternetGateways(vpcID string) error {
 	return nil
 }
 
-func (c *Cleaner) deleteVPC(vpcID string) error {
+func (c *Cleaner) deleteVPC(ctx context.Context, vpcID string) error {
 	// Try to delete VPC with retries
 	attempts := 0
 	maxAttempts := 3
 
 	for attempts < maxAttempts {
+		// Check for context cancellation
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("VPC deletion cancelled: %w", err)
+		}
+
 		deleteInput := &ec2.DeleteVpcInput{
 			VpcId: &vpcID,
 		}
 
-		_, err := c.ec2.DeleteVpc(context.Background(), deleteInput)
+		_, err := c.ec2.DeleteVpc(ctx, deleteInput)
 		if err == nil {
 			c.log.Info("Successfully deleted VPC: %s", vpcID)
 			return nil
@@ -554,9 +604,16 @@ func (c *Cleaner) deleteVPC(vpcID string) error {
 
 		attempts++
 		if attempts < maxAttempts {
-			c.log.Warning("Failed to delete VPC %s (attempt %d/%d): %v. Retrying in 30 seconds...",
-				vpcID, attempts, maxAttempts, err)
-			time.Sleep(30 * time.Second)
+			c.log.Warning("Failed to delete VPC %s (attempt %d/%d): %v. Retrying in %v...",
+				vpcID, attempts, maxAttempts, err, DefaultVPCDeleteRetryDelay)
+
+			// Use a timer that respects context cancellation
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("VPC deletion cancelled during retry wait: %w", ctx.Err())
+			case <-time.After(DefaultVPCDeleteRetryDelay):
+				// Continue to next attempt
+			}
 		}
 	}
 

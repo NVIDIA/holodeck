@@ -149,7 +149,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC2))
 				Expect(err).NotTo(HaveOccurred())
 
-				_, err = cleaner.CheckGitHubJobsCompleted("invalid", "12345", "token")
+				_, err = cleaner.CheckGitHubJobsCompleted(context.Background(), "invalid", "12345", "token")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("invalid repository format"))
 			})
@@ -158,7 +158,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC2))
 				Expect(err).NotTo(HaveOccurred())
 
-				_, err = cleaner.CheckGitHubJobsCompleted("org/repo", "abc", "token")
+				_, err = cleaner.CheckGitHubJobsCompleted(context.Background(), "org/repo", "abc", "token")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("invalid runID format"))
 			})
@@ -270,7 +270,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				value, err := cleaner.GetTagValue("vpc-12345", "GitHubRepository")
+				value, err := cleaner.GetTagValue(context.Background(), "vpc-12345", "GitHubRepository")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(value).To(Equal("NVIDIA/holodeck"))
 			})
@@ -287,7 +287,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				value, err := cleaner.GetTagValue("vpc-12345", "NonExistent")
+				value, err := cleaner.GetTagValue(context.Background(), "vpc-12345", "NonExistent")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(value).To(BeEmpty())
 			})
@@ -302,7 +302,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				_, err = cleaner.GetTagValue("vpc-12345", "SomeKey")
+				_, err = cleaner.GetTagValue(context.Background(), "vpc-12345", "SomeKey")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to describe tags"))
 			})
@@ -357,7 +357,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -371,7 +371,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to delete instances"))
 			})
@@ -386,7 +386,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to delete security groups"))
 			})
@@ -401,7 +401,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to delete subnets"))
 			})
@@ -416,7 +416,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to delete route tables"))
 			})
@@ -431,7 +431,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to delete internet gateways"))
 			})
@@ -458,7 +458,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(deletedSubnets).To(ConsistOf("subnet-1", "subnet-2"))
 			})
@@ -491,7 +491,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(detachedGWs).To(ConsistOf("igw-1"))
 				Expect(deletedGWs).To(ConsistOf("igw-1"))
@@ -524,7 +524,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).NotTo(HaveOccurred())
 				// Only non-default security groups should be deleted
 				Expect(deletedSGs).To(ConsistOf("sg-custom"))
@@ -542,7 +542,8 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				// Use a context that won't timeout during retries for this test
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to delete VPC"))
 				// Should have retried 3 times
@@ -594,7 +595,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.CleanupVPC("vpc-12345")
+				err = cleaner.CleanupVPC(context.Background(), "vpc-12345")
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -608,7 +609,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.CleanupVPC("vpc-12345")
+				err = cleaner.CleanupVPC(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get GitHubRepository tag"))
 			})
@@ -652,7 +653,7 @@ var _ = Describe("Cleanup Package", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				// When GITHUB_TOKEN is not set, cleanup should still proceed
-				err = cleaner.CleanupVPC("vpc-12345")
+				err = cleaner.CleanupVPC(context.Background(), "vpc-12345")
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -677,7 +678,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.CleanupVPC("vpc-12345")
+				err = cleaner.CleanupVPC(context.Background(), "vpc-12345")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get GitHubRunId tag"))
 			})
@@ -753,7 +754,7 @@ var _ = Describe("Cleanup Package", func() {
 				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = cleaner.DeleteVPCResources("vpc-12345")
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(replacedAssocs).To(ConsistOf("rtbassoc-custom"))
 				Expect(deletedRTs).To(ConsistOf("rtb-custom"))
