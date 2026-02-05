@@ -417,7 +417,7 @@ func TestPrint(t *testing.T) {
 
 		// Verify output is JSON
 		var result testStruct
-		if err := json.Unmarshal([]byte(buf.String()), &result); err != nil {
+		if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 			t.Errorf("expected JSON output, got: %s", buf.String())
 		}
 	})
@@ -490,7 +490,7 @@ func TestPrint(t *testing.T) {
 
 		// Verify output is JSON (fallback behavior)
 		var result testStruct
-		if err := json.Unmarshal([]byte(buf.String()), &result); err != nil {
+		if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 			t.Errorf("expected JSON fallback output, got: %s", buf.String())
 		}
 	})
