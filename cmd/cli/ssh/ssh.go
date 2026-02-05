@@ -1,0 +1,277 @@
+/*
+ * Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package ssh
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/instances"
+	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/jyaml"
+	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+
+	cli "github.com/urfave/cli/v2"
+)
+
+type command struct {
+	log       *logger.FunLogger
+	cachePath string
+	node      string
+}
+
+// NewCommand constructs the ssh command with the specified logger
+func NewCommand(log *logger.FunLogger) *cli.Command {
+	c := command{
+		log: log,
+	}
+	return c.build()
+}
+
+func (m command) build() *cli.Command {
+	// Create the 'ssh' command
+	sshCmd := cli.Command{
+		Name:      "ssh",
+		Usage:     "SSH into a Holodeck instance",
+		ArgsUsage: "<instance-id> [-- <command>]",
+		Description: `Connect to a Holodeck instance via SSH.
+
+Examples:
+  # Interactive shell
+  holodeck ssh abc123
+
+  # Run a single command
+  holodeck ssh abc123 -- nvidia-smi
+
+  # Run kubectl on the instance
+  holodeck ssh abc123 -- kubectl get nodes
+
+  # For multinode clusters, specify a node
+  holodeck ssh abc123 --node worker-0 -- nvidia-smi`,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        "cachepath",
+				Aliases:     []string{"c"},
+				Usage:       "Path to the cache directory",
+				Destination: &m.cachePath,
+			},
+			&cli.StringFlag{
+				Name:        "node",
+				Aliases:     []string{"n"},
+				Usage:       "Node name for multinode clusters (default: first control-plane)",
+				Destination: &m.node,
+			},
+		},
+		Action: func(c *cli.Context) error {
+			if c.NArg() < 1 {
+				return fmt.Errorf("instance ID is required")
+			}
+			instanceID := c.Args().Get(0)
+
+			// Check for command after "--"
+			var remoteCmd []string
+			args := c.Args().Slice()
+			for i, arg := range args {
+				if arg == "--" && i+1 < len(args) {
+					remoteCmd = args[i+1:]
+					break
+				}
+			}
+
+			return m.run(instanceID, remoteCmd)
+		},
+	}
+
+	return &sshCmd
+}
+
+func (m command) run(instanceID string, remoteCmd []string) error {
+	// Get instance details
+	manager := instances.NewManager(m.log, m.cachePath)
+	instance, err := manager.GetInstance(instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get instance: %v", err)
+	}
+
+	// Load environment for SSH details
+	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
+	if err != nil {
+		return fmt.Errorf("failed to read environment: %v", err)
+	}
+
+	// Determine host URL
+	hostUrl, err := m.getHostURL(&env)
+	if err != nil {
+		return fmt.Errorf("failed to get host URL: %v", err)
+	}
+
+	// Get SSH credentials from environment
+	keyPath := env.Spec.PrivateKey
+	userName := env.Spec.Username
+	if userName == "" {
+		userName = "ubuntu"
+	}
+
+	// For interactive sessions, use system SSH for better terminal support
+	if len(remoteCmd) == 0 {
+		return m.runInteractiveSystemSSH(keyPath, userName, hostUrl)
+	}
+
+	// For command execution, use Go SSH library
+	client, err := m.connectSSH(keyPath, userName, hostUrl)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	return m.runCommand(client, remoteCmd)
+}
+
+func (m command) getHostURL(env *v1alpha1.Environment) (string, error) {
+	// For multinode clusters, find the appropriate node
+	if env.Spec.Cluster != nil && env.Status.Cluster != nil && len(env.Status.Cluster.Nodes) > 0 {
+		// If a specific node is requested, find it
+		if m.node != "" {
+			for _, node := range env.Status.Cluster.Nodes {
+				if node.Name == m.node {
+					return node.PublicIP, nil
+				}
+			}
+			return "", fmt.Errorf("node %q not found in cluster", m.node)
+		}
+
+		// Default to first control-plane node
+		for _, node := range env.Status.Cluster.Nodes {
+			if node.Role == "control-plane" {
+				return node.PublicIP, nil
+			}
+		}
+
+		// Fallback to first node
+		return env.Status.Cluster.Nodes[0].PublicIP, nil
+	}
+
+	// Single node - get from properties
+	if env.Spec.Provider == v1alpha1.ProviderAWS {
+		for _, p := range env.Status.Properties {
+			if p.Name == aws.PublicDnsName {
+				return p.Value, nil
+			}
+		}
+	} else if env.Spec.Provider == v1alpha1.ProviderSSH {
+		return env.Spec.HostUrl, nil
+	}
+
+	return "", fmt.Errorf("unable to determine host URL")
+}
+
+func (m command) connectSSH(keyPath, userName, hostUrl string) (*ssh.Client, error) {
+	key, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key file %s: %v", keyPath, err)
+	}
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %v", err)
+	}
+
+	config := &ssh.ClientConfig{
+		User: userName,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // nolint:gosec
+		Timeout:         30 * time.Second,
+	}
+
+	// Try to connect with retries
+	var client *ssh.Client
+	for i := 0; i < 3; i++ {
+		client, err = ssh.Dial("tcp", hostUrl+":22", config)
+		if err == nil {
+			return client, nil
+		}
+		m.log.Warning("Connection attempt %d failed: %v", i+1, err)
+		time.Sleep(2 * time.Second)
+	}
+
+	return nil, fmt.Errorf("failed to connect after 3 attempts: %v", err)
+}
+
+func (m command) runCommand(client *ssh.Client, cmd []string) error {
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	// Connect stdout and stderr
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+
+	// Build command string
+	cmdStr := ""
+	for i, c := range cmd {
+		if i > 0 {
+			cmdStr += " "
+		}
+		// Quote arguments with spaces
+		if containsSpace(c) {
+			cmdStr += fmt.Sprintf("%q", c)
+		} else {
+			cmdStr += c
+		}
+	}
+
+	return session.Run(cmdStr)
+}
+
+// runInteractiveSystemSSH uses the system's ssh command for interactive sessions
+// This provides better terminal support (colors, window resize, etc.)
+func (m command) runInteractiveSystemSSH(keyPath, userName, hostUrl string) error {
+	// Build SSH command arguments
+	args := []string{
+		"-i", keyPath,
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		fmt.Sprintf("%s@%s", userName, hostUrl),
+	}
+
+	// Execute system SSH
+	cmd := exec.Command("ssh", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
+func containsSpace(s string) bool {
+	for _, c := range s {
+		if c == ' ' || c == '\t' {
+			return true
+		}
+	}
+	return false
+}
