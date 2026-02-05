@@ -18,21 +18,91 @@ package status
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
+	"github.com/NVIDIA/holodeck/pkg/output"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 
 	cli "github.com/urfave/cli/v2"
 )
 
 type command struct {
-	log       *logger.FunLogger
-	cachePath string
-	live      bool
+	log          *logger.FunLogger
+	cachePath    string
+	live         bool
+	outputFormat string
+}
+
+// StatusOutput represents the instance status for JSON/YAML output
+type StatusOutput struct {
+	InstanceID  string               `json:"instanceId" yaml:"instanceId"`
+	Name        string               `json:"name" yaml:"name"`
+	Provider    string               `json:"provider" yaml:"provider"`
+	Status      string               `json:"status" yaml:"status"`
+	CreatedAt   time.Time            `json:"createdAt" yaml:"createdAt"`
+	Age         string               `json:"age" yaml:"age"`
+	CacheFile   string               `json:"cacheFile" yaml:"cacheFile"`
+	Cluster     *ClusterStatusOutput `json:"cluster,omitempty" yaml:"cluster,omitempty"`
+	LiveHealth  *LiveHealthOutput    `json:"liveHealth,omitempty" yaml:"liveHealth,omitempty"`
+}
+
+// ClusterStatusOutput represents cluster configuration and status
+type ClusterStatusOutput struct {
+	Region               string            `json:"region" yaml:"region"`
+	ControlPlaneCount    int32             `json:"controlPlaneCount" yaml:"controlPlaneCount"`
+	ControlPlaneType     string            `json:"controlPlaneType" yaml:"controlPlaneType"`
+	ControlPlaneMode     string            `json:"controlPlaneMode" yaml:"controlPlaneMode"`
+	WorkerCount          int32             `json:"workerCount,omitempty" yaml:"workerCount,omitempty"`
+	WorkerType           string            `json:"workerType,omitempty" yaml:"workerType,omitempty"`
+	HighAvailability     *HAOutput         `json:"highAvailability,omitempty" yaml:"highAvailability,omitempty"`
+	Phase                string            `json:"phase,omitempty" yaml:"phase,omitempty"`
+	TotalNodes           int32             `json:"totalNodes,omitempty" yaml:"totalNodes,omitempty"`
+	ReadyNodes           int32             `json:"readyNodes,omitempty" yaml:"readyNodes,omitempty"`
+	ControlPlaneEndpoint string            `json:"controlPlaneEndpoint,omitempty" yaml:"controlPlaneEndpoint,omitempty"`
+	LoadBalancerDNS      string            `json:"loadBalancerDNS,omitempty" yaml:"loadBalancerDNS,omitempty"`
+	Nodes                []NodeStatusOutput `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+}
+
+// HAOutput represents high availability configuration
+type HAOutput struct {
+	Enabled      bool   `json:"enabled" yaml:"enabled"`
+	EtcdTopology string `json:"etcdTopology,omitempty" yaml:"etcdTopology,omitempty"`
+}
+
+// NodeStatusOutput represents individual node status
+type NodeStatusOutput struct {
+	Name       string `json:"name" yaml:"name"`
+	Role       string `json:"role" yaml:"role"`
+	InstanceID string `json:"instanceId" yaml:"instanceId"`
+	PublicIP   string `json:"publicIP" yaml:"publicIP"`
+	PrivateIP  string `json:"privateIP" yaml:"privateIP"`
+	Phase      string `json:"phase" yaml:"phase"`
+}
+
+// LiveHealthOutput represents live cluster health information
+type LiveHealthOutput struct {
+	Healthy         bool                   `json:"healthy" yaml:"healthy"`
+	APIServerStatus string                 `json:"apiServerStatus" yaml:"apiServerStatus"`
+	TotalNodes      int                    `json:"totalNodes" yaml:"totalNodes"`
+	ReadyNodes      int                    `json:"readyNodes" yaml:"readyNodes"`
+	ControlPlanes   int                    `json:"controlPlanes" yaml:"controlPlanes"`
+	Workers         int                    `json:"workers" yaml:"workers"`
+	Message         string                 `json:"message" yaml:"message"`
+	Nodes           []LiveNodeStatusOutput `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+}
+
+// LiveNodeStatusOutput represents live node status
+type LiveNodeStatusOutput struct {
+	Name    string `json:"name" yaml:"name"`
+	Role    string `json:"role" yaml:"role"`
+	Ready   bool   `json:"ready" yaml:"ready"`
+	Status  string `json:"status" yaml:"status"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // NewCommand constructs the status command with the specified logger
@@ -60,6 +130,13 @@ func (m command) build() *cli.Command {
 				Aliases:     []string{"l"},
 				Usage:       "Query live cluster status (requires SSH access)",
 				Destination: &m.live,
+			},
+			&cli.StringFlag{
+				Name:        "output",
+				Aliases:     []string{"o"},
+				Usage:       "Output format: table, json, yaml (default: table)",
+				Destination: &m.outputFormat,
+				Value:       "table",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -90,58 +167,152 @@ func (m command) run(c *cli.Context, instanceID string) error {
 
 	age := time.Since(instance.CreatedAt).Round(time.Second)
 
-	fmt.Printf("Instance ID: %s\n", instance.ID)
-	fmt.Printf("Name: %s\n", instance.Name)
-	fmt.Printf("Provider: %s\n", instance.Provider)
-	fmt.Printf("Status: %s\n", instance.Status)
-	fmt.Printf("Created: %s (%s ago)\n",
-		instance.CreatedAt.Format("2006-01-02 15:04:05"),
-		age,
-	)
-	fmt.Printf("Cache File: %s\n", instance.CacheFile)
+	// Build output data structure
+	statusOutput := &StatusOutput{
+		InstanceID: instance.ID,
+		Name:       instance.Name,
+		Provider:   string(instance.Provider),
+		Status:     instance.Status,
+		CreatedAt:  instance.CreatedAt,
+		Age:        age.String(),
+		CacheFile:  instance.CacheFile,
+	}
 
 	// Check if this is a multinode cluster
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
-	if err != nil {
-		return nil // Just return basic info if we can't read the environment
-	}
-
-	// Display cluster information if available
-	if env.Spec.Cluster != nil {
-		fmt.Printf("\n--- Cluster Configuration ---\n")
-		fmt.Printf("Region: %s\n", env.Spec.Cluster.Region)
-		fmt.Printf("Control Plane Count: %d\n", env.Spec.Cluster.ControlPlane.Count)
-		fmt.Printf("Control Plane Type: %s\n", env.Spec.Cluster.ControlPlane.InstanceType)
+	if err == nil && env.Spec.Cluster != nil {
+		cpMode := "Shared (workloads allowed)"
 		if env.Spec.Cluster.ControlPlane.Dedicated {
-			fmt.Printf("Control Plane Mode: Dedicated (NoSchedule)\n")
-		} else {
-			fmt.Printf("Control Plane Mode: Shared (workloads allowed)\n")
-		}
-		if env.Spec.Cluster.Workers != nil {
-			fmt.Printf("Worker Count: %d\n", env.Spec.Cluster.Workers.Count)
-			fmt.Printf("Worker Type: %s\n", env.Spec.Cluster.Workers.InstanceType)
-		}
-		if env.Spec.Cluster.HighAvailability != nil && env.Spec.Cluster.HighAvailability.Enabled {
-			fmt.Printf("High Availability: Enabled\n")
-			fmt.Printf("Etcd Topology: %s\n", env.Spec.Cluster.HighAvailability.EtcdTopology)
+			cpMode = "Dedicated (NoSchedule)"
 		}
 
-		// Display node status from cache
+		statusOutput.Cluster = &ClusterStatusOutput{
+			Region:            env.Spec.Cluster.Region,
+			ControlPlaneCount: env.Spec.Cluster.ControlPlane.Count,
+			ControlPlaneType:  env.Spec.Cluster.ControlPlane.InstanceType,
+			ControlPlaneMode:  cpMode,
+		}
+
+		if env.Spec.Cluster.Workers != nil {
+			statusOutput.Cluster.WorkerCount = env.Spec.Cluster.Workers.Count
+			statusOutput.Cluster.WorkerType = env.Spec.Cluster.Workers.InstanceType
+		}
+
+		if env.Spec.Cluster.HighAvailability != nil && env.Spec.Cluster.HighAvailability.Enabled {
+			statusOutput.Cluster.HighAvailability = &HAOutput{
+				Enabled:      true,
+				EtcdTopology: string(env.Spec.Cluster.HighAvailability.EtcdTopology),
+			}
+		}
+
+		// Add cluster status from cache
 		if env.Status.Cluster != nil {
-			fmt.Printf("\n--- Cluster Status (cached) ---\n")
-			fmt.Printf("Phase: %s\n", env.Status.Cluster.Phase)
-			fmt.Printf("Total Nodes: %d\n", env.Status.Cluster.TotalNodes)
-			fmt.Printf("Ready Nodes: %d\n", env.Status.Cluster.ReadyNodes)
-			if env.Status.Cluster.ControlPlaneEndpoint != "" {
-				fmt.Printf("Control Plane Endpoint: %s\n", env.Status.Cluster.ControlPlaneEndpoint)
-			}
-			if env.Status.Cluster.LoadBalancerDNS != "" {
-				fmt.Printf("Load Balancer DNS: %s\n", env.Status.Cluster.LoadBalancerDNS)
-			}
+			statusOutput.Cluster.Phase = string(env.Status.Cluster.Phase)
+			statusOutput.Cluster.TotalNodes = env.Status.Cluster.TotalNodes
+			statusOutput.Cluster.ReadyNodes = env.Status.Cluster.ReadyNodes
+			statusOutput.Cluster.ControlPlaneEndpoint = env.Status.Cluster.ControlPlaneEndpoint
+			statusOutput.Cluster.LoadBalancerDNS = env.Status.Cluster.LoadBalancerDNS
 
 			if len(env.Status.Cluster.Nodes) > 0 {
-				fmt.Printf("\nNodes:\n")
+				statusOutput.Cluster.Nodes = make([]NodeStatusOutput, 0, len(env.Status.Cluster.Nodes))
 				for _, node := range env.Status.Cluster.Nodes {
+					statusOutput.Cluster.Nodes = append(statusOutput.Cluster.Nodes, NodeStatusOutput{
+						Name:       node.Name,
+						Role:       node.Role,
+						InstanceID: node.InstanceID,
+						PublicIP:   node.PublicIP,
+						PrivateIP:  node.PrivateIP,
+						Phase:      string(node.Phase),
+					})
+				}
+			}
+		}
+
+		// Get live cluster health if requested
+		if m.live {
+			health, err := provisioner.GetClusterHealthFromEnv(m.log, &env)
+			if err == nil {
+				statusOutput.LiveHealth = &LiveHealthOutput{
+					Healthy:         health.Healthy,
+					APIServerStatus: health.APIServerStatus,
+					TotalNodes:      health.TotalNodes,
+					ReadyNodes:      health.ReadyNodes,
+					ControlPlanes:   health.ControlPlanes,
+					Workers:         health.Workers,
+					Message:         health.Message,
+				}
+
+				if len(health.Nodes) > 0 {
+					statusOutput.LiveHealth.Nodes = make([]LiveNodeStatusOutput, 0, len(health.Nodes))
+					for _, node := range health.Nodes {
+						statusOutput.LiveHealth.Nodes = append(statusOutput.LiveHealth.Nodes, LiveNodeStatusOutput{
+							Name:    node.Name,
+							Role:    node.Role,
+							Ready:   node.Ready,
+							Status:  node.Status,
+							Version: node.Version,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// Create formatter and output
+	formatter, err := output.NewFormatter(m.outputFormat)
+	if err != nil {
+		return fmt.Errorf("invalid output format %q, must be one of: %s", m.outputFormat, strings.Join(output.ValidFormats(), ", "))
+	}
+
+	// For table format, use custom formatting
+	if formatter.Format() == output.FormatTable {
+		return m.printTableFormat(statusOutput)
+	}
+
+	return formatter.Print(statusOutput)
+}
+
+// printTableFormat outputs status in the original human-readable format
+func (m command) printTableFormat(s *StatusOutput) error {
+	fmt.Printf("Instance ID: %s\n", s.InstanceID)
+	fmt.Printf("Name: %s\n", s.Name)
+	fmt.Printf("Provider: %s\n", s.Provider)
+	fmt.Printf("Status: %s\n", s.Status)
+	fmt.Printf("Created: %s (%s ago)\n", s.CreatedAt.Format("2006-01-02 15:04:05"), s.Age)
+	fmt.Printf("Cache File: %s\n", s.CacheFile)
+
+	if s.Cluster != nil {
+		fmt.Printf("\n--- Cluster Configuration ---\n")
+		fmt.Printf("Region: %s\n", s.Cluster.Region)
+		fmt.Printf("Control Plane Count: %d\n", s.Cluster.ControlPlaneCount)
+		fmt.Printf("Control Plane Type: %s\n", s.Cluster.ControlPlaneType)
+		fmt.Printf("Control Plane Mode: %s\n", s.Cluster.ControlPlaneMode)
+
+		if s.Cluster.WorkerCount > 0 {
+			fmt.Printf("Worker Count: %d\n", s.Cluster.WorkerCount)
+			fmt.Printf("Worker Type: %s\n", s.Cluster.WorkerType)
+		}
+
+		if s.Cluster.HighAvailability != nil && s.Cluster.HighAvailability.Enabled {
+			fmt.Printf("High Availability: Enabled\n")
+			fmt.Printf("Etcd Topology: %s\n", s.Cluster.HighAvailability.EtcdTopology)
+		}
+
+		if s.Cluster.Phase != "" {
+			fmt.Printf("\n--- Cluster Status (cached) ---\n")
+			fmt.Printf("Phase: %s\n", s.Cluster.Phase)
+			fmt.Printf("Total Nodes: %d\n", s.Cluster.TotalNodes)
+			fmt.Printf("Ready Nodes: %d\n", s.Cluster.ReadyNodes)
+			if s.Cluster.ControlPlaneEndpoint != "" {
+				fmt.Printf("Control Plane Endpoint: %s\n", s.Cluster.ControlPlaneEndpoint)
+			}
+			if s.Cluster.LoadBalancerDNS != "" {
+				fmt.Printf("Load Balancer DNS: %s\n", s.Cluster.LoadBalancerDNS)
+			}
+
+			if len(s.Cluster.Nodes) > 0 {
+				fmt.Printf("\nNodes:\n")
+				for _, node := range s.Cluster.Nodes {
 					fmt.Printf("  - %s (%s)\n", node.Name, node.Role)
 					fmt.Printf("    Instance ID: %s\n", node.InstanceID)
 					fmt.Printf("    Public IP: %s\n", node.PublicIP)
@@ -151,40 +322,34 @@ func (m command) run(c *cli.Context, instanceID string) error {
 			}
 		}
 
-		// Get live cluster health if requested
-		if m.live {
+		if s.LiveHealth != nil {
 			fmt.Printf("\n--- Live Cluster Health ---\n")
-			health, err := provisioner.GetClusterHealthFromEnv(m.log, &env)
-			if err != nil {
-				fmt.Printf("Unable to get live status: %v\n", err)
+			if s.LiveHealth.Healthy {
+				fmt.Printf("Status: Healthy\n")
 			} else {
-				if health.Healthy {
-					fmt.Printf("Status: Healthy\n")
-				} else {
-					fmt.Printf("Status: Degraded\n")
-				}
-				fmt.Printf("API Server: %s\n", health.APIServerStatus)
-				fmt.Printf("Total Nodes: %d\n", health.TotalNodes)
-				fmt.Printf("Ready Nodes: %d\n", health.ReadyNodes)
-				fmt.Printf("Control Planes: %d\n", health.ControlPlanes)
-				fmt.Printf("Workers: %d\n", health.Workers)
-				fmt.Printf("Message: %s\n", health.Message)
+				fmt.Printf("Status: Degraded\n")
+			}
+			fmt.Printf("API Server: %s\n", s.LiveHealth.APIServerStatus)
+			fmt.Printf("Total Nodes: %d\n", s.LiveHealth.TotalNodes)
+			fmt.Printf("Ready Nodes: %d\n", s.LiveHealth.ReadyNodes)
+			fmt.Printf("Control Planes: %d\n", s.LiveHealth.ControlPlanes)
+			fmt.Printf("Workers: %d\n", s.LiveHealth.Workers)
+			fmt.Printf("Message: %s\n", s.LiveHealth.Message)
 
-				if len(health.Nodes) > 0 {
-					fmt.Printf("\nLive Node Status:\n")
-					for _, node := range health.Nodes {
-						readyIcon := "✗"
-						if node.Ready {
-							readyIcon = "✓"
-						}
-						fmt.Printf("  %s %s (%s) - %s [%s]\n",
-							readyIcon,
-							node.Name,
-							node.Role,
-							node.Status,
-							node.Version,
-						)
+			if len(s.LiveHealth.Nodes) > 0 {
+				fmt.Printf("\nLive Node Status:\n")
+				for _, node := range s.LiveHealth.Nodes {
+					readyIcon := "✗"
+					if node.Ready {
+						readyIcon = "✓"
 					}
+					fmt.Printf("  %s %s (%s) - %s [%s]\n",
+						readyIcon,
+						node.Name,
+						node.Role,
+						node.Status,
+						node.Version,
+					)
 				}
 			}
 		}
