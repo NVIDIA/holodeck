@@ -132,7 +132,7 @@ var _ = Describe("List Command", func() {
 			Expect(flagNames).To(HaveKey("c"))
 		})
 
-		It("should have quiet flag", func() {
+		It("should have ids-only flag", func() {
 			cmd := list.NewCommand(log)
 			flagNames := make(map[string]bool)
 			for _, flag := range cmd.Flags {
@@ -140,8 +140,7 @@ var _ = Describe("List Command", func() {
 					flagNames[name] = true
 				}
 			}
-			Expect(flagNames).To(HaveKey("quiet"))
-			Expect(flagNames).To(HaveKey("q"))
+			Expect(flagNames).To(HaveKey("ids-only"))
 		})
 	})
 
@@ -302,17 +301,17 @@ var _ = Describe("List Command", func() {
 		})
 	})
 
-	Describe("Quiet mode", func() {
+	Describe("IDs-only mode", func() {
 		var tempDir string
 
 		BeforeEach(func() {
 			var err error
-			tempDir, err = os.MkdirTemp("", "holodeck-list-quiet-*")
+			tempDir, err = os.MkdirTemp("", "holodeck-list-idsonly-*")
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(os.RemoveAll, tempDir)
 		})
 
-		It("should only print instance IDs with -q flag", func() {
+		It("should only print instance IDs with --ids-only flag", func() {
 			// Create a valid cache file
 			yaml := cacheYAMLWithLabel("quietid01", "quiet-test", "ssh")
 			err := os.WriteFile(filepath.Join(tempDir, "quietid01.yaml"), []byte(yaml), 0600)
@@ -324,7 +323,7 @@ var _ = Describe("List Command", func() {
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "-q"})
+				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// Should only have instance ID, not table headers
@@ -333,26 +332,7 @@ var _ = Describe("List Command", func() {
 			Expect(stdout).NotTo(ContainSubstring("NAME"))
 		})
 
-		It("should only print instance IDs with --quiet flag", func() {
-			// Create a valid cache file
-			yaml := cacheYAMLWithLabel("quietid02", "quiet-test-2", "ssh")
-			err := os.WriteFile(filepath.Join(tempDir, "quietid02.yaml"), []byte(yaml), 0600)
-			Expect(err).NotTo(HaveOccurred())
-
-			cmd := list.NewCommand(log)
-			app := &cli.App{
-				Commands: []*cli.Command{cmd},
-			}
-
-			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "--quiet"})
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(stdout).To(ContainSubstring("quietid02"))
-			Expect(stdout).NotTo(ContainSubstring("INSTANCE ID"))
-		})
-
-		It("should print multiple IDs in quiet mode", func() {
+		It("should print multiple IDs in ids-only mode", func() {
 			// Create two cache files
 			yaml1 := cacheYAMLWithLabel("qmulti01", "multi-1", "ssh")
 			yaml2 := cacheYAMLWithLabel("qmulti02", "multi-2", "ssh")
@@ -367,14 +347,14 @@ var _ = Describe("List Command", func() {
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "-q"})
+				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(stdout).To(ContainSubstring("qmulti01"))
 			Expect(stdout).To(ContainSubstring("qmulti02"))
 		})
 
-		It("should skip instances without ID in quiet mode", func() {
+		It("should skip instances without ID in ids-only mode", func() {
 			// Create one valid and one without label
 			yaml1 := cacheYAMLWithLabel("validq01", "valid-quiet", "ssh")
 			yaml2 := cacheYAMLWithoutLabel("no-id-quiet", "ssh")
@@ -389,7 +369,7 @@ var _ = Describe("List Command", func() {
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "-q"})
+				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// Only valid instance should appear
