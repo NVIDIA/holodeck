@@ -22,10 +22,15 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/cli/cleanup"
 	"github.com/NVIDIA/holodeck/cmd/cli/create"
 	"github.com/NVIDIA/holodeck/cmd/cli/delete"
+	"github.com/NVIDIA/holodeck/cmd/cli/describe"
 	"github.com/NVIDIA/holodeck/cmd/cli/dryrun"
+	"github.com/NVIDIA/holodeck/cmd/cli/get"
 	"github.com/NVIDIA/holodeck/cmd/cli/list"
 	oscmd "github.com/NVIDIA/holodeck/cmd/cli/os"
+	"github.com/NVIDIA/holodeck/cmd/cli/scp"
+	"github.com/NVIDIA/holodeck/cmd/cli/ssh"
 	"github.com/NVIDIA/holodeck/cmd/cli/status"
+	"github.com/NVIDIA/holodeck/cmd/cli/update"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
 	cli "github.com/urfave/cli/v2"
@@ -37,7 +42,9 @@ const (
 )
 
 type config struct {
-	Debug bool
+	Debug   bool
+	Verbose bool
+	Quiet   bool
 }
 
 func main() {
@@ -63,8 +70,21 @@ Examples:
   # List all environments
   holodeck list
 
+  # List environments in JSON format
+  holodeck list -o json
+
   # Get status of a specific environment
   holodeck status <instance-id>
+
+  # SSH into an instance
+  holodeck ssh <instance-id>
+
+  # Run a command on an instance
+  holodeck ssh <instance-id> -- nvidia-smi
+
+  # Copy files to/from an instance
+  holodeck scp ./local-file.txt <instance-id>:/remote/path/
+  holodeck scp <instance-id>:/remote/file.log ./local/
 
   # Delete an environment
   holodeck delete <instance-id>
@@ -80,6 +100,17 @@ Examples:
 	// Setup the flags for this command
 	c.Flags = []cli.Flag{
 		&cli.BoolFlag{
+			Name:        "quiet",
+			Aliases:     []string{"q"},
+			Usage:       "Suppress non-error output",
+			Destination: &config.Quiet,
+		},
+		&cli.BoolFlag{
+			Name:        "verbose",
+			Usage:       "Enable verbose output",
+			Destination: &config.Verbose,
+		},
+		&cli.BoolFlag{
 			Name:        "debug",
 			Aliases:     []string{"d"},
 			Usage:       "Enable debug-level logging",
@@ -88,15 +119,35 @@ Examples:
 		},
 	}
 
+	// Set verbosity based on flags (precedence: debug > verbose > quiet)
+	c.Before = func(ctx *cli.Context) error {
+		switch {
+		case ctx.Bool("debug"):
+			log.SetVerbosity(logger.VerbosityDebug)
+		case ctx.Bool("verbose"):
+			log.SetVerbosity(logger.VerbosityVerbose)
+		case ctx.Bool("quiet"):
+			log.SetVerbosity(logger.VerbosityQuiet)
+		default:
+			log.SetVerbosity(logger.VerbosityNormal)
+		}
+		return nil
+	}
+
 	// Define the subcommands
 	c.Commands = []*cli.Command{
 		cleanup.NewCommand(log),
 		create.NewCommand(log),
 		delete.NewCommand(log),
+		describe.NewCommand(log),
 		dryrun.NewCommand(log),
+		get.NewCommand(log),
 		list.NewCommand(log),
 		oscmd.NewCommand(log),
+		scp.NewCommand(log),
+		ssh.NewCommand(log),
 		status.NewCommand(log),
+		update.NewCommand(log),
 	}
 
 	// Custom help template
@@ -129,17 +180,26 @@ EXAMPLES:
    # List all environments
    {{.Name}} list
 
+   # List environments in JSON format
+   {{.Name}} list -o json
+
    # Get status of a specific environment
    {{.Name}} status <instance-id>
+
+   # SSH into an instance
+   {{.Name}} ssh <instance-id>
+
+   # Run a command on an instance
+   {{.Name}} ssh <instance-id> -- nvidia-smi
+
+   # Copy files to/from an instance
+   {{.Name}} scp ./local-file.txt <instance-id>:/remote/path/
 
    # Delete an environment
    {{.Name}} delete <instance-id>
 
    # Clean up AWS VPC resources
    {{.Name}} cleanup vpc-12345678
-
-   # Use a custom cache directory
-   {{.Name}} --cachepath /path/to/cache create -f env.yaml
 
 For more information about a command, run:
    {{.Name}} help <command>
