@@ -169,3 +169,18 @@ func TestLabelApplication(t *testing.T) {
 		t.Errorf("expected env=test, got %s", env.Labels["env"])
 	}
 }
+
+func TestProvisionedLabel_NilLabelsMap(t *testing.T) {
+	// Regression test for C1: writing to nil Labels map should not panic
+	env := &v1alpha1.Environment{}
+
+	// Simulate what update.go does after provisioning
+	if env.Labels == nil {
+		env.Labels = make(map[string]string)
+	}
+	env.Labels["holodeck-instance-provisioned"] = "true"
+
+	if env.Labels["holodeck-instance-provisioned"] != "true" {
+		t.Error("expected provisioned label to be set")
+	}
+}

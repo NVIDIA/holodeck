@@ -134,23 +134,3 @@ func TestGetHostURL_NoProperties(t *testing.T) {
 	}
 }
 
-func TestContainsSpace(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected bool
-	}{
-		{"hello", false},
-		{"hello world", true},
-		{"hello\tworld", true},
-		{"", false},
-		{"nospaces", false},
-		{" leading", true},
-		{"trailing ", true},
-	}
-
-	for _, tt := range tests {
-		if got := containsSpace(tt.input); got != tt.expected {
-			t.Errorf("containsSpace(%q) = %v, want %v", tt.input, got, tt.expected)
-		}
-	}
-}

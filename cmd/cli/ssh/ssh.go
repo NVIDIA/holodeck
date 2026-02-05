@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -229,19 +230,10 @@ func (m command) runCommand(client *ssh.Client, cmd []string) error {
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
 
-	// Build command string
-	cmdStr := ""
-	for i, c := range cmd {
-		if i > 0 {
-			cmdStr += " "
-		}
-		// Quote arguments with spaces
-		if containsSpace(c) {
-			cmdStr += fmt.Sprintf("%q", c)
-		} else {
-			cmdStr += c
-		}
-	}
+	// SSH remote execution always passes the command through the remote shell,
+	// so we join arguments with spaces. Users who need literal quoting should
+	// wrap arguments in shell quotes themselves (e.g., -- 'echo "hello"').
+	cmdStr := strings.Join(cmd, " ")
 
 	return session.Run(cmdStr)
 }
@@ -249,7 +241,6 @@ func (m command) runCommand(client *ssh.Client, cmd []string) error {
 // runInteractiveSystemSSH uses the system's ssh command for interactive sessions
 // This provides better terminal support (colors, window resize, etc.)
 func (m command) runInteractiveSystemSSH(keyPath, userName, hostUrl string) error {
-	// Build SSH command arguments
 	args := []string{
 		"-i", keyPath,
 		"-o", "StrictHostKeyChecking=no",
@@ -258,20 +249,10 @@ func (m command) runInteractiveSystemSSH(keyPath, userName, hostUrl string) erro
 		fmt.Sprintf("%s@%s", userName, hostUrl),
 	}
 
-	// Execute system SSH
 	cmd := exec.Command("ssh", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	return cmd.Run()
-}
-
-func containsSpace(s string) bool {
-	for _, c := range s {
-		if c == ' ' || c == '\t' {
-			return true
-		}
-	}
-	return false
 }

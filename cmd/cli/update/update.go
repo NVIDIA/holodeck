@@ -324,6 +324,9 @@ func (m *command) run(instanceID string) error {
 		}
 
 		// Mark as provisioned
+		if env.Labels == nil {
+			env.Labels = make(map[string]string)
+		}
 		env.Labels[instances.InstanceProvisionedLabelKey] = "true"
 		data, err := jyaml.MarshalYAML(env)
 		if err != nil {
