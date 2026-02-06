@@ -71,6 +71,13 @@ func GetHostURL(env *v1alpha1.Environment, nodeName string, preferControlPlane b
 	return "", fmt.Errorf("unable to determine host URL")
 }
 
+const (
+	// sshMaxRetries is the number of SSH connection attempts before giving up.
+	sshMaxRetries = 3
+	// sshRetryDelay is the delay between SSH connection retry attempts.
+	sshRetryDelay = 2 * time.Second
+)
+
 // ConnectSSH establishes an SSH connection with retries.
 //
 // Host key verification is disabled because server host keys are generated
@@ -100,14 +107,14 @@ func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.
 	}
 
 	var client *ssh.Client
-	for i := 0; i < 3; i++ {
+	for i := 0; i < sshMaxRetries; i++ {
 		client, err = ssh.Dial("tcp", hostUrl+":22", config)
 		if err == nil {
 			return client, nil
 		}
 		log.Warning("Connection attempt %d failed: %v", i+1, err)
-		time.Sleep(2 * time.Second)
+		time.Sleep(sshRetryDelay)
 	}
 
-	return nil, fmt.Errorf("failed to connect after 3 attempts: %v", err)
+	return nil, fmt.Errorf("failed to connect after %d attempts: %v", sshMaxRetries, err)
 }
