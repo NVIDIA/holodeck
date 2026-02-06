@@ -28,6 +28,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
 
+const (
+	defaultVPCTimeout           = 2 * time.Minute
+	defaultSubnetTimeout        = 2 * time.Minute
+	defaultIGWTimeout           = 2 * time.Minute
+	defaultRouteTableTimeout    = 2 * time.Minute
+	defaultSecurityGroupTimeout = 2 * time.Minute
+	defaultEC2Timeout           = 10 * time.Minute
+	defaultWaiterTimeout        = 15 * time.Minute
+)
+
 // Create creates an EC2 instance with proper Network configuration
 // VPC, Subnet, Internet Gateway, Route Table, Security Group
 // If the environment specifies a cluster configuration, it delegates to CreateCluster()
@@ -125,7 +135,11 @@ func (p *Provider) createVPC(cache *AWS) error {
 		},
 	}
 
-	vpcOutput, err := p.ec2.CreateVpc(context.TODO(), vpcInput)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultVPCTimeout)
+
+	defer cancel()
+
+	vpcOutput, err := p.ec2.CreateVpc(ctx, vpcInput)
 	if err != nil {
 		p.fail()
 		return fmt.Errorf("error creating VPC: %w", err)
@@ -162,7 +176,11 @@ func (p *Provider) createSubnet(cache *AWS) error {
 			},
 		},
 	}
-	subnetOutput, err := p.ec2.CreateSubnet(context.TODO(), subnetInput)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultSubnetTimeout)
+
+	defer cancel()
+
+	subnetOutput, err := p.ec2.CreateSubnet(ctx, subnetInput)
 	if err != nil {
 		p.fail()
 		return fmt.Errorf("error creating subnet: %w", err)
@@ -186,7 +204,11 @@ func (p *Provider) createInternetGateway(cache *AWS) error {
 			},
 		},
 	}
-	gwOutput, err := p.ec2.CreateInternetGateway(context.TODO(), gwInput)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultIGWTimeout)
+
+	defer cancel()
+
+	gwOutput, err := p.ec2.CreateInternetGateway(ctx, gwInput)
 	if err != nil {
 		p.fail()
 		return fmt.Errorf("error creating Internet Gateway: %w", err)
@@ -198,7 +220,7 @@ func (p *Provider) createInternetGateway(cache *AWS) error {
 		VpcId:             aws.String(cache.Vpcid),
 		InternetGatewayId: gwOutput.InternetGateway.InternetGatewayId,
 	}
-	_, err = p.ec2.AttachInternetGateway(context.TODO(), attachInput)
+	_, err = p.ec2.AttachInternetGateway(ctx, attachInput)
 	if err != nil {
 		p.fail()
 		return fmt.Errorf("error attaching Internet Gateway: %w", err)
@@ -225,7 +247,11 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 			},
 		},
 	}
-	rtOutput, err := p.ec2.CreateRouteTable(context.TODO(), rtInput)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRouteTableTimeout)
+
+	defer cancel()
+
+	rtOutput, err := p.ec2.CreateRouteTable(ctx, rtInput)
 	if err != nil {
 		p.fail()
 		return fmt.Errorf("error creating route table: %w", err)
@@ -247,7 +273,7 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 		DestinationCidrBlock: aws.String("0.0.0.0/0"),
 		GatewayId:            aws.String(cache.InternetGwid),
 	}
-	if _, err = p.ec2.CreateRoute(context.TODO(), routeInput); err != nil {
+	if _, err = p.ec2.CreateRoute(ctx, routeInput); err != nil {
 		return fmt.Errorf("error creating route: %w", err)
 	}
 
@@ -272,7 +298,11 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 			},
 		},
 	}
-	sgOutput, err := p.ec2.CreateSecurityGroup(context.TODO(), sgInput)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultSecurityGroupTimeout)
+
+	defer cancel()
+
+	sgOutput, err := p.ec2.CreateSecurityGroup(ctx, sgInput)
 	if err != nil {
 		p.fail()
 		return fmt.Errorf("error creating security group: %w", err)
@@ -330,7 +360,7 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 		},
 	}
 
-	if _, err = p.ec2.AuthorizeSecurityGroupIngress(context.TODO(), irInput); err != nil {
+	if _, err = p.ec2.AuthorizeSecurityGroupIngress(ctx, irInput); err != nil {
 		p.fail()
 		return fmt.Errorf("error authorizing security group ingress: %w", err)
 	}
@@ -425,7 +455,11 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	// tag network interface
 	instance := instanceOut.Instances[0]
 	networkInterfaceId := *instance.NetworkInterfaces[0].NetworkInterfaceId
-	_, err = p.ec2.CreateTags(context.TODO(), &ec2.CreateTagsInput{
+	ctx, cancel := context.WithTimeout(context.Background(), defaultEC2Timeout)
+
+	defer cancel()
+
+	_, err = p.ec2.CreateTags(ctx, &ec2.CreateTagsInput{
 		Resources: []string{networkInterfaceId},
 		Tags:      p.Tags,
 	})
@@ -437,7 +471,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	// Disable Source/Destination Check for Calico networking
 	// This is required for Kubernetes CNI plugins (Calico, Flannel, etc.) to work correctly
 	// See: https://github.com/NVIDIA/holodeck/issues/586
-	_, err = p.ec2.ModifyNetworkInterfaceAttribute(context.TODO(),
+	_, err = p.ec2.ModifyNetworkInterfaceAttribute(ctx,
 		&ec2.ModifyNetworkInterfaceAttributeInput{
 			NetworkInterfaceId: aws.String(networkInterfaceId),
 			SourceDestCheck: &types.AttributeBooleanValue{
