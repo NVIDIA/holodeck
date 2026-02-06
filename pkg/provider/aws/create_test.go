@@ -20,12 +20,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -393,4 +395,563 @@ func TestCreateEC2Instance_SourceDestCheckError(t *testing.T) {
 	if err.Error() != expectedErrMsg {
 		t.Errorf("Expected error %q, got: %v", expectedErrMsg, err)
 	}
+}
+
+// Extended mockEC2Client with call tracking and error injection
+type extendedMockEC2Client struct {
+	mockEC2Client
+
+	// Track calls
+	createVpcCalls              []ec2.CreateVpcInput
+	modifyVpcAttributeCalls     []ec2.ModifyVpcAttributeInput
+	createSubnetCalls           []ec2.CreateSubnetInput
+	createInternetGatewayCalls  []ec2.CreateInternetGatewayInput
+	attachInternetGatewayCalls  []ec2.AttachInternetGatewayInput
+	createRouteTableCalls       []ec2.CreateRouteTableInput
+	associateRouteTableCalls    []ec2.AssociateRouteTableInput
+	createRouteCalls            []ec2.CreateRouteInput
+	createSecurityGroupCalls    []ec2.CreateSecurityGroupInput
+	authorizeSecurityGroupCalls []ec2.AuthorizeSecurityGroupIngressInput
+
+	// Error injection
+	createVpcErr              error
+	modifyVpcAttributeErr     error
+	createSubnetErr           error
+	createInternetGatewayErr  error
+	attachInternetGatewayErr  error
+	createRouteTableErr       error
+	associateRouteTableErr    error
+	createRouteErr            error
+	createSecurityGroupErr    error
+	authorizeSecurityGroupErr error
+}
+
+func (m *extendedMockEC2Client) CreateVpc(ctx context.Context, params *ec2.CreateVpcInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
+	m.createVpcCalls = append(m.createVpcCalls, *params)
+	if m.createVpcErr != nil {
+		return nil, m.createVpcErr
+	}
+	return &ec2.CreateVpcOutput{
+		Vpc: &types.Vpc{VpcId: aws.String("vpc-test-123")},
+	}, nil
+}
+
+func (m *extendedMockEC2Client) ModifyVpcAttribute(ctx context.Context, params *ec2.ModifyVpcAttributeInput,
+	optFns ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error) {
+	m.modifyVpcAttributeCalls = append(m.modifyVpcAttributeCalls, *params)
+	if m.modifyVpcAttributeErr != nil {
+		return nil, m.modifyVpcAttributeErr
+	}
+	return &ec2.ModifyVpcAttributeOutput{}, nil
+}
+
+func (m *extendedMockEC2Client) CreateSubnet(ctx context.Context, params *ec2.CreateSubnetInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateSubnetOutput, error) {
+	m.createSubnetCalls = append(m.createSubnetCalls, *params)
+	if m.createSubnetErr != nil {
+		return nil, m.createSubnetErr
+	}
+	return &ec2.CreateSubnetOutput{
+		Subnet: &types.Subnet{SubnetId: aws.String("subnet-test-123")},
+	}, nil
+}
+
+func (m *extendedMockEC2Client) CreateInternetGateway(ctx context.Context,
+	params *ec2.CreateInternetGatewayInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateInternetGatewayOutput, error) {
+	m.createInternetGatewayCalls = append(m.createInternetGatewayCalls, *params)
+	if m.createInternetGatewayErr != nil {
+		return nil, m.createInternetGatewayErr
+	}
+	return &ec2.CreateInternetGatewayOutput{
+		InternetGateway: &types.InternetGateway{
+			InternetGatewayId: aws.String("igw-test-123"),
+			Attachments: []types.InternetGatewayAttachment{
+				{VpcId: aws.String("vpc-test-123")},
+			},
+		},
+	}, nil
+}
+
+func (m *extendedMockEC2Client) AttachInternetGateway(ctx context.Context,
+	params *ec2.AttachInternetGatewayInput,
+	optFns ...func(*ec2.Options)) (*ec2.AttachInternetGatewayOutput, error) {
+	m.attachInternetGatewayCalls = append(m.attachInternetGatewayCalls, *params)
+	if m.attachInternetGatewayErr != nil {
+		return nil, m.attachInternetGatewayErr
+	}
+	return &ec2.AttachInternetGatewayOutput{}, nil
+}
+
+func (m *extendedMockEC2Client) CreateRouteTable(ctx context.Context, params *ec2.CreateRouteTableInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error) {
+	m.createRouteTableCalls = append(m.createRouteTableCalls, *params)
+	if m.createRouteTableErr != nil {
+		return nil, m.createRouteTableErr
+	}
+	return &ec2.CreateRouteTableOutput{
+		RouteTable: &types.RouteTable{RouteTableId: aws.String("rtb-test-123")},
+	}, nil
+}
+
+func (m *extendedMockEC2Client) AssociateRouteTable(ctx context.Context, params *ec2.AssociateRouteTableInput,
+	optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error) {
+	m.associateRouteTableCalls = append(m.associateRouteTableCalls, *params)
+	if m.associateRouteTableErr != nil {
+		return nil, m.associateRouteTableErr
+	}
+	return &ec2.AssociateRouteTableOutput{}, nil
+}
+
+func (m *extendedMockEC2Client) CreateRoute(ctx context.Context, params *ec2.CreateRouteInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
+	m.createRouteCalls = append(m.createRouteCalls, *params)
+	if m.createRouteErr != nil {
+		return nil, m.createRouteErr
+	}
+	return &ec2.CreateRouteOutput{}, nil
+}
+
+func (m *extendedMockEC2Client) CreateSecurityGroup(ctx context.Context,
+	params *ec2.CreateSecurityGroupInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
+	m.createSecurityGroupCalls = append(m.createSecurityGroupCalls, *params)
+	if m.createSecurityGroupErr != nil {
+		return nil, m.createSecurityGroupErr
+	}
+	return &ec2.CreateSecurityGroupOutput{GroupId: aws.String("sg-test-123")}, nil
+}
+
+func (m *extendedMockEC2Client) AuthorizeSecurityGroupIngress(ctx context.Context,
+	params *ec2.AuthorizeSecurityGroupIngressInput,
+	optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error) {
+	m.authorizeSecurityGroupCalls = append(m.authorizeSecurityGroupCalls, *params)
+	if m.authorizeSecurityGroupErr != nil {
+		return nil, m.authorizeSecurityGroupErr
+	}
+	return &ec2.AuthorizeSecurityGroupIngressOutput{}, nil
+}
+
+// Helper to create a test provider
+func createTestProvider(mock internalaws.EC2Client) *Provider {
+	return &Provider{
+		ec2: mock,
+		log: mockLogger(),
+		Environment: &v1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-env",
+			},
+			Spec: v1alpha1.EnvironmentSpec{
+				Instance: v1alpha1.Instance{
+					IngressIpRanges: []string{"1.2.3.4/32"},
+				},
+			},
+		},
+		Tags: []types.Tag{
+			{Key: aws.String("Name"), Value: aws.String("test")},
+		},
+	}
+}
+
+func TestCreateVPC_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{}
+
+	err := provider.createVPC(cache)
+	if err != nil {
+		t.Fatalf("createVPC failed: %v", err)
+	}
+
+	// Verify VPC was created
+	if len(mock.createVpcCalls) == 0 {
+		t.Fatal("CreateVpc was not called")
+	}
+
+	// Verify VPC ID was set in cache
+	if cache.Vpcid != "vpc-test-123" {
+		t.Errorf("Expected Vpcid 'vpc-test-123', got %q", cache.Vpcid)
+	}
+
+	// Verify ModifyVpcAttribute was called
+	if len(mock.modifyVpcAttributeCalls) == 0 {
+		t.Fatal("ModifyVpcAttribute was not called")
+	}
+
+	modCall := mock.modifyVpcAttributeCalls[0]
+	if modCall.VpcId == nil || *modCall.VpcId != "vpc-test-123" {
+		t.Errorf("Expected VpcId 'vpc-test-123', got %v", modCall.VpcId)
+	}
+	if modCall.EnableDnsHostnames == nil || modCall.EnableDnsHostnames.Value == nil || !*modCall.EnableDnsHostnames.Value {
+		t.Error("Expected EnableDnsHostnames to be true")
+	}
+}
+
+func TestCreateVPC_CreateVpcError(t *testing.T) {
+	expectedErr := errors.New("VPC creation failed")
+	mock := &extendedMockEC2Client{
+		createVpcErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{}
+
+	err := provider.createVPC(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateVpc fails")
+	}
+
+	if !contains(err.Error(), "error creating VPC") {
+		t.Errorf("Expected error to contain 'error creating VPC', got: %v", err)
+	}
+}
+
+func TestCreateVPC_ModifyVpcAttributeError(t *testing.T) {
+	expectedErr := errors.New("modify VPC attribute failed")
+	mock := &extendedMockEC2Client{
+		modifyVpcAttributeErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{}
+
+	err := provider.createVPC(cache)
+	if err == nil {
+		t.Fatal("Expected error when ModifyVpcAttribute fails")
+	}
+
+	if !contains(err.Error(), "error modifying VPC attributes") {
+		t.Errorf("Expected error to contain 'error modifying VPC attributes', got: %v", err)
+	}
+}
+
+func TestCreateSubnet_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createSubnet(cache)
+	if err != nil {
+		t.Fatalf("createSubnet failed: %v", err)
+	}
+
+	// Verify subnet was created
+	if len(mock.createSubnetCalls) == 0 {
+		t.Fatal("CreateSubnet was not called")
+	}
+
+	call := mock.createSubnetCalls[0]
+	if call.VpcId == nil || *call.VpcId != "vpc-test-123" {
+		t.Errorf("Expected VpcId 'vpc-test-123', got %v", call.VpcId)
+	}
+
+	// Verify subnet ID was set in cache
+	if cache.Subnetid != "subnet-test-123" {
+		t.Errorf("Expected Subnetid 'subnet-test-123', got %q", cache.Subnetid)
+	}
+}
+
+func TestCreateSubnet_Error(t *testing.T) {
+	expectedErr := errors.New("subnet creation failed")
+	mock := &extendedMockEC2Client{
+		createSubnetErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createSubnet(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateSubnet fails")
+	}
+
+	if !contains(err.Error(), "error creating subnet") {
+		t.Errorf("Expected error to contain 'error creating subnet', got: %v", err)
+	}
+}
+
+func TestCreateInternetGateway_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createInternetGateway(cache)
+	if err != nil {
+		t.Fatalf("createInternetGateway failed: %v", err)
+	}
+
+	// Verify Internet Gateway was created
+	if len(mock.createInternetGatewayCalls) == 0 {
+		t.Fatal("CreateInternetGateway was not called")
+	}
+
+	// Verify Internet Gateway was attached
+	if len(mock.attachInternetGatewayCalls) == 0 {
+		t.Fatal("AttachInternetGateway was not called")
+	}
+
+	attachCall := mock.attachInternetGatewayCalls[0]
+	if attachCall.VpcId == nil || *attachCall.VpcId != "vpc-test-123" {
+		t.Errorf("Expected VpcId 'vpc-test-123', got %v", attachCall.VpcId)
+	}
+	if attachCall.InternetGatewayId == nil || *attachCall.InternetGatewayId != "igw-test-123" {
+		t.Errorf("Expected InternetGatewayId 'igw-test-123', got %v", attachCall.InternetGatewayId)
+	}
+
+	// Verify Internet Gateway ID was set in cache
+	if cache.InternetGwid != "igw-test-123" {
+		t.Errorf("Expected InternetGwid 'igw-test-123', got %q", cache.InternetGwid)
+	}
+}
+
+func TestCreateInternetGateway_CreateError(t *testing.T) {
+	expectedErr := errors.New("Internet Gateway creation failed")
+	mock := &extendedMockEC2Client{
+		createInternetGatewayErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createInternetGateway(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateInternetGateway fails")
+	}
+
+	if !contains(err.Error(), "error creating Internet Gateway") {
+		t.Errorf("Expected error to contain 'error creating Internet Gateway', got: %v", err)
+	}
+}
+
+func TestCreateInternetGateway_AttachError(t *testing.T) {
+	expectedErr := errors.New("attach Internet Gateway failed")
+	mock := &extendedMockEC2Client{
+		attachInternetGatewayErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createInternetGateway(cache)
+	if err == nil {
+		t.Fatal("Expected error when AttachInternetGateway fails")
+	}
+
+	if !contains(err.Error(), "error attaching Internet Gateway") {
+		t.Errorf("Expected error to contain 'error attaching Internet Gateway', got: %v", err)
+	}
+}
+
+func TestCreateRouteTable_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid:        "vpc-test-123",
+		Subnetid:     "subnet-test-123",
+		InternetGwid: "igw-test-123",
+	}
+
+	err := provider.createRouteTable(cache)
+	if err != nil {
+		t.Fatalf("createRouteTable failed: %v", err)
+	}
+
+	// Verify Route Table was created
+	if len(mock.createRouteTableCalls) == 0 {
+		t.Fatal("CreateRouteTable was not called")
+	}
+
+	createCall := mock.createRouteTableCalls[0]
+	if createCall.VpcId == nil || *createCall.VpcId != "vpc-test-123" {
+		t.Errorf("Expected VpcId 'vpc-test-123', got %v", createCall.VpcId)
+	}
+
+	// Verify Route Table was associated with subnet
+	if len(mock.associateRouteTableCalls) == 0 {
+		t.Fatal("AssociateRouteTable was not called")
+	}
+
+	assocCall := mock.associateRouteTableCalls[0]
+	if assocCall.SubnetId == nil || *assocCall.SubnetId != "subnet-test-123" {
+		t.Errorf("Expected SubnetId 'subnet-test-123', got %v", assocCall.SubnetId)
+	}
+
+	// Verify route was created
+	if len(mock.createRouteCalls) == 0 {
+		t.Fatal("CreateRoute was not called")
+	}
+
+	routeCall := mock.createRouteCalls[0]
+	if routeCall.DestinationCidrBlock == nil || *routeCall.DestinationCidrBlock != "0.0.0.0/0" {
+		t.Errorf("Expected DestinationCidrBlock '0.0.0.0/0', got %v", routeCall.DestinationCidrBlock)
+	}
+	if routeCall.GatewayId == nil || *routeCall.GatewayId != "igw-test-123" {
+		t.Errorf("Expected GatewayId 'igw-test-123', got %v", routeCall.GatewayId)
+	}
+
+	// Verify Route Table ID was set in cache
+	if cache.RouteTable != "rtb-test-123" {
+		t.Errorf("Expected RouteTable 'rtb-test-123', got %q", cache.RouteTable)
+	}
+}
+
+func TestCreateRouteTable_CreateError(t *testing.T) {
+	expectedErr := errors.New("route table creation failed")
+	mock := &extendedMockEC2Client{
+		createRouteTableErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid:        "vpc-test-123",
+		Subnetid:     "subnet-test-123",
+		InternetGwid: "igw-test-123",
+	}
+
+	err := provider.createRouteTable(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateRouteTable fails")
+	}
+
+	if !contains(err.Error(), "error creating route table") {
+		t.Errorf("Expected error to contain 'error creating route table', got: %v", err)
+	}
+}
+
+func TestCreateRouteTable_AssociateError(t *testing.T) {
+	expectedErr := errors.New("associate route table failed")
+	mock := &extendedMockEC2Client{
+		associateRouteTableErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid:        "vpc-test-123",
+		Subnetid:     "subnet-test-123",
+		InternetGwid: "igw-test-123",
+	}
+
+	err := provider.createRouteTable(cache)
+	if err == nil {
+		t.Fatal("Expected error when AssociateRouteTable fails")
+	}
+
+	if !contains(err.Error(), "error associating route table") {
+		t.Errorf("Expected error to contain 'error associating route table', got: %v", err)
+	}
+}
+
+func TestCreateRouteTable_CreateRouteError(t *testing.T) {
+	expectedErr := errors.New("create route failed")
+	mock := &extendedMockEC2Client{
+		createRouteErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid:        "vpc-test-123",
+		Subnetid:     "subnet-test-123",
+		InternetGwid: "igw-test-123",
+	}
+
+	err := provider.createRouteTable(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateRoute fails")
+	}
+
+	if !contains(err.Error(), "error creating route") {
+		t.Errorf("Expected error to contain 'error creating route', got: %v", err)
+	}
+}
+
+func TestCreateSecurityGroup_Success(t *testing.T) {
+	t.Skip("Skipping: requires network access for GetIPAddress()")
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createSecurityGroup(cache)
+	if err != nil {
+		t.Fatalf("createSecurityGroup failed: %v", err)
+	}
+
+	// Verify Security Group was created
+	if len(mock.createSecurityGroupCalls) == 0 {
+		t.Fatal("CreateSecurityGroup was not called")
+	}
+
+	createCall := mock.createSecurityGroupCalls[0]
+	if createCall.VpcId == nil || *createCall.VpcId != "vpc-test-123" {
+		t.Errorf("Expected VpcId 'vpc-test-123', got %v", createCall.VpcId)
+	}
+	if createCall.GroupName == nil || *createCall.GroupName != "test-env" {
+		t.Errorf("Expected GroupName 'test-env', got %v", createCall.GroupName)
+	}
+
+	// Verify Security Group ingress was authorized
+	if len(mock.authorizeSecurityGroupCalls) == 0 {
+		t.Fatal("AuthorizeSecurityGroupIngress was not called")
+	}
+
+	authCall := mock.authorizeSecurityGroupCalls[0]
+	if authCall.GroupId == nil || *authCall.GroupId != "sg-test-123" {
+		t.Errorf("Expected GroupId 'sg-test-123', got %v", authCall.GroupId)
+	}
+
+	// Verify Security Group ID was set in cache
+	if cache.SecurityGroupid != "sg-test-123" {
+		t.Errorf("Expected SecurityGroupid 'sg-test-123', got %q", cache.SecurityGroupid)
+	}
+}
+
+func TestCreateSecurityGroup_CreateError(t *testing.T) {
+	t.Skip("Skipping: requires network access for GetIPAddress()")
+	expectedErr := errors.New("security group creation failed")
+	mock := &extendedMockEC2Client{
+		createSecurityGroupErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createSecurityGroup(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateSecurityGroup fails")
+	}
+
+	if !contains(err.Error(), "error creating security group") {
+		t.Errorf("Expected error to contain 'error creating security group', got: %v", err)
+	}
+}
+
+func TestCreateSecurityGroup_AuthorizeError(t *testing.T) {
+	t.Skip("Skipping: requires network access for GetIPAddress()")
+	expectedErr := errors.New("authorize security group failed")
+	mock := &extendedMockEC2Client{
+		authorizeSecurityGroupErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createSecurityGroup(cache)
+	if err == nil {
+		t.Fatal("Expected error when AuthorizeSecurityGroupIngress fails")
+	}
+
+	if !contains(err.Error(), "error authorizing security group ingress") {
+		t.Errorf("Expected error to contain 'error authorizing security group ingress', got: %v", err)
+	}
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
