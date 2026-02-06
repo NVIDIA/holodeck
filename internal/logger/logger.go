@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mattn/go-isatty"
@@ -67,14 +68,15 @@ const (
 
 // NewLogger creates a new instance of FunLogger.
 func NewLogger() *FunLogger {
-	return &FunLogger{
-		Out:       os.Stderr,
-		Done:      make(chan struct{}),
-		Fail:      make(chan struct{}),
-		Wg:        &sync.WaitGroup{},
-		ExitFunc:  os.Exit,
-		Verbosity: VerbosityNormal,
+	l := &FunLogger{
+		Out:      os.Stderr,
+		Done:     make(chan struct{}),
+		Fail:     make(chan struct{}),
+		Wg:       &sync.WaitGroup{},
+		ExitFunc: os.Exit,
 	}
+	l.verbosity.Store(int32(VerbosityNormal))
+	return l
 }
 
 // Printer interface defines methods for logging info, warning, and error messages.
@@ -105,19 +107,24 @@ type FunLogger struct {
 	Wg *sync.WaitGroup
 	// IsCI is a boolean that is set to true if the logger is running in a CI environment.
 	IsCI bool
-	// Verbosity controls the logging verbosity level.
-	Verbosity Verbosity
+	// verbosity controls the logging verbosity level (atomic for thread safety).
+	verbosity atomic.Int32
 }
 
 // SetVerbosity sets the verbosity level for the logger.
 func (l *FunLogger) SetVerbosity(v Verbosity) {
-	l.Verbosity = v
+	l.verbosity.Store(int32(v))
+}
+
+// getVerbosity returns the current verbosity level.
+func (l *FunLogger) getVerbosity() Verbosity {
+	return Verbosity(l.verbosity.Load())
 }
 
 // Info prints an information message with no emoji.
 // Only prints if Verbosity >= VerbosityNormal.
 func (l *FunLogger) Info(format string, a ...any) {
-	if l.Verbosity < VerbosityNormal {
+	if l.getVerbosity() < VerbosityNormal {
 		return
 	}
 	if format[len(format)-1] != '\n' {
@@ -130,7 +137,7 @@ func (l *FunLogger) Info(format string, a ...any) {
 // Check prints an information message with a check emoji.
 // Only prints if Verbosity >= VerbosityNormal.
 func (l *FunLogger) Check(format string, a ...any) {
-	if l.Verbosity < VerbosityNormal {
+	if l.getVerbosity() < VerbosityNormal {
 		return
 	}
 	message := fmt.Sprintf(format, a...)
@@ -153,7 +160,7 @@ func (l *FunLogger) Error(err error) {
 // Debug prints a debug message.
 // Only prints if Verbosity >= VerbosityVerbose.
 func (l *FunLogger) Debug(format string, a ...any) {
-	if l.Verbosity < VerbosityVerbose {
+	if l.getVerbosity() < VerbosityVerbose {
 		return
 	}
 	if format[len(format)-1] != '\n' {
@@ -165,7 +172,7 @@ func (l *FunLogger) Debug(format string, a ...any) {
 // Trace prints a trace message.
 // Only prints if Verbosity >= VerbosityDebug.
 func (l *FunLogger) Trace(format string, a ...any) {
-	if l.Verbosity < VerbosityDebug {
+	if l.getVerbosity() < VerbosityDebug {
 		return
 	}
 	if format[len(format)-1] != '\n' {

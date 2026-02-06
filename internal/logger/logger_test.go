@@ -45,22 +45,37 @@ func TestVerbosityLevels(t *testing.T) {
 
 func TestNewLoggerDefaultVerbosity(t *testing.T) {
 	l := NewLogger()
-	if l.Verbosity != VerbosityNormal {
-		t.Errorf("NewLogger() Verbosity = %d, want %d (VerbosityNormal)", l.Verbosity, VerbosityNormal)
+	var buf bytes.Buffer
+	l.Out = &buf
+	// Default verbosity is Normal: Info should produce output
+	l.Info("test")
+	if buf.Len() == 0 {
+		t.Error("expected Info to produce output at default verbosity")
+	}
+	// Debug should not
+	buf.Reset()
+	l.Debug("test")
+	if buf.Len() > 0 {
+		t.Error("expected Debug to be suppressed at default verbosity")
 	}
 }
 
 func TestSetVerbosity(t *testing.T) {
 	l := NewLogger()
+	var buf bytes.Buffer
+	l.Out = &buf
 
 	l.SetVerbosity(VerbosityDebug)
-	if l.Verbosity != VerbosityDebug {
-		t.Errorf("SetVerbosity(VerbosityDebug) = %d, want %d", l.Verbosity, VerbosityDebug)
+	l.Debug("test")
+	if buf.Len() == 0 {
+		t.Error("expected Debug output after SetVerbosity(VerbosityDebug)")
 	}
 
+	buf.Reset()
 	l.SetVerbosity(VerbosityQuiet)
-	if l.Verbosity != VerbosityQuiet {
-		t.Errorf("SetVerbosity(VerbosityQuiet) = %d, want %d", l.Verbosity, VerbosityQuiet)
+	l.Info("test")
+	if buf.Len() > 0 {
+		t.Error("expected Info suppressed after SetVerbosity(VerbosityQuiet)")
 	}
 }
 
