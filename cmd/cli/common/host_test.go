@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-package get
+package common
 
 import (
 	"testing"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
-	"github.com/NVIDIA/holodeck/cmd/cli/common"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 )
 
@@ -36,7 +35,7 @@ func TestGetHostURL_AWS_SingleNode(t *testing.T) {
 		},
 	}
 
-	url, err := common.GetHostURL(env, "", false)
+	url, err := GetHostURL(env, "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -55,7 +54,7 @@ func TestGetHostURL_SSH(t *testing.T) {
 		},
 	}
 
-	url, err := common.GetHostURL(env, "", false)
+	url, err := GetHostURL(env, "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,13 +73,13 @@ func TestGetHostURL_NoProperties(t *testing.T) {
 		},
 	}
 
-	_, err := common.GetHostURL(env, "", false)
+	_, err := GetHostURL(env, "", false)
 	if err == nil {
 		t.Error("expected error for missing properties")
 	}
 }
 
-func TestGetHostURL_Cluster_ControlPlaneOnly(t *testing.T) {
+func TestGetHostURL_Cluster_PreferControlPlane(t *testing.T) {
 	env := &v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderAWS,
@@ -96,12 +95,37 @@ func TestGetHostURL_Cluster_ControlPlaneOnly(t *testing.T) {
 		},
 	}
 
-	url, err := common.GetHostURL(env, "", true)
+	url, err := GetHostURL(env, "", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if url != "10.0.0.2" {
 		t.Errorf("expected control-plane IP 10.0.0.2, got %s", url)
+	}
+}
+
+func TestGetHostURL_Cluster_FallbackToFirstNode(t *testing.T) {
+	env := &v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Provider: v1alpha1.ProviderAWS,
+			Cluster:  &v1alpha1.ClusterSpec{},
+		},
+		Status: v1alpha1.EnvironmentStatus{
+			Cluster: &v1alpha1.ClusterStatus{
+				Nodes: []v1alpha1.NodeStatus{
+					{Name: "worker-0", Role: "worker", PublicIP: "10.0.0.1"},
+					{Name: "worker-1", Role: "worker", PublicIP: "10.0.0.2"},
+				},
+			},
+		},
+	}
+
+	url, err := GetHostURL(env, "", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "10.0.0.1" {
+		t.Errorf("expected first node IP 10.0.0.1, got %s", url)
 	}
 }
 
@@ -121,7 +145,7 @@ func TestGetHostURL_Cluster_SpecificNode(t *testing.T) {
 		},
 	}
 
-	url, err := common.GetHostURL(env, "worker-0", false)
+	url, err := GetHostURL(env, "worker-0", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +169,7 @@ func TestGetHostURL_Cluster_NodeNotFound(t *testing.T) {
 		},
 	}
 
-	_, err := common.GetHostURL(env, "nonexistent", false)
+	_, err := GetHostURL(env, "nonexistent", false)
 	if err == nil {
 		t.Error("expected error for nonexistent node")
 	}
