@@ -40,7 +40,7 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	if err != nil {
 		return fmt.Errorf("error creating session: %w", err)
 	}
-	defer session.Close() // nolint:errcheck, gosec
+	defer func() { _ = session.Close() }()
 
 	// Set up a pipe to receive the remote file content
 	remoteFile, err := session.StdoutPipe()
@@ -59,7 +59,7 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	if err != nil {
 		return fmt.Errorf("error creating local file: %w", err)
 	}
-	defer localFile.Close() // nolint:errcheck, gosec
+	defer func() { _ = localFile.Close() }()
 
 	// Copy the remote file content to the local file
 	_, err = io.Copy(localFile, remoteFile)

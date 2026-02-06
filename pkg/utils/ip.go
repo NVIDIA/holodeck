@@ -90,7 +90,7 @@ func getIPFromHTTPService(ctx context.Context, url string, timeout time.Duration
 	if err != nil {
 		return "", fmt.Errorf("error fetching IP from %s: %w", url, err)
 	}
-	defer resp.Body.Close() // nolint:errcheck, gosec, staticcheck
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
