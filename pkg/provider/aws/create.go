@@ -356,18 +356,19 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 	ipRanges := []types.IpRange{}
 
 	// First lookup for the IP address of the user
-	ip, err := utils.GetIPAddress()
-	if err != nil {
-		p.fail()
-		return fmt.Errorf("error getting IP address: %w", err)
+	cidr := "0.0.0.0/0"
+	if publicIP, err := utils.GetIPAddress(); err == nil {
+		cidr = publicIP
+		p.log.Info("Using detected public IP for security group: %s", cidr)
+	} else {
+		p.log.Warning("Could not detect public IP, using 0.0.0.0/0: %v", err)
 	}
 
-	// Add the auto-detected IP to the map and list
-	ipRangeMap[ip] = true
+	// Add the auto-detected IP or fallback to the map and list
+	ipRangeMap[cidr] = true
 	ipRanges = append(ipRanges, types.IpRange{
-		CidrIp: &ip,
+		CidrIp: &cidr,
 	})
-
 	// Then add the IP ranges from the spec, skipping duplicates
 	for _, ip := range p.Spec.IngressIpRanges {
 		if !ipRangeMap[ip] {
