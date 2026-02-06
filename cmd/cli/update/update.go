@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/cmd/cli/common"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
@@ -347,31 +348,16 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 }
 
 func (m *command) runProvision(env *v1alpha1.Environment) error {
-	// Determine host URL
-	var hostUrl string
-
 	if env.Spec.Cluster != nil && env.Status.Cluster != nil && len(env.Status.Cluster.Nodes) > 0 {
-		// For clusters, provision all nodes
 		return m.runClusterProvision(env)
 	}
 
-	// Single node
-	if env.Spec.Provider == v1alpha1.ProviderAWS {
-		for _, p := range env.Status.Properties {
-			if p.Name == aws.PublicDnsName {
-				hostUrl = p.Value
-				break
-			}
-		}
-	} else if env.Spec.Provider == v1alpha1.ProviderSSH {
-		hostUrl = env.Spec.HostUrl
+	// Single node - use shared host URL resolution
+	hostUrl, err := common.GetHostURL(env, "", false)
+	if err != nil {
+		return fmt.Errorf("failed to determine host URL: %v", err)
 	}
 
-	if hostUrl == "" {
-		return fmt.Errorf("unable to determine host URL")
-	}
-
-	// Create provisioner and run
 	p, err := provisioner.New(m.log, env.Spec.PrivateKey, env.Spec.Username, hostUrl)
 	if err != nil {
 		return fmt.Errorf("failed to create provisioner: %v", err)
