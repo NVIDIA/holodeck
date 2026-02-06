@@ -18,20 +18,74 @@ package list
 
 import (
 	"fmt"
-	"os"
-	"text/tabwriter"
+	"strings"
 	"time"
 
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/output"
 
 	cli "github.com/urfave/cli/v2"
 )
 
 type command struct {
-	log       *logger.FunLogger
-	cachePath string
-	quiet     bool
+	log          *logger.FunLogger
+	cachePath    string
+	idsOnly      bool
+	outputFormat string
+}
+
+// InstanceList represents a list of instances for output formatting
+type InstanceList struct {
+	Instances []InstanceOutput `json:"instances" yaml:"instances"`
+}
+
+// InstanceOutput represents instance data for JSON/YAML output
+type InstanceOutput struct {
+	ID          string       `json:"id" yaml:"id"`
+	Name        string       `json:"name" yaml:"name"`
+	Provider    string       `json:"provider" yaml:"provider"`
+	Type        string       `json:"type" yaml:"type"`
+	Nodes       string       `json:"nodes" yaml:"nodes"`
+	Status      string       `json:"status" yaml:"status"`
+	Provisioned bool         `json:"provisioned" yaml:"provisioned"`
+	Age         string       `json:"age" yaml:"age"`
+	CreatedAt   time.Time    `json:"createdAt" yaml:"createdAt"`
+	Cluster     *ClusterInfo `json:"cluster,omitempty" yaml:"cluster,omitempty"`
+}
+
+// ClusterInfo represents cluster-specific information
+type ClusterInfo struct {
+	Region               string `json:"region,omitempty" yaml:"region,omitempty"`
+	ControlPlaneCount    int32  `json:"controlPlaneCount,omitempty" yaml:"controlPlaneCount,omitempty"`
+	WorkerCount          int32  `json:"workerCount,omitempty" yaml:"workerCount,omitempty"`
+	TotalNodes           int32  `json:"totalNodes,omitempty" yaml:"totalNodes,omitempty"`
+	ReadyNodes           int32  `json:"readyNodes,omitempty" yaml:"readyNodes,omitempty"`
+	ControlPlaneEndpoint string `json:"controlPlaneEndpoint,omitempty" yaml:"controlPlaneEndpoint,omitempty"`
+	HAEnabled            bool   `json:"haEnabled,omitempty" yaml:"haEnabled,omitempty"`
+}
+
+// Headers implements output.TableData
+func (l *InstanceList) Headers() []string {
+	return []string{"INSTANCE ID", "NAME", "PROVIDER", "TYPE", "NODES", "STATUS", "PROVISIONED", "AGE"}
+}
+
+// Rows implements output.TableData
+func (l *InstanceList) Rows() [][]string {
+	rows := make([][]string, 0, len(l.Instances))
+	for _, inst := range l.Instances {
+		rows = append(rows, []string{
+			inst.ID,
+			inst.Name,
+			inst.Provider,
+			inst.Type,
+			inst.Nodes,
+			inst.Status,
+			fmt.Sprintf("%v", inst.Provisioned),
+			inst.Age,
+		})
+	}
+	return rows
 }
 
 // NewCommand constructs the list command with the specified logger
@@ -56,10 +110,17 @@ func (m *command) build() *cli.Command {
 				Destination: &m.cachePath,
 			},
 			&cli.BoolFlag{
-				Name:        "quiet",
+				Name:        "ids-only",
 				Aliases:     []string{"q"},
-				Usage:       "Only display instance IDs",
-				Destination: &m.quiet,
+				Usage:       "Only display instance IDs (short: -q)",
+				Destination: &m.idsOnly,
+			},
+			&cli.StringFlag{
+				Name:        "output",
+				Aliases:     []string{"o"},
+				Usage:       "Output format: table, json, yaml (default: table)",
+				Destination: &m.outputFormat,
+				Value:       "table",
 			},
 		},
 		Action: m.run,
@@ -70,19 +131,19 @@ func (m *command) build() *cli.Command {
 
 func (m *command) run(c *cli.Context) error {
 	manager := instances.NewManager(m.log, m.cachePath)
-	instances, err := manager.ListInstances()
+	instList, err := manager.ListInstances()
 	if err != nil {
 		return fmt.Errorf("failed to list instances: %v", err)
 	}
 
-	if len(instances) == 0 {
+	if len(instList) == 0 {
 		m.log.Info("No instances found")
 		return nil
 	}
 
-	// If quiet mode is enabled, only print instance IDs
-	if m.quiet {
-		for _, instance := range instances {
+	// If ids-only mode is enabled, only print instance IDs
+	if m.idsOnly {
+		for _, instance := range instList {
 			if instance.ID == "" {
 				continue
 			}
@@ -91,13 +152,12 @@ func (m *command) run(c *cli.Context) error {
 		return nil
 	}
 
-	// Create a tabwriter for formatted output
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	if _, err := fmt.Fprintln(w, "INSTANCE ID\tNAME\tPROVIDER\tTYPE\tNODES\tSTATUS\tPROVISIONED\tAGE"); err != nil {
-		return fmt.Errorf("failed to write header: %v", err)
+	// Build output data
+	outputData := &InstanceList{
+		Instances: make([]InstanceOutput, 0, len(instList)),
 	}
 
-	for _, instance := range instances {
+	for _, instance := range instList {
 		// Skip instances without an ID (old cache files)
 		if instance.ID == "" {
 			continue
@@ -106,6 +166,8 @@ func (m *command) run(c *cli.Context) error {
 		age := time.Since(instance.CreatedAt).Round(time.Second)
 		instanceType := "single"
 		nodes := "1"
+		var clusterInfo *ClusterInfo
+
 		if instance.IsCluster && instance.ClusterInfo != nil {
 			if instance.ClusterInfo.HAEnabled {
 				instanceType = "cluster-ha"
@@ -116,24 +178,36 @@ func (m *command) run(c *cli.Context) error {
 				instance.ClusterInfo.ReadyNodes,
 				instance.ClusterInfo.TotalNodes,
 			)
+			clusterInfo = &ClusterInfo{
+				Region:               instance.ClusterInfo.Region,
+				ControlPlaneCount:    instance.ClusterInfo.ControlPlaneCount,
+				WorkerCount:          instance.ClusterInfo.WorkerCount,
+				TotalNodes:           instance.ClusterInfo.TotalNodes,
+				ReadyNodes:           instance.ClusterInfo.ReadyNodes,
+				ControlPlaneEndpoint: instance.ClusterInfo.ControlPlaneEndpoint,
+				HAEnabled:            instance.ClusterInfo.HAEnabled,
+			}
 		}
 
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%v\t%s\n",
-			instance.ID,
-			instance.Name,
-			instance.Provider,
-			instanceType,
-			nodes,
-			instance.Status,
-			instance.Provisioned,
-			age,
-		); err != nil {
-			return fmt.Errorf("failed to write instance data: %v", err)
-		}
-	}
-	if err := w.Flush(); err != nil {
-		return fmt.Errorf("failed to flush output: %v", err)
+		outputData.Instances = append(outputData.Instances, InstanceOutput{
+			ID:          instance.ID,
+			Name:        instance.Name,
+			Provider:    string(instance.Provider),
+			Type:        instanceType,
+			Nodes:       nodes,
+			Status:      instance.Status,
+			Provisioned: instance.Provisioned,
+			Age:         age.String(),
+			CreatedAt:   instance.CreatedAt,
+			Cluster:     clusterInfo,
+		})
 	}
 
-	return nil
+	// Create formatter and output
+	formatter, err := output.NewFormatter(m.outputFormat)
+	if err != nil {
+		return fmt.Errorf("invalid output format %q, must be one of: %s", m.outputFormat, strings.Join(output.ValidFormats(), ", "))
+	}
+
+	return formatter.Print(outputData)
 }

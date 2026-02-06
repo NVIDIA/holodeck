@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mattn/go-isatty"
@@ -31,6 +32,20 @@ type fdWriter interface {
 	io.Writer
 	Fd() uintptr
 }
+
+// Verbosity represents the logging verbosity level.
+type Verbosity int
+
+const (
+	// VerbosityQuiet suppresses all output except errors.
+	VerbosityQuiet Verbosity = iota
+	// VerbosityNormal is the default verbosity level.
+	VerbosityNormal
+	// VerbosityVerbose enables debug output.
+	VerbosityVerbose
+	// VerbosityDebug enables trace output.
+	VerbosityDebug
+)
 
 const (
 	// ANSI escape code to reset color
@@ -47,20 +62,21 @@ const (
 	redXEmoji = "\u274C"
 	// Unicode character for the warning sign
 	warningSign = "\u26A0"
-
 	// Unicode character for the loading emoji
 	loadingEmoji = "\U0001f300"
 )
 
 // NewLogger creates a new instance of FunLogger.
 func NewLogger() *FunLogger {
-	return &FunLogger{
+	l := &FunLogger{
 		Out:      os.Stderr,
 		Done:     make(chan struct{}),
 		Fail:     make(chan struct{}),
 		Wg:       &sync.WaitGroup{},
 		ExitFunc: os.Exit,
 	}
+	l.verbosity.Store(int32(VerbosityNormal))
+	return l
 }
 
 // Printer interface defines methods for logging info, warning, and error messages.
@@ -70,6 +86,9 @@ type Logger interface {
 	Warning(format string, a ...any)
 	Error(err error)
 	Loading(loadingMessage string)
+	Debug(format string, a ...any)
+	Trace(format string, a ...any)
+	SetVerbosity(v Verbosity)
 }
 
 // FunFonts implements the Logger interface using emojis for messages.
@@ -88,10 +107,26 @@ type FunLogger struct {
 	Wg *sync.WaitGroup
 	// IsCI is a boolean that is set to true if the logger is running in a CI environment.
 	IsCI bool
+	// verbosity controls the logging verbosity level (atomic for thread safety).
+	verbosity atomic.Int32
+}
+
+// SetVerbosity sets the verbosity level for the logger.
+func (l *FunLogger) SetVerbosity(v Verbosity) {
+	l.verbosity.Store(int32(v)) //nolint:gosec // Verbosity is an iota (0-3), cannot overflow int32
+}
+
+// getVerbosity returns the current verbosity level.
+func (l *FunLogger) getVerbosity() Verbosity {
+	return Verbosity(l.verbosity.Load())
 }
 
 // Info prints an information message with no emoji.
+// Only prints if Verbosity >= VerbosityNormal.
 func (l *FunLogger) Info(format string, a ...any) {
+	if l.getVerbosity() < VerbosityNormal {
+		return
+	}
 	if format[len(format)-1] != '\n' {
 		format += "\n"
 	}
@@ -99,21 +134,51 @@ func (l *FunLogger) Info(format string, a ...any) {
 	fmt.Fprintf(l.Out, format, a...) // nolint: errcheck
 }
 
-// Info prints an information message with a check emoji.
+// Check prints an information message with a check emoji.
+// Only prints if Verbosity >= VerbosityNormal.
 func (l *FunLogger) Check(format string, a ...any) {
+	if l.getVerbosity() < VerbosityNormal {
+		return
+	}
 	message := fmt.Sprintf(format, a...)
 	printMessage(green, checkmark, message)
 }
 
 // Warning prints a warning message with a warning emoji.
+// Always prints regardless of verbosity level (like Error).
 func (l *FunLogger) Warning(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
 	printMessage(yellowText, warningSign, message)
 }
 
 // Error prints an error message with an X emoji.
+// Always prints regardless of verbosity level.
 func (l *FunLogger) Error(err error) {
 	printMessage(redText, redXEmoji, err.Error())
+}
+
+// Debug prints a debug message.
+// Only prints if Verbosity >= VerbosityVerbose.
+func (l *FunLogger) Debug(format string, a ...any) {
+	if l.getVerbosity() < VerbosityVerbose {
+		return
+	}
+	if format[len(format)-1] != '\n' {
+		format += "\n"
+	}
+	fmt.Fprintf(l.Out, "[DEBUG] "+format, a...) // nolint: errcheck
+}
+
+// Trace prints a trace message.
+// Only prints if Verbosity >= VerbosityDebug.
+func (l *FunLogger) Trace(format string, a ...any) {
+	if l.getVerbosity() < VerbosityDebug {
+		return
+	}
+	if format[len(format)-1] != '\n' {
+		format += "\n"
+	}
+	fmt.Fprintf(l.Out, "[TRACE] "+format, a...) // nolint: errcheck
 }
 
 // printMessage is a helper function to print the message with the specified emoji.
