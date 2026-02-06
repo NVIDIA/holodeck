@@ -113,7 +113,7 @@ type FunLogger struct {
 
 // SetVerbosity sets the verbosity level for the logger.
 func (l *FunLogger) SetVerbosity(v Verbosity) {
-	l.verbosity.Store(int32(v))
+	l.verbosity.Store(int32(v)) //nolint:gosec // Verbosity is an iota (0-3), cannot overflow int32
 }
 
 // getVerbosity returns the current verbosity level.
