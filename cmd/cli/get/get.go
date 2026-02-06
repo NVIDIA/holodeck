@@ -22,10 +22,10 @@ import (
 	"path/filepath"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/cmd/cli/common"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
-	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	cli "github.com/urfave/cli/v2"
@@ -161,7 +161,7 @@ func (m command) runKubeconfig(instanceID string) error {
 	}
 
 	// Determine host URL
-	hostUrl, err := m.getHostURL(&env, true)
+	hostUrl, err := common.GetHostURL(&env, m.node, true)
 	if err != nil {
 		return fmt.Errorf("failed to get host URL: %v", err)
 	}
@@ -217,7 +217,7 @@ func (m command) runSSHConfig(instanceID string) error {
 	}
 
 	// Single node
-	hostUrl, err := m.getHostURL(&env, false)
+	hostUrl, err := common.GetHostURL(&env, m.node, false)
 	if err != nil {
 		return fmt.Errorf("failed to get host URL: %v", err)
 	}
@@ -255,42 +255,3 @@ func (m command) generateClusterSSHConfig(instanceID string, env *v1alpha1.Envir
 	return nil
 }
 
-func (m command) getHostURL(env *v1alpha1.Environment, controlPlaneOnly bool) (string, error) {
-	// For multinode clusters, find the appropriate node
-	if env.Spec.Cluster != nil && env.Status.Cluster != nil && len(env.Status.Cluster.Nodes) > 0 {
-		// If a specific node is requested, find it
-		if m.node != "" {
-			for _, node := range env.Status.Cluster.Nodes {
-				if node.Name == m.node {
-					return node.PublicIP, nil
-				}
-			}
-			return "", fmt.Errorf("node %q not found in cluster", m.node)
-		}
-
-		// Default to first control-plane node (required for kubeconfig)
-		if controlPlaneOnly {
-			for _, node := range env.Status.Cluster.Nodes {
-				if node.Role == "control-plane" {
-					return node.PublicIP, nil
-				}
-			}
-		}
-
-		// Fallback to first node
-		return env.Status.Cluster.Nodes[0].PublicIP, nil
-	}
-
-	// Single node - get from properties
-	if env.Spec.Provider == v1alpha1.ProviderAWS {
-		for _, p := range env.Status.Properties {
-			if p.Name == aws.PublicDnsName {
-				return p.Value, nil
-			}
-		}
-	} else if env.Spec.Provider == v1alpha1.ProviderSSH {
-		return env.Spec.HostUrl, nil
-	}
-
-	return "", fmt.Errorf("unable to determine host URL")
-}

@@ -186,14 +186,14 @@ Examples:
 			if c.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
-			return m.run(c.Args().Get(0))
+			return m.run(c, c.Args().Get(0))
 		},
 	}
 
 	return &updateCmd
 }
 
-func (m *command) run(instanceID string) error {
+func (m *command) run(c *cli.Context, instanceID string) error {
 	// Get instance details
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
@@ -234,11 +234,11 @@ func (m *command) run(instanceID string) error {
 			configChanged = true
 			needsProvision = true
 		}
-		if m.runtimeName != "" {
+		if c.IsSet("runtime-name") {
 			env.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeName(m.runtimeName)
 			configChanged = true
 		}
-		if m.runtimeVer != "" {
+		if c.IsSet("runtime-version") {
 			env.Spec.ContainerRuntime.Version = m.runtimeVer
 			configChanged = true
 		}
@@ -267,11 +267,11 @@ func (m *command) run(instanceID string) error {
 			configChanged = true
 			needsProvision = true
 		}
-		if m.k8sInstaller != "" {
+		if c.IsSet("k8s-installer") {
 			env.Spec.Kubernetes.KubernetesInstaller = m.k8sInstaller
 			configChanged = true
 		}
-		if m.k8sVersion != "" {
+		if c.IsSet("k8s-version") {
 			env.Spec.Kubernetes.KubernetesVersion = m.k8sVersion
 			if env.Spec.Kubernetes.Release == nil {
 				env.Spec.Kubernetes.Release = &v1alpha1.K8sReleaseSpec{}

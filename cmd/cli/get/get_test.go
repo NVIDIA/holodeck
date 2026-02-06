@@ -20,11 +20,11 @@ import (
 	"testing"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/cmd/cli/common"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 )
 
 func TestGetHostURL_AWS_SingleNode(t *testing.T) {
-	cmd := command{}
 	env := &v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderAWS,
@@ -36,7 +36,7 @@ func TestGetHostURL_AWS_SingleNode(t *testing.T) {
 		},
 	}
 
-	url, err := cmd.getHostURL(env, false)
+	url, err := common.GetHostURL(env, "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,7 +46,6 @@ func TestGetHostURL_AWS_SingleNode(t *testing.T) {
 }
 
 func TestGetHostURL_SSH(t *testing.T) {
-	cmd := command{}
 	env := &v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderSSH,
@@ -56,7 +55,7 @@ func TestGetHostURL_SSH(t *testing.T) {
 		},
 	}
 
-	url, err := cmd.getHostURL(env, false)
+	url, err := common.GetHostURL(env, "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,7 +65,6 @@ func TestGetHostURL_SSH(t *testing.T) {
 }
 
 func TestGetHostURL_NoProperties(t *testing.T) {
-	cmd := command{}
 	env := &v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderAWS,
@@ -76,14 +74,13 @@ func TestGetHostURL_NoProperties(t *testing.T) {
 		},
 	}
 
-	_, err := cmd.getHostURL(env, false)
+	_, err := common.GetHostURL(env, "", false)
 	if err == nil {
 		t.Error("expected error for missing properties")
 	}
 }
 
 func TestGetHostURL_Cluster_ControlPlaneOnly(t *testing.T) {
-	cmd := command{}
 	env := &v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderAWS,
@@ -99,7 +96,7 @@ func TestGetHostURL_Cluster_ControlPlaneOnly(t *testing.T) {
 		},
 	}
 
-	url, err := cmd.getHostURL(env, true)
+	url, err := common.GetHostURL(env, "", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,7 +106,6 @@ func TestGetHostURL_Cluster_ControlPlaneOnly(t *testing.T) {
 }
 
 func TestGetHostURL_Cluster_SpecificNode(t *testing.T) {
-	cmd := command{node: "worker-0"}
 	env := &v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderAWS,
@@ -125,7 +121,7 @@ func TestGetHostURL_Cluster_SpecificNode(t *testing.T) {
 		},
 	}
 
-	url, err := cmd.getHostURL(env, false)
+	url, err := common.GetHostURL(env, "worker-0", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +131,6 @@ func TestGetHostURL_Cluster_SpecificNode(t *testing.T) {
 }
 
 func TestGetHostURL_Cluster_NodeNotFound(t *testing.T) {
-	cmd := command{node: "nonexistent"}
 	env := &v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderAWS,
@@ -150,7 +145,7 @@ func TestGetHostURL_Cluster_NodeNotFound(t *testing.T) {
 		},
 	}
 
-	_, err := cmd.getHostURL(env, false)
+	_, err := common.GetHostURL(env, "nonexistent", false)
 	if err == nil {
 		t.Error("expected error for nonexistent node")
 	}

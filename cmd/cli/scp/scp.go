@@ -20,18 +20,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/cmd/cli/common"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
-	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 
 	cli "github.com/urfave/cli/v2"
 )
@@ -161,7 +160,7 @@ func (m command) run(src, dst string) error {
 	}
 
 	// Determine host URL
-	hostUrl, err := m.getHostURL(&env)
+	hostUrl, err := common.GetHostURL(&env, m.node, true)
 	if err != nil {
 		return fmt.Errorf("failed to get host URL: %v", err)
 	}
@@ -174,7 +173,7 @@ func (m command) run(src, dst string) error {
 	}
 
 	// Create SSH and SFTP clients
-	sshClient, err := m.connectSSH(keyPath, userName, hostUrl)
+	sshClient, err := common.ConnectSSH(m.log, keyPath, userName, hostUrl)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %v", err)
 	}
@@ -191,73 +190,6 @@ func (m command) run(src, dst string) error {
 		return m.copyFromRemote(sftpClient, srcSpec.path, dstSpec.path)
 	}
 	return m.copyToRemote(sftpClient, srcSpec.path, dstSpec.path)
-}
-
-func (m command) getHostURL(env *v1alpha1.Environment) (string, error) {
-	// For multinode clusters, find the appropriate node
-	if env.Spec.Cluster != nil && env.Status.Cluster != nil && len(env.Status.Cluster.Nodes) > 0 {
-		if m.node != "" {
-			for _, node := range env.Status.Cluster.Nodes {
-				if node.Name == m.node {
-					return node.PublicIP, nil
-				}
-			}
-			return "", fmt.Errorf("node %q not found in cluster", m.node)
-		}
-
-		// Default to first control-plane node
-		for _, node := range env.Status.Cluster.Nodes {
-			if node.Role == "control-plane" {
-				return node.PublicIP, nil
-			}
-		}
-		return env.Status.Cluster.Nodes[0].PublicIP, nil
-	}
-
-	// Single node
-	if env.Spec.Provider == v1alpha1.ProviderAWS {
-		for _, p := range env.Status.Properties {
-			if p.Name == aws.PublicDnsName {
-				return p.Value, nil
-			}
-		}
-	} else if env.Spec.Provider == v1alpha1.ProviderSSH {
-		return env.Spec.HostUrl, nil
-	}
-
-	return "", fmt.Errorf("unable to determine host URL")
-}
-
-func (m command) connectSSH(keyPath, userName, hostUrl string) (*ssh.Client, error) {
-	key, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read key file: %v", err)
-	}
-
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %v", err)
-	}
-
-	config := &ssh.ClientConfig{
-		User: userName,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // nolint:gosec
-		Timeout:         30 * time.Second,
-	}
-
-	var client *ssh.Client
-	for i := 0; i < 3; i++ {
-		client, err = ssh.Dial("tcp", hostUrl+":22", config)
-		if err == nil {
-			return client, nil
-		}
-		time.Sleep(2 * time.Second)
-	}
-
-	return nil, fmt.Errorf("failed to connect after 3 attempts: %v", err)
 }
 
 func (m command) copyToRemote(client *sftp.Client, localPath, remotePath string) error {
@@ -284,8 +216,8 @@ func (m command) copyFileToRemote(client *sftp.Client, localPath, remotePath str
 	}
 	defer localFile.Close()
 
-	// Ensure remote directory exists
-	remoteDir := filepath.Dir(remotePath)
+	// Ensure remote directory exists (use path, not filepath, for POSIX remote paths)
+	remoteDir := path.Dir(remotePath)
 	if err := client.MkdirAll(remoteDir); err != nil {
 		// Ignore error, directory might already exist
 	}
@@ -308,24 +240,24 @@ func (m command) copyFileToRemote(client *sftp.Client, localPath, remotePath str
 }
 
 func (m command) copyDirToRemote(client *sftp.Client, localPath, remotePath string) error {
-	return filepath.Walk(localPath, func(path string, info os.FileInfo, err error) error {
+	return filepath.Walk(localPath, func(walkPath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		// Calculate relative path
-		relPath, err := filepath.Rel(localPath, path)
+		relPath, err := filepath.Rel(localPath, walkPath)
 		if err != nil {
 			return err
 		}
 
-		remoteTarget := filepath.Join(remotePath, relPath)
+		remoteTarget := path.Join(remotePath, relPath)
 
 		if info.IsDir() {
 			return client.MkdirAll(remoteTarget)
 		}
 
-		return m.copyFileToRemote(client, path, remoteTarget)
+		return m.copyFileToRemote(client, walkPath, remoteTarget)
 	})
 }
 
@@ -381,14 +313,13 @@ func (m command) copyDirFromRemote(client *sftp.Client, remotePath, localPath st
 
 	for walker.Step() {
 		if walker.Err() != nil {
+			m.log.Warning("Skipping %s: %v", walker.Path(), walker.Err())
 			continue
 		}
 
-		// Calculate relative path
-		relPath, err := filepath.Rel(remotePath, walker.Path())
-		if err != nil {
-			continue
-		}
+		// Calculate relative path (remote paths are POSIX)
+		relPath := strings.TrimPrefix(walker.Path(), remotePath)
+		relPath = strings.TrimPrefix(relPath, "/")
 
 		localTarget := filepath.Join(localPath, relPath)
 
