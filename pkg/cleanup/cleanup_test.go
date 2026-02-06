@@ -17,6 +17,7 @@
 package cleanup
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -135,7 +136,7 @@ var _ = Describe("Cleanup", func() {
 		Context("input validation", func() {
 			It("should reject invalid repository format", func() {
 				completed, err := cleaner.CheckGitHubJobsCompleted(
-					"invalid-repo", "12345", "token")
+					context.Background(), "invalid-repo", "12345", "token")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("invalid repository format"))
 				Expect(completed).To(BeFalse())
@@ -143,7 +144,7 @@ var _ = Describe("Cleanup", func() {
 
 			It("should reject invalid runID format", func() {
 				completed, err := cleaner.CheckGitHubJobsCompleted(
-					"owner/repo", "invalid-id", "token")
+					context.Background(), "owner/repo", "invalid-id", "token")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("invalid runID format"))
 				Expect(completed).To(BeFalse())
@@ -151,7 +152,7 @@ var _ = Describe("Cleanup", func() {
 
 			It("should reject runID with letters", func() {
 				completed, err := cleaner.CheckGitHubJobsCompleted(
-					"owner/repo", "abc123", "token")
+					context.Background(), "owner/repo", "abc123", "token")
 				Expect(err).To(HaveOccurred())
 				Expect(completed).To(BeFalse())
 			})

@@ -17,6 +17,7 @@
 package ci
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -86,10 +87,10 @@ func RunCleanup(log *logger.FunLogger) error {
 		var cleanupErr error
 		if forceCleanup {
 			// Skip job status check
-			cleanupErr = cleaner.DeleteVPCResources(vpcID)
+			cleanupErr = cleaner.DeleteVPCResources(context.Background(), vpcID)
 		} else {
 			// Check job status first
-			cleanupErr = cleaner.CleanupVPC(vpcID)
+			cleanupErr = cleaner.CleanupVPC(context.Background(), vpcID)
 		}
 
 		if cleanupErr != nil {
