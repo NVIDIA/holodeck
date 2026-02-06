@@ -65,7 +65,11 @@ Examples:
   holodeck ssh abc123 -- kubectl get nodes
 
   # For multinode clusters, specify a node
-  holodeck ssh abc123 --node worker-0 -- nvidia-smi`,
+  holodeck ssh abc123 --node worker-0 -- nvidia-smi
+
+Note: Remote commands are joined with spaces and passed to the remote shell.
+If you need special quoting, wrap the entire command in single quotes:
+  holodeck ssh abc123 -- 'echo "hello world"'`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "cachepath",
