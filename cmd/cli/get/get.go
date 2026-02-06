@@ -174,7 +174,7 @@ func (m command) runKubeconfig(instanceID string) error {
 			return fmt.Errorf("failed to get home directory: %v", err)
 		}
 		kubeDir := filepath.Join(homeDir, ".kube")
-		if err := os.MkdirAll(kubeDir, 0755); err != nil {
+		if err := os.MkdirAll(kubeDir, 0750); err != nil {
 			return fmt.Errorf("failed to create .kube directory: %v", err)
 		}
 		outputPath = filepath.Join(kubeDir, fmt.Sprintf("config-%s", instanceID))
@@ -191,6 +191,7 @@ func (m command) runKubeconfig(instanceID string) error {
 	return nil
 }
 
+//nolint:errcheck // stdout writes for SSH config output
 func (m command) runSSHConfig(instanceID string) error {
 	// Get instance details
 	manager := instances.NewManager(m.log, m.cachePath)
@@ -234,6 +235,7 @@ func (m command) runSSHConfig(instanceID string) error {
 	return nil
 }
 
+//nolint:errcheck // stdout writes for SSH config output
 func (m command) generateClusterSSHConfig(instanceID string, env *v1alpha1.Environment, userName, keyPath string) error {
 	fmt.Printf("# Holodeck cluster: %s\n", instanceID)
 
@@ -254,4 +256,3 @@ func (m command) generateClusterSSHConfig(instanceID string, env *v1alpha1.Envir
 
 	return nil
 }
-

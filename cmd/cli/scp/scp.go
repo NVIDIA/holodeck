@@ -177,13 +177,13 @@ func (m command) run(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %v", err)
 	}
-	defer sshClient.Close()
+	defer sshClient.Close() //nolint:errcheck
 
 	sftpClient, err := sftp.NewClient(sshClient)
 	if err != nil {
 		return fmt.Errorf("failed to create SFTP client: %v", err)
 	}
-	defer sftpClient.Close()
+	defer sftpClient.Close() //nolint:errcheck
 
 	// Perform the copy
 	if srcSpec.isRemote {
@@ -210,24 +210,22 @@ func (m command) copyToRemote(client *sftp.Client, localPath, remotePath string)
 
 func (m command) copyFileToRemote(client *sftp.Client, localPath, remotePath string) error {
 	// Open local file
-	localFile, err := os.Open(localPath)
+	localFile, err := os.Open(localPath) //nolint:gosec // localPath is user-provided CLI arg
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %v", err)
 	}
-	defer localFile.Close()
+	defer localFile.Close() //nolint:errcheck
 
 	// Ensure remote directory exists (use path, not filepath, for POSIX remote paths)
 	remoteDir := path.Dir(remotePath)
-	if err := client.MkdirAll(remoteDir); err != nil {
-		// Ignore error, directory might already exist
-	}
+	_ = client.MkdirAll(remoteDir) // best-effort, directory may already exist
 
 	// Create remote file
 	remoteFile, err := client.Create(remotePath)
 	if err != nil {
 		return fmt.Errorf("failed to create remote file: %v", err)
 	}
-	defer remoteFile.Close()
+	defer remoteFile.Close() //nolint:errcheck
 
 	// Copy content
 	bytes, err := io.Copy(remoteFile, localFile)
@@ -283,20 +281,20 @@ func (m command) copyFileFromRemote(client *sftp.Client, remotePath, localPath s
 	if err != nil {
 		return fmt.Errorf("failed to open remote file: %v", err)
 	}
-	defer remoteFile.Close()
+	defer remoteFile.Close() //nolint:errcheck
 
 	// Ensure local directory exists
 	localDir := filepath.Dir(localPath)
-	if err := os.MkdirAll(localDir, 0755); err != nil {
+	if err := os.MkdirAll(localDir, 0750); err != nil {
 		return fmt.Errorf("failed to create local directory: %v", err)
 	}
 
 	// Create local file
-	localFile, err := os.Create(localPath)
+	localFile, err := os.Create(localPath) //nolint:gosec // localPath is user-provided CLI arg
 	if err != nil {
 		return fmt.Errorf("failed to create local file: %v", err)
 	}
-	defer localFile.Close()
+	defer localFile.Close() //nolint:errcheck
 
 	// Copy content
 	bytes, err := io.Copy(localFile, remoteFile)
@@ -324,7 +322,7 @@ func (m command) copyDirFromRemote(client *sftp.Client, remotePath, localPath st
 		localTarget := filepath.Join(localPath, relPath)
 
 		if walker.Stat().IsDir() {
-			if err := os.MkdirAll(localTarget, 0755); err != nil {
+			if err := os.MkdirAll(localTarget, 0750); err != nil {
 				return err
 			}
 			continue

@@ -40,13 +40,13 @@ type command struct {
 	driverVersion string
 	driverBranch  string
 
-	addRuntime    bool
-	runtimeName   string
-	runtimeVer    string
+	addRuntime  bool
+	runtimeName string
+	runtimeVer  string
 
-	addToolkit    bool
-	toolkitVer    string
-	enableCDI     bool
+	addToolkit bool
+	toolkitVer string
+	enableCDI  bool
 
 	addKubernetes bool
 	k8sInstaller  string
@@ -376,7 +376,7 @@ func (m *command) runProvision(env *v1alpha1.Environment) error {
 	if err != nil {
 		return fmt.Errorf("failed to create provisioner: %v", err)
 	}
-	defer p.Client.Close()
+	defer p.Client.Close() //nolint:errcheck
 
 	return p.Run(*env)
 }

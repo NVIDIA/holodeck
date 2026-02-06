@@ -22,15 +22,14 @@ import (
 	"os/exec"
 	"strings"
 
+	cli "github.com/urfave/cli/v2"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/cmd/cli/common"
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
-
-	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
-	cli "github.com/urfave/cli/v2"
 )
 
 type command struct {
@@ -141,7 +140,7 @@ func (m command) run(instanceID string, remoteCmd []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %v", err)
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck
 
 	return m.runCommand(client, remoteCmd)
 }
@@ -151,7 +150,7 @@ func (m command) runCommand(client *ssh.Client, cmd []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create session: %v", err)
 	}
-	defer session.Close()
+	defer session.Close() //nolint:errcheck
 
 	// Connect stdout and stderr
 	session.Stdout = os.Stdout
@@ -176,7 +175,7 @@ func (m command) runInteractiveSystemSSH(keyPath, userName, hostUrl string) erro
 		fmt.Sprintf("%s@%s", userName, hostUrl),
 	}
 
-	cmd := exec.Command("ssh", args...)
+	cmd := exec.Command("ssh", args...) //nolint:gosec // args are constructed from trusted env config
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

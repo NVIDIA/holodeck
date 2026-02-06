@@ -75,7 +75,7 @@ func GetHostURL(env *v1alpha1.Environment, nodeName string, preferControlPlane b
 // Holodeck instances are ephemeral with no pre-established host keys,
 // so host key verification is intentionally disabled.
 func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.Client, error) {
-	key, err := os.ReadFile(keyPath)
+	key, err := os.ReadFile(keyPath) //nolint:gosec // keyPath is from trusted env config
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file %s: %v", keyPath, err)
 	}

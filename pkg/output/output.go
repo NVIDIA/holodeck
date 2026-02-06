@@ -94,7 +94,7 @@ func (f *Formatter) PrintJSON(data interface{}) error {
 func (f *Formatter) PrintYAML(data interface{}) error {
 	encoder := yaml.NewEncoder(f.writer)
 	encoder.SetIndent(2)
-	defer encoder.Close()
+	defer encoder.Close() //nolint:errcheck
 	return encoder.Encode(data)
 }
 
@@ -112,7 +112,7 @@ func (f *Formatter) NewTablePrinter() *TablePrinter {
 	}
 }
 
-// Header writes the table header
+//nolint:errcheck // tabwriter writes
 func (t *TablePrinter) Header(columns ...string) *TablePrinter {
 	for i, col := range columns {
 		if i > 0 {
@@ -124,7 +124,7 @@ func (t *TablePrinter) Header(columns ...string) *TablePrinter {
 	return t
 }
 
-// Row writes a table row
+//nolint:errcheck // tabwriter writes
 func (t *TablePrinter) Row(values ...interface{}) *TablePrinter {
 	for i, val := range values {
 		if i > 0 {

@@ -40,31 +40,31 @@ type command struct {
 
 // StatusOutput represents the instance status for JSON/YAML output
 type StatusOutput struct {
-	InstanceID  string               `json:"instanceId" yaml:"instanceId"`
-	Name        string               `json:"name" yaml:"name"`
-	Provider    string               `json:"provider" yaml:"provider"`
-	Status      string               `json:"status" yaml:"status"`
-	CreatedAt   time.Time            `json:"createdAt" yaml:"createdAt"`
-	Age         string               `json:"age" yaml:"age"`
-	CacheFile   string               `json:"cacheFile" yaml:"cacheFile"`
-	Cluster     *ClusterStatusOutput `json:"cluster,omitempty" yaml:"cluster,omitempty"`
-	LiveHealth  *LiveHealthOutput    `json:"liveHealth,omitempty" yaml:"liveHealth,omitempty"`
+	InstanceID string               `json:"instanceId" yaml:"instanceId"`
+	Name       string               `json:"name" yaml:"name"`
+	Provider   string               `json:"provider" yaml:"provider"`
+	Status     string               `json:"status" yaml:"status"`
+	CreatedAt  time.Time            `json:"createdAt" yaml:"createdAt"`
+	Age        string               `json:"age" yaml:"age"`
+	CacheFile  string               `json:"cacheFile" yaml:"cacheFile"`
+	Cluster    *ClusterStatusOutput `json:"cluster,omitempty" yaml:"cluster,omitempty"`
+	LiveHealth *LiveHealthOutput    `json:"liveHealth,omitempty" yaml:"liveHealth,omitempty"`
 }
 
 // ClusterStatusOutput represents cluster configuration and status
 type ClusterStatusOutput struct {
-	Region               string            `json:"region" yaml:"region"`
-	ControlPlaneCount    int32             `json:"controlPlaneCount" yaml:"controlPlaneCount"`
-	ControlPlaneType     string            `json:"controlPlaneType" yaml:"controlPlaneType"`
-	ControlPlaneMode     string            `json:"controlPlaneMode" yaml:"controlPlaneMode"`
-	WorkerCount          int32             `json:"workerCount,omitempty" yaml:"workerCount,omitempty"`
-	WorkerType           string            `json:"workerType,omitempty" yaml:"workerType,omitempty"`
-	HighAvailability     *HAOutput         `json:"highAvailability,omitempty" yaml:"highAvailability,omitempty"`
-	Phase                string            `json:"phase,omitempty" yaml:"phase,omitempty"`
-	TotalNodes           int32             `json:"totalNodes,omitempty" yaml:"totalNodes,omitempty"`
-	ReadyNodes           int32             `json:"readyNodes,omitempty" yaml:"readyNodes,omitempty"`
-	ControlPlaneEndpoint string            `json:"controlPlaneEndpoint,omitempty" yaml:"controlPlaneEndpoint,omitempty"`
-	LoadBalancerDNS      string            `json:"loadBalancerDNS,omitempty" yaml:"loadBalancerDNS,omitempty"`
+	Region               string             `json:"region" yaml:"region"`
+	ControlPlaneCount    int32              `json:"controlPlaneCount" yaml:"controlPlaneCount"`
+	ControlPlaneType     string             `json:"controlPlaneType" yaml:"controlPlaneType"`
+	ControlPlaneMode     string             `json:"controlPlaneMode" yaml:"controlPlaneMode"`
+	WorkerCount          int32              `json:"workerCount,omitempty" yaml:"workerCount,omitempty"`
+	WorkerType           string             `json:"workerType,omitempty" yaml:"workerType,omitempty"`
+	HighAvailability     *HAOutput          `json:"highAvailability,omitempty" yaml:"highAvailability,omitempty"`
+	Phase                string             `json:"phase,omitempty" yaml:"phase,omitempty"`
+	TotalNodes           int32              `json:"totalNodes,omitempty" yaml:"totalNodes,omitempty"`
+	ReadyNodes           int32              `json:"readyNodes,omitempty" yaml:"readyNodes,omitempty"`
+	ControlPlaneEndpoint string             `json:"controlPlaneEndpoint,omitempty" yaml:"controlPlaneEndpoint,omitempty"`
+	LoadBalancerDNS      string             `json:"loadBalancerDNS,omitempty" yaml:"loadBalancerDNS,omitempty"`
 	Nodes                []NodeStatusOutput `json:"nodes,omitempty" yaml:"nodes,omitempty"`
 }
 
@@ -207,7 +207,7 @@ func (m command) run(c *cli.Context, instanceID string) error {
 
 		// Add cluster status from cache
 		if env.Status.Cluster != nil {
-			statusOutput.Cluster.Phase = string(env.Status.Cluster.Phase)
+			statusOutput.Cluster.Phase = env.Status.Cluster.Phase
 			statusOutput.Cluster.TotalNodes = env.Status.Cluster.TotalNodes
 			statusOutput.Cluster.ReadyNodes = env.Status.Cluster.ReadyNodes
 			statusOutput.Cluster.ControlPlaneEndpoint = env.Status.Cluster.ControlPlaneEndpoint
@@ -222,7 +222,7 @@ func (m command) run(c *cli.Context, instanceID string) error {
 						InstanceID: node.InstanceID,
 						PublicIP:   node.PublicIP,
 						PrivateIP:  node.PrivateIP,
-						Phase:      string(node.Phase),
+						Phase:      node.Phase,
 					})
 				}
 			}
@@ -273,6 +273,8 @@ func (m command) run(c *cli.Context, instanceID string) error {
 }
 
 // printTableFormat outputs status in the original human-readable format
+//
+//nolint:errcheck // stdout writes
 func (m command) printTableFormat(s *StatusOutput) error {
 	fmt.Printf("Instance ID: %s\n", s.InstanceID)
 	fmt.Printf("Name: %s\n", s.Name)

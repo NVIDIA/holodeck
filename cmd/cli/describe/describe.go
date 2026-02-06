@@ -66,16 +66,16 @@ type ProviderInfo struct {
 
 // ClusterInfo contains cluster configuration
 type ClusterInfo struct {
-	Region            string             `json:"region" yaml:"region"`
-	ControlPlane      ControlPlaneInfo   `json:"controlPlane" yaml:"controlPlane"`
-	Workers           *WorkersInfo       `json:"workers,omitempty" yaml:"workers,omitempty"`
-	HighAvailability  *HAInfo            `json:"highAvailability,omitempty" yaml:"highAvailability,omitempty"`
-	Phase             string             `json:"phase,omitempty" yaml:"phase,omitempty"`
-	TotalNodes        int32              `json:"totalNodes,omitempty" yaml:"totalNodes,omitempty"`
-	ReadyNodes        int32              `json:"readyNodes,omitempty" yaml:"readyNodes,omitempty"`
-	Endpoint          string             `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
-	LoadBalancerDNS   string             `json:"loadBalancerDNS,omitempty" yaml:"loadBalancerDNS,omitempty"`
-	Nodes             []NodeInfo         `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+	Region           string           `json:"region" yaml:"region"`
+	ControlPlane     ControlPlaneInfo `json:"controlPlane" yaml:"controlPlane"`
+	Workers          *WorkersInfo     `json:"workers,omitempty" yaml:"workers,omitempty"`
+	HighAvailability *HAInfo          `json:"highAvailability,omitempty" yaml:"highAvailability,omitempty"`
+	Phase            string           `json:"phase,omitempty" yaml:"phase,omitempty"`
+	TotalNodes       int32            `json:"totalNodes,omitempty" yaml:"totalNodes,omitempty"`
+	ReadyNodes       int32            `json:"readyNodes,omitempty" yaml:"readyNodes,omitempty"`
+	Endpoint         string           `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	LoadBalancerDNS  string           `json:"loadBalancerDNS,omitempty" yaml:"loadBalancerDNS,omitempty"`
+	Nodes            []NodeInfo       `json:"nodes,omitempty" yaml:"nodes,omitempty"`
 }
 
 // ControlPlaneInfo contains control plane configuration
@@ -288,7 +288,7 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 	if env.Spec.Cluster != nil {
 		output.Provider.Region = env.Spec.Cluster.Region
 	} else {
-		output.Provider.Region = env.Spec.Instance.Region
+		output.Provider.Region = env.Spec.Region
 	}
 
 	// Cluster info
@@ -318,7 +318,7 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 		}
 
 		if env.Status.Cluster != nil {
-			output.Cluster.Phase = string(env.Status.Cluster.Phase)
+			output.Cluster.Phase = env.Status.Cluster.Phase
 			output.Cluster.TotalNodes = env.Status.Cluster.TotalNodes
 			output.Cluster.ReadyNodes = env.Status.Cluster.ReadyNodes
 			output.Cluster.Endpoint = env.Status.Cluster.ControlPlaneEndpoint
@@ -331,7 +331,7 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 					InstanceID: node.InstanceID,
 					PublicIP:   node.PublicIP,
 					PrivateIP:  node.PrivateIP,
-					Phase:      string(node.Phase),
+					Phase:      node.Phase,
 				})
 			}
 		}
@@ -396,10 +396,10 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 	// AWS Resources (for single-node AWS)
 	if env.Spec.Provider == v1alpha1.ProviderAWS && env.Spec.Cluster == nil {
 		awsRes := &AWSResourcesInfo{
-			InstanceType: env.Spec.Instance.Type,
+			InstanceType: env.Spec.Type,
 		}
-		if env.Spec.Instance.Image.ImageId != nil {
-			awsRes.AMI = *env.Spec.Instance.Image.ImageId
+		if env.Spec.Image.ImageId != nil {
+			awsRes.AMI = *env.Spec.Image.ImageId
 		}
 		for _, p := range env.Status.Properties {
 			switch p.Name {
@@ -425,6 +425,7 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 	return output
 }
 
+//nolint:errcheck // stdout writes
 func (m command) printTableFormat(d *DescribeOutput) error {
 	// Instance Information
 	fmt.Println("=== Instance Information ===")
@@ -515,7 +516,7 @@ func (m command) printTableFormat(d *DescribeOutput) error {
 	if d.Components.ContainerToolkit != nil {
 		version := d.Components.ContainerToolkit.Version
 		if version == "" {
-			version = string(d.Components.ContainerToolkit.Source)
+			version = d.Components.ContainerToolkit.Source
 		}
 		if version == "" {
 			version = "latest"
