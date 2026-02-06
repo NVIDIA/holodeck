@@ -38,6 +38,8 @@ const (
 	defaultWaiterTimeout        = 15 * time.Minute
 )
 
+type cleanupFunc func() error
+
 // Create creates an EC2 instance with proper Network configuration
 // VPC, Subnet, Internet Gateway, Route Table, Security Group
 // If the environment specifies a cluster configuration, it delegates to CreateCluster()
@@ -49,62 +51,102 @@ func (p *Provider) Create() error {
 
 	// Single-node deployment
 	cache := new(AWS)
+	var cleanupStack []cleanupFunc
+	var err error
 
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources"); err != nil {
+	// Defer cleanup on failure - execute cleanup functions in reverse order
+	defer func() {
+		if err != nil {
+			p.log.Warning("Creation failed, rolling back created resources...")
+			for i := len(cleanupStack) - 1; i >= 0; i-- {
+				if cleanupErr := cleanupStack[i](); cleanupErr != nil {
+					p.log.Warning("Cleanup failed: %v", cleanupErr)
+				}
+			}
+		}
+	}()
+
+	if err = p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Creating AWS resources"); err != nil {
 		p.log.Warning("Failed to update progressing condition: %v", err)
 	}
 
-	if err := p.createVPC(cache); err != nil {
+	if err = p.createVPC(cache); err != nil {
 		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC"); updateErr != nil {
 			p.log.Warning("Failed to update degraded condition: %v", updateErr)
 		}
 		return fmt.Errorf("error creating VPC: %w", err)
 	}
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "VPC created"); err != nil {
+	cleanupStack = append(cleanupStack, func() error {
+		cleanupCache := &AWS{Vpcid: cache.Vpcid}
+		return p.deleteVPC(cleanupCache)
+	})
+	if err = p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "VPC created"); err != nil {
 		p.log.Warning("Failed to update progressing condition: %v", err)
 	}
 
-	if err := p.createSubnet(cache); err != nil {
+	if err = p.createSubnet(cache); err != nil {
 		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet"); updateErr != nil {
 			p.log.Warning("Failed to update degraded condition: %v", updateErr)
 		}
 		return fmt.Errorf("error creating subnet: %w", err)
 	}
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created"); err != nil {
+	cleanupStack = append(cleanupStack, func() error {
+		cleanupCache := &AWS{Subnetid: cache.Subnetid}
+		return p.deleteSubnet(cleanupCache)
+	})
+	if err = p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created"); err != nil {
 		p.log.Warning("Failed to update progressing condition: %v", err)
 	}
 
-	if err := p.createInternetGateway(cache); err != nil {
+	if err = p.createInternetGateway(cache); err != nil {
 		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway"); updateErr != nil {
 			p.log.Warning("Failed to update degraded condition: %v", updateErr)
 		}
 		return fmt.Errorf("error creating Internet Gateway: %w", err)
 	}
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created"); err != nil {
+	cleanupStack = append(cleanupStack, func() error {
+		cleanupCache := &AWS{
+			InternetGwid: cache.InternetGwid,
+			Vpcid:        cache.Vpcid,
+		}
+		return p.deleteInternetGateway(cleanupCache)
+	})
+	if err = p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created"); err != nil {
 		p.log.Warning("Failed to update progressing condition: %v", err)
 	}
 
-	if err := p.createRouteTable(cache); err != nil {
+	if err = p.createRouteTable(cache); err != nil {
 		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table"); updateErr != nil {
 			p.log.Warning("Failed to update degraded condition: %v", updateErr)
 		}
 		return fmt.Errorf("error creating route table: %w", err)
 	}
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created"); err != nil {
+	cleanupStack = append(cleanupStack, func() error {
+		cleanupCache := &AWS{
+			RouteTable: cache.RouteTable,
+			Vpcid:      cache.Vpcid,
+		}
+		return p.deleteRouteTable(cleanupCache)
+	})
+	if err = p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created"); err != nil {
 		p.log.Warning("Failed to update progressing condition: %v", err)
 	}
 
-	if err := p.createSecurityGroup(cache); err != nil {
+	if err = p.createSecurityGroup(cache); err != nil {
 		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group"); updateErr != nil {
 			p.log.Warning("Failed to update degraded condition: %v", updateErr)
 		}
 		return fmt.Errorf("error creating security group: %w", err)
 	}
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created"); err != nil {
+	cleanupStack = append(cleanupStack, func() error {
+		cleanupCache := &AWS{SecurityGroupid: cache.SecurityGroupid}
+		return p.deleteSecurityGroups(cleanupCache)
+	})
+	if err = p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created"); err != nil {
 		p.log.Warning("Failed to update progressing condition: %v", err)
 	}
 
-	if err := p.createEC2Instance(cache); err != nil {
+	if err = p.createEC2Instance(cache); err != nil {
 		if updateErr := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance"); updateErr != nil {
 			p.log.Warning("Failed to update degraded condition: %v", updateErr)
 		}
@@ -112,7 +154,7 @@ func (p *Provider) Create() error {
 	}
 
 	// Save objects ID's into a cache file
-	if err := p.updateAvailableCondition(*p.Environment, cache); err != nil {
+	if err = p.updateAvailableCondition(*p.Environment, cache); err != nil {
 		return fmt.Errorf("error creating cache file: %w", err)
 	}
 	return nil
