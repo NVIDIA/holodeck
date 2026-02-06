@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
@@ -76,6 +77,7 @@ type Provider struct {
 	Tags        []types.Tag
 	ec2         internalaws.EC2Client
 	ssm         internalaws.SSMClient
+	elbv2       internalaws.ELBv2Client
 	amiResolver *ami.Resolver
 	cacheFile   string
 
@@ -99,6 +101,14 @@ func WithEC2Client(client internalaws.EC2Client) Option {
 func WithSSMClient(client internalaws.SSMClient) Option {
 	return func(p *Provider) {
 		p.ssm = client
+	}
+}
+
+// WithELBv2Client sets a custom ELBv2 client for the Provider.
+// This is primarily used for testing to inject mock clients.
+func WithELBv2Client(client internalaws.ELBv2Client) Option {
+	return func(p *Provider) {
+		p.elbv2 = client
 	}
 }
 
@@ -178,6 +188,9 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string,
 		}
 		if p.ssm == nil {
 			p.ssm = ssm.NewFromConfig(cfg)
+		}
+		if p.elbv2 == nil {
+			p.elbv2 = elasticloadbalancingv2.NewFromConfig(cfg)
 		}
 	}
 

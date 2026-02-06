@@ -603,33 +603,16 @@ func (p *Provider) disableSourceDestCheck(cache *ClusterCache) error {
 
 // createLoadBalancer creates an NLB for HA control plane
 func (p *Provider) createLoadBalancer(cache *ClusterCache) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating Network Load Balancer for HA control plane")
-
-	// Note: This requires the ELBv2 client to be added to the Provider
-	// For now, we'll create a placeholder that logs a warning
-	// In a full implementation, this would use the ELBv2 API
-
-	// TODO: Add ELBv2 client to Provider and implement NLB creation
-	// The implementation would:
-	// 1. Create NLB in the VPC
-	// 2. Create target group for port 6443
-	// 3. Create listener on port 6443
-	// 4. Return the NLB DNS name
-
-	p.log.Warning("Load balancer creation not yet fully implemented - using first control-plane node as endpoint")
-	p.done()
-	return nil
-}
-
-// registerTargets registers control-plane instances with the load balancer target group
-func (p *Provider) registerTargets(cache *ClusterCache) error {
-	if cache.TargetGroupArn == "" {
-		p.log.Warning("No target group ARN, skipping target registration")
-		return nil
+	// Create Network Load Balancer
+	if err := p.createNLB(cache); err != nil {
+		return fmt.Errorf("error creating NLB: %v", err)
 	}
 
-	// TODO: Implement target registration when ELBv2 is fully integrated
+	// Create target group for Kubernetes API (port 6443)
+	if err := p.createTargetGroup(cache); err != nil {
+		return fmt.Errorf("error creating target group: %v", err)
+	}
+
 	return nil
 }
 
