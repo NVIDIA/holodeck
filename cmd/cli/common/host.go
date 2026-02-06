@@ -72,8 +72,11 @@ func GetHostURL(env *v1alpha1.Environment, nodeName string, preferControlPlane b
 }
 
 // ConnectSSH establishes an SSH connection with retries.
-// Holodeck instances are ephemeral with no pre-established host keys,
-// so host key verification is intentionally disabled.
+//
+// Host key verification is disabled because server host keys are generated
+// at instance boot time and there is no trusted channel to distribute them
+// to the client beforehand. The env file's privateKey/publicKey fields are
+// SSH *authentication* keys (client-to-server), not server host keys.
 func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	key, err := os.ReadFile(keyPath) //nolint:gosec // keyPath is from trusted env config
 	if err != nil {
@@ -90,7 +93,8 @@ func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		// Holodeck instances are ephemeral with no pre-established host keys
+		// Server host keys are generated at instance boot with no trusted
+		// distribution channel; disable verification (CWE-322 accepted risk).
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
 		Timeout:         30 * time.Second,
 	}
