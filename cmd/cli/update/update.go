@@ -305,8 +305,9 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 		}
 	}
 
-	// Save updated config if changed
-	if configChanged {
+	// Run provisioning if needed
+	if needsProvision {
+		// Save config first so provisioner reads updated values
 		data, err := jyaml.MarshalYAML(env)
 		if err != nil {
 			return fmt.Errorf("failed to marshal environment: %v", err)
@@ -314,22 +315,18 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 		if err := os.WriteFile(instance.CacheFile, data, 0600); err != nil {
 			return fmt.Errorf("failed to update cache file: %v", err)
 		}
-		m.log.Info("Configuration updated")
-	}
 
-	// Run provisioning if needed
-	if needsProvision {
 		m.log.Info("Running provisioning...")
 		if err := m.runProvision(&env); err != nil {
 			return fmt.Errorf("provisioning failed: %v", err)
 		}
 
-		// Mark as provisioned
+		// Mark as provisioned and save again
 		if env.Labels == nil {
 			env.Labels = make(map[string]string)
 		}
 		env.Labels[instances.InstanceProvisionedLabelKey] = "true"
-		data, err := jyaml.MarshalYAML(env)
+		data, err = jyaml.MarshalYAML(env)
 		if err != nil {
 			return fmt.Errorf("failed to marshal environment: %v", err)
 		}
@@ -338,6 +335,16 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 		}
 
 		m.log.Info("Provisioning completed successfully")
+	} else if configChanged {
+		// Only write if config changed but no provisioning needed
+		data, err := jyaml.MarshalYAML(env)
+		if err != nil {
+			return fmt.Errorf("failed to marshal environment: %v", err)
+		}
+		if err := os.WriteFile(instance.CacheFile, data, 0600); err != nil {
+			return fmt.Errorf("failed to update cache file: %v", err)
+		}
+		m.log.Info("Configuration updated")
 	}
 
 	if !configChanged && !needsProvision {
