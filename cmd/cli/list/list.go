@@ -111,7 +111,8 @@ func (m *command) build() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:        "ids-only",
-				Usage:       "Only display instance IDs",
+				Aliases:     []string{"q"},
+				Usage:       "Only display instance IDs (short: -q)",
 				Destination: &m.idsOnly,
 			},
 			&cli.StringFlag{

@@ -354,6 +354,26 @@ var _ = Describe("List Command", func() {
 			Expect(stdout).To(ContainSubstring("qmulti02"))
 		})
 
+		It("should support -q as alias for --ids-only", func() {
+			// Create a valid cache file
+			yaml := cacheYAMLWithLabel("qalias01", "q-alias-test", "ssh")
+			err := os.WriteFile(filepath.Join(tempDir, "qalias01.yaml"), []byte(yaml), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := list.NewCommand(log)
+			app := &cli.App{
+				Commands: []*cli.Command{cmd},
+			}
+
+			stdout := captureStdout(func() {
+				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "-q"})
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(stdout).To(ContainSubstring("qalias01"))
+			Expect(stdout).NotTo(ContainSubstring("INSTANCE ID"))
+			Expect(stdout).NotTo(ContainSubstring("NAME"))
+		})
+
 		It("should skip instances without ID in ids-only mode", func() {
 			// Create one valid and one without label
 			yaml1 := cacheYAMLWithLabel("validq01", "valid-quiet", "ssh")
