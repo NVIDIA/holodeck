@@ -103,32 +103,32 @@ func (p *Provider) CreateCluster() error {
 	// Phase 1: Create VPC and networking (reuse existing functions)
 	if err := p.createVPC(&cache.AWS); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating VPC")
-		return fmt.Errorf("error creating VPC: %v", err)
+		return fmt.Errorf("error creating VPC: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "VPC created")
 
 	if err := p.createSubnet(&cache.AWS); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating subnet")
-		return fmt.Errorf("error creating subnet: %v", err)
+		return fmt.Errorf("error creating subnet: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Subnet created")
 
 	if err := p.createInternetGateway(&cache.AWS); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating Internet Gateway")
-		return fmt.Errorf("error creating Internet Gateway: %v", err)
+		return fmt.Errorf("error creating Internet Gateway: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Internet Gateway created")
 
 	if err := p.createRouteTable(&cache.AWS); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating route table")
-		return fmt.Errorf("error creating route table: %v", err)
+		return fmt.Errorf("error creating route table: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Route Table created")
 
 	// Phase 2: Create enhanced security group for multinode
 	if err := p.createClusterSecurityGroup(cache); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating cluster security group")
-		return fmt.Errorf("error creating cluster security group: %v", err)
+		return fmt.Errorf("error creating cluster security group: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Cluster Security Group created")
 
@@ -136,7 +136,7 @@ func (p *Provider) CreateCluster() error {
 	if p.isHAEnabled() {
 		if err := p.createLoadBalancer(cache); err != nil {
 			_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating load balancer")
-			return fmt.Errorf("error creating load balancer: %v", err)
+			return fmt.Errorf("error creating load balancer: %w", err)
 		}
 		_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Load Balancer created")
 	}
@@ -144,7 +144,7 @@ func (p *Provider) CreateCluster() error {
 	// Phase 4: Create control-plane instances
 	if err := p.createControlPlaneInstances(cache); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating control-plane instances")
-		return fmt.Errorf("error creating control-plane instances: %v", err)
+		return fmt.Errorf("error creating control-plane instances: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Control-plane instances created")
 
@@ -152,7 +152,7 @@ func (p *Provider) CreateCluster() error {
 	if p.isHAEnabled() {
 		if err := p.registerTargets(cache); err != nil {
 			_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error registering targets")
-			return fmt.Errorf("error registering load balancer targets: %v", err)
+			return fmt.Errorf("error registering load balancer targets: %w", err)
 		}
 	}
 
@@ -160,7 +160,7 @@ func (p *Provider) CreateCluster() error {
 	if p.Spec.Cluster.Workers != nil && p.Spec.Cluster.Workers.Count > 0 {
 		if err := p.createWorkerInstances(cache); err != nil {
 			_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating worker instances")
-			return fmt.Errorf("error creating worker instances: %v", err)
+			return fmt.Errorf("error creating worker instances: %w", err)
 		}
 		_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Worker instances created")
 	}
@@ -168,13 +168,13 @@ func (p *Provider) CreateCluster() error {
 	// Phase 7: Disable Source/Destination Check on all instances (required for Calico)
 	if err := p.disableSourceDestCheck(cache); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error disabling source/dest check")
-		return fmt.Errorf("error disabling source/destination check: %v", err)
+		return fmt.Errorf("error disabling source/destination check: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Source/Destination Check disabled")
 
 	// Update status with cluster information
 	if err := p.updateClusterStatus(cache); err != nil {
-		return fmt.Errorf("error updating cluster status: %v", err)
+		return fmt.Errorf("error updating cluster status: %w", err)
 	}
 
 	return nil
@@ -209,7 +209,7 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 	sgOutput, err := p.ec2.CreateSecurityGroup(ctx, sgInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating security group: %v", err)
+		return fmt.Errorf("error creating security group: %w", err)
 	}
 	cache.SecurityGroupid = *sgOutput.GroupId
 
@@ -220,7 +220,7 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 	ip, err := utils.GetIPAddress()
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error getting IP address: %v", err)
+		return fmt.Errorf("error getting IP address: %w", err)
 	}
 	ipRangeMap[ip] = true
 	ipRanges = append(ipRanges, types.IpRange{CidrIp: &ip})
@@ -325,7 +325,7 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 	defer cancelIngress()
 	if _, err = p.ec2.AuthorizeSecurityGroupIngress(ctxIngress, irInput); err != nil {
 		p.fail()
-		return fmt.Errorf("error authorizing security group ingress: %v", err)
+		return fmt.Errorf("error authorizing security group ingress: %w", err)
 	}
 
 	p.done()
@@ -477,7 +477,7 @@ func (p *Provider) createInstances(
 			instanceOut, err := p.ec2.RunInstances(ctxRun, instanceIn)
 			cancelRun()
 			if err != nil {
-				errorsChan <- fmt.Errorf("error creating instance %s: %v", instanceName, err)
+				errorsChan <- fmt.Errorf("error creating instance %s: %w", instanceName, err)
 				return
 			}
 
@@ -497,7 +497,7 @@ func (p *Provider) createInstances(
 			if err = waiter.Wait(ctxWait, &ec2.DescribeInstancesInput{
 				InstanceIds: []string{instanceID},
 			}, 5*time.Minute, waiterOptions...); err != nil {
-				errorsChan <- fmt.Errorf("error waiting for instance %s: %v", instanceName, err)
+				errorsChan <- fmt.Errorf("error waiting for instance %s: %w", instanceName, err)
 				return
 			}
 
@@ -506,7 +506,7 @@ func (p *Provider) createInstances(
 				InstanceIds: []string{instanceID},
 			})
 			if err != nil {
-				errorsChan <- fmt.Errorf("error describing instance %s: %v", instanceName, err)
+				errorsChan <- fmt.Errorf("error describing instance %s: %w", instanceName, err)
 				return
 			}
 
@@ -592,7 +592,7 @@ func (p *Provider) disableSourceDestCheck(cache *ClusterCache) error {
 		cancelMod()
 		if err != nil {
 			p.fail()
-			return fmt.Errorf("error disabling source/dest check on %s: %v", inst.Name, err)
+			return fmt.Errorf("error disabling source/dest check on %s: %w", inst.Name, err)
 		}
 		p.log.Info("Disabled Source/Destination Check on %s", inst.Name)
 	}

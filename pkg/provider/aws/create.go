@@ -44,42 +44,42 @@ func (p *Provider) Create() error {
 
 	if err := p.createVPC(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating VPC") // nolint:errcheck, gosec, staticcheck
-		return fmt.Errorf("error creating VPC: %v", err)
+		return fmt.Errorf("error creating VPC: %w", err)
 	}
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "VPC created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createSubnet(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating subnet") // nolint:errcheck, gosec, staticcheck
-		return fmt.Errorf("error creating subnet: %v", err)
+		return fmt.Errorf("error creating subnet: %w", err)
 	}
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Subnet created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createInternetGateway(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating Internet Gateway") // nolint:errcheck, gosec, staticcheck
-		return fmt.Errorf("error creating Internet Gateway: %v", err)
+		return fmt.Errorf("error creating Internet Gateway: %w", err)
 	}
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Internet Gateway created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createRouteTable(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating route table") // nolint:errcheck, gosec, staticcheck
-		return fmt.Errorf("error creating route table: %v", err)
+		return fmt.Errorf("error creating route table: %w", err)
 	}
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Route Table created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createSecurityGroup(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating security group") // nolint:errcheck, gosec, staticcheck
-		return fmt.Errorf("error creating security group: %v", err)
+		return fmt.Errorf("error creating security group: %w", err)
 	}
 	p.updateProgressingCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Security Group created") // nolint:errcheck, gosec, staticcheck
 
 	if err := p.createEC2Instance(cache); err != nil {
 		p.updateDegradedCondition(*p.Environment.DeepCopy(), cache, "v1alpha1.Creating", "Error creating EC2 instance") // nolint:errcheck, gosec, staticcheck
-		return fmt.Errorf("error creating EC2 instance: %v", err)
+		return fmt.Errorf("error creating EC2 instance: %w", err)
 	}
 
 	// Save objects ID's into a cache file
 	if err := p.updateAvailableCondition(*p.Environment, cache); err != nil {
-		return fmt.Errorf("error creating cache file: %v", err)
+		return fmt.Errorf("error creating cache file: %w", err)
 	}
 	return nil
 }
@@ -104,7 +104,7 @@ func (p *Provider) createVPC(cache *AWS) error {
 	vpcOutput, err := p.ec2.CreateVpc(context.TODO(), vpcInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating VPC: %v", err)
+		return fmt.Errorf("error creating VPC: %w", err)
 	}
 	cache.Vpcid = *vpcOutput.Vpc.VpcId
 
@@ -116,7 +116,7 @@ func (p *Provider) createVPC(cache *AWS) error {
 	_, err = p.ec2.ModifyVpcAttribute(context.Background(), modVcp)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error modifying VPC attributes: %v", err)
+		return fmt.Errorf("error modifying VPC attributes: %w", err)
 	}
 	p.done()
 
@@ -141,7 +141,7 @@ func (p *Provider) createSubnet(cache *AWS) error {
 	subnetOutput, err := p.ec2.CreateSubnet(context.TODO(), subnetInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating subnet: %v", err)
+		return fmt.Errorf("error creating subnet: %w", err)
 	}
 	cache.Subnetid = *subnetOutput.Subnet.SubnetId
 
@@ -165,7 +165,7 @@ func (p *Provider) createInternetGateway(cache *AWS) error {
 	gwOutput, err := p.ec2.CreateInternetGateway(context.TODO(), gwInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating Internet Gateway: %v", err)
+		return fmt.Errorf("error creating Internet Gateway: %w", err)
 	}
 	cache.InternetGwid = *gwOutput.InternetGateway.InternetGatewayId
 
@@ -177,7 +177,7 @@ func (p *Provider) createInternetGateway(cache *AWS) error {
 	_, err = p.ec2.AttachInternetGateway(context.TODO(), attachInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error attaching Internet Gateway: %v", err)
+		return fmt.Errorf("error attaching Internet Gateway: %w", err)
 	}
 	if len(gwOutput.InternetGateway.Attachments) > 0 {
 		cache.InternetGatewayAttachment = *gwOutput.InternetGateway.Attachments[0].VpcId
@@ -204,7 +204,7 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 	rtOutput, err := p.ec2.CreateRouteTable(context.TODO(), rtInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating route table: %v", err)
+		return fmt.Errorf("error creating route table: %w", err)
 	}
 	cache.RouteTable = *rtOutput.RouteTable.RouteTableId
 
@@ -215,7 +215,7 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 	}
 	if _, err = p.ec2.AssociateRouteTable(context.Background(), assocInput); err != nil {
 		p.fail()
-		return fmt.Errorf("error associating route table: %v", err)
+		return fmt.Errorf("error associating route table: %w", err)
 	}
 
 	routeInput := &ec2.CreateRouteInput{
@@ -224,7 +224,7 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 		GatewayId:            aws.String(cache.InternetGwid),
 	}
 	if _, err = p.ec2.CreateRoute(context.TODO(), routeInput); err != nil {
-		return fmt.Errorf("error creating route: %v", err)
+		return fmt.Errorf("error creating route: %w", err)
 	}
 
 	p.done()
@@ -251,7 +251,7 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 	sgOutput, err := p.ec2.CreateSecurityGroup(context.TODO(), sgInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating security group: %v", err)
+		return fmt.Errorf("error creating security group: %w", err)
 	}
 	cache.SecurityGroupid = *sgOutput.GroupId
 
@@ -263,7 +263,7 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 	ip, err := utils.GetIPAddress()
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error getting IP address: %v", err)
+		return fmt.Errorf("error getting IP address: %w", err)
 	}
 
 	// Add the auto-detected IP to the map and list
@@ -308,7 +308,7 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 
 	if _, err = p.ec2.AuthorizeSecurityGroupIngress(context.TODO(), irInput); err != nil {
 		p.fail()
-		return fmt.Errorf("error authorizing security group ingress: %v", err)
+		return fmt.Errorf("error authorizing security group ingress: %w", err)
 	}
 
 	p.done()
@@ -369,7 +369,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	instanceOut, err := p.ec2.RunInstances(context.Background(), instanceIn)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating instance: %v", err)
+		return fmt.Errorf("error creating instance: %w", err)
 	}
 	cache.Instanceid = *instanceOut.Instances[0].InstanceId
 
@@ -385,7 +385,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		InstanceIds: []string{*instanceOut.Instances[0].InstanceId},
 	}, 5*time.Minute, waiterOptions...); err != nil {
 		p.fail()
-		return fmt.Errorf("error waiting for instance to be in running state: %v", err)
+		return fmt.Errorf("error waiting for instance to be in running state: %w", err)
 	}
 
 	// Describe instance now that is running
@@ -394,7 +394,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	})
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error describing instances: %v", err)
+		return fmt.Errorf("error describing instances: %w", err)
 	}
 	cache.PublicDnsName = *instanceRunning.Reservations[0].Instances[0].PublicDnsName
 
@@ -407,7 +407,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	})
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("fail to tag network to instance: %v", err)
+		return fmt.Errorf("fail to tag network to instance: %w", err)
 	}
 
 	// Disable Source/Destination Check for Calico networking
@@ -422,7 +422,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		})
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error disabling source/dest check: %v", err)
+		return fmt.Errorf("error disabling source/dest check: %w", err)
 	}
 
 	p.done()

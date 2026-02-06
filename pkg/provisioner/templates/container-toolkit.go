@@ -618,7 +618,7 @@ func (t *ContainerToolkit) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) 
 
 	tmpl := template.Must(template.New("container-toolkit").Parse(templateContent))
 	if err := tmpl.Execute(tpl, t); err != nil {
-		return fmt.Errorf("failed to execute container-toolkit template: %v", err)
+		return fmt.Errorf("failed to execute container-toolkit template: %w", err)
 	}
 
 	return nil

@@ -181,7 +181,7 @@ func (t *NvDriver) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	nvDriverTemplate := template.Must(template.New("nv-driver").Parse(NvDriverTemplate))
 	err := nvDriverTemplate.Execute(tpl, t)
 	if err != nil {
-		return fmt.Errorf("failed to execute nv-driver template: %v", err)
+		return fmt.Errorf("failed to execute nv-driver template: %w", err)
 	}
 	return nil
 }

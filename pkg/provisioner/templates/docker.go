@@ -248,7 +248,7 @@ func NewDocker(env v1alpha1.Environment) *Docker {
 func (t *Docker) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 	dockerTemplate := template.Must(template.New("docker").Parse(dockerTemplate))
 	if err := dockerTemplate.Execute(tpl, t); err != nil {
-		return fmt.Errorf("failed to execute docker template: %v", err)
+		return fmt.Errorf("failed to execute docker template: %w", err)
 	}
 
 	return nil

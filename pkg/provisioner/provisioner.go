@@ -58,7 +58,7 @@ type Provisioner struct {
 func New(log *logger.FunLogger, keyPath, userName, hostUrl string) (*Provisioner, error) {
 	client, err := connectOrDie(keyPath, userName, hostUrl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to %s: %v", hostUrl, err)
+		return nil, fmt.Errorf("failed to connect to %s: %w", hostUrl, err)
 	}
 
 	p := &Provisioner{
@@ -127,13 +127,13 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		// Check if we need to use legacy mode
 		kubernetes, err := templates.NewKubernetes(env)
 		if err != nil {
-			return fmt.Errorf("failed to create kubernetes template: %v", err)
+			return fmt.Errorf("failed to create kubernetes template: %w", err)
 		}
 
 		// Only create kubeadm config file if not using legacy mode
 		if !kubernetes.UseLegacyInit {
 			if err := p.createKubeAdmConfig(env); err != nil {
-				return fmt.Errorf("failed to create kubeadm config file: %v", err)
+				return fmt.Errorf("failed to create kubeadm config file: %w", err)
 			}
 		}
 	}
@@ -142,14 +142,14 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 	// Create kind config file if it is provided
 	if env.Spec.Kubernetes.KubernetesInstaller == "kind" && env.Spec.Kubernetes.KindConfig != "" {
 		if err := p.createKindConfig(env); err != nil {
-			return fmt.Errorf("failed to create kind config file: %v", err)
+			return fmt.Errorf("failed to create kind config file: %w", err)
 		}
 	}
 
 	for _, node := range dependencies.Resolve() {
 		// Add script header and common functions to the script
 		if err := addScriptHeader(&p.tpl); err != nil {
-			return fmt.Errorf("failed to add shebang to the script: %v", err)
+			return fmt.Errorf("failed to add shebang to the script: %w", err)
 		}
 		// Execute the template for the dependency
 		if err := node(&p.tpl, env); err != nil {
@@ -157,7 +157,7 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		}
 		// Provision the instance
 		if err := p.provision(); err != nil {
-			return fmt.Errorf("failed to provision: %v", err)
+			return fmt.Errorf("failed to provision: %w", err)
 		}
 
 		// If kernel version is specified, wait for the node to reboot
@@ -206,13 +206,13 @@ func (p *Provisioner) provision() error {
 	// Create a new ssh connection
 	p.Client, err = connectOrDie(p.KeyPath, p.UserName, p.HostUrl)
 	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %v", p.HostUrl, err)
+		return fmt.Errorf("failed to connect to %s: %w", p.HostUrl, err)
 	}
 
 	// Create a session
 	session, err := p.Client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create session: %v", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
 	reader, writer := io.Pipe()
 	session.Stdout = writer
@@ -232,10 +232,10 @@ func (p *Provisioner) provision() error {
 	// run the script
 	err = session.Start(script)
 	if err != nil {
-		return fmt.Errorf("failed to start session: %v", err)
+		return fmt.Errorf("failed to start session: %w", err)
 	}
 	if err := session.Wait(); err != nil {
-		return fmt.Errorf("failed to wait for session: %v", err)
+		return fmt.Errorf("failed to wait for session: %w", err)
 	}
 
 	return nil
@@ -248,22 +248,22 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	// Create a session
 	session, err := p.Client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create session: %v", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
 	defer session.Close() // nolint:errcheck, gosec
 
 	// create remote directory if it does not exist
 	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
-		return fmt.Errorf("failed to create remote directory /etc/kubernetes: %v", err)
+		return fmt.Errorf("failed to create remote directory /etc/kubernetes: %w", err)
 	}
 
 	// Open a remote file for writing
 	remoteFile, err := session.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("failed to open remote file %s: %v", remoteFilePath, err)
+		return fmt.Errorf("failed to open remote file %s: %w", remoteFilePath, err)
 	}
 	if err := session.Start("cat > " + remoteFilePath); err != nil {
-		return fmt.Errorf("failed to start session: %v", err)
+		return fmt.Errorf("failed to start session: %w", err)
 	}
 
 	// open local file for reading
@@ -272,7 +272,7 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	if !filepath.IsAbs(env.Spec.Kubernetes.KindConfig) {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("failed to get current working directory: %v", err)
+			return fmt.Errorf("failed to get current working directory: %w", err)
 		}
 
 		env.Spec.Kubernetes.KindConfig = filepath.Join(cwd, strings.TrimPrefix(env.Spec.Kubernetes.KindConfig, "./"))
@@ -280,18 +280,18 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 
 	localFile, err := os.Open(env.Spec.Kubernetes.KindConfig)
 	if err != nil {
-		return fmt.Errorf("failed to open local file %s: %v", env.Spec.Kubernetes.KindConfig, err)
+		return fmt.Errorf("failed to open local file %s: %w", env.Spec.Kubernetes.KindConfig, err)
 	}
 
 	// copy local file to remote file
 	if _, err := io.Copy(remoteFile, localFile); err != nil {
-		return fmt.Errorf("failed to copy local file %s to remote file %s: %v", env.Spec.Kubernetes.KindConfig, remoteFilePath, err)
+		return fmt.Errorf("failed to copy local file %s to remote file %s: %w", env.Spec.Kubernetes.KindConfig, remoteFilePath, err)
 	}
 
 	// Close the writing pipe and wait for the session to finish
 	remoteFile.Close() // nolint:errcheck, gosec
 	if err := session.Wait(); err != nil {
-		return fmt.Errorf("failed to wait for command to complete: %v", err)
+		return fmt.Errorf("failed to wait for command to complete: %w", err)
 	}
 
 	return nil
@@ -308,7 +308,7 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 
 	// Ensure local directory exists
 	if err := os.MkdirAll(cachePath, 0750); err != nil {
-		return fmt.Errorf("failed to create local cache directory: %v", err)
+		return fmt.Errorf("failed to create local cache directory: %w", err)
 	}
 
 	// Create kubeadm config file locally
@@ -316,43 +316,43 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 
 	kConfig, err := templates.NewKubeadmConfig(env)
 	if err != nil {
-		return fmt.Errorf("failed to create kubeadm config: %v", err)
+		return fmt.Errorf("failed to create kubeadm config: %w", err)
 	}
 
 	kubeadmConfigContent, err = kConfig.GenerateKubeadmConfig()
 	if err != nil {
-		return fmt.Errorf("failed to generate kubeadm config: %v", err)
+		return fmt.Errorf("failed to generate kubeadm config: %w", err)
 	}
 
 	// Write kubeadm config to local file
 	if err := os.WriteFile(localFilePath, []byte(kubeadmConfigContent), 0600); err != nil {
-		return fmt.Errorf("failed to write kubeadm config to local file: %v", err)
+		return fmt.Errorf("failed to write kubeadm config to local file: %w", err)
 	}
 
 	// Copy the local file to the remote machine using SFTP
 	if err := p.copyFileToRemoteSFTP(localFilePath, tempRemotePath); err != nil {
-		return fmt.Errorf("failed to copy kubeadm config to remote host: %v", err)
+		return fmt.Errorf("failed to copy kubeadm config to remote host: %w", err)
 	}
 
 	// Move the temporary file to the final destination
 	session, err := p.Client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create session: %v", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
 	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
 		session.Close() // nolint:errcheck, gosec
-		return fmt.Errorf("failed to create directory on remote host: %v", err)
+		return fmt.Errorf("failed to create directory on remote host: %w", err)
 	}
 	session.Close() // nolint:errcheck, gosec
 
 	// Move the temporary file to the final destination
 	session, err = p.Client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create session: %v", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
 	if err := session.Run(fmt.Sprintf("sudo mv %s %s", tempRemotePath, remoteFilePath)); err != nil {
 		session.Close() // nolint:errcheck, gosec
-		return fmt.Errorf("failed to move kubeadm config to final destination: %v", err)
+		return fmt.Errorf("failed to move kubeadm config to final destination: %w", err)
 	}
 	session.Close() // nolint:errcheck, gosec
 
@@ -364,27 +364,27 @@ func (p *Provisioner) copyFileToRemoteSFTP(localPath, remotePath string) error {
 	// Open an SSH session
 	client, err := sftp.NewClient(p.Client)
 	if err != nil {
-		return fmt.Errorf("failed to start SFTP session: %v", err)
+		return fmt.Errorf("failed to start SFTP session: %w", err)
 	}
 	defer client.Close() // nolint:errcheck, gosec
 
 	// Open local file
 	localFile, err := os.Open(localPath) // nolint:gosec
 	if err != nil {
-		return fmt.Errorf("failed to open local file: %v", err)
+		return fmt.Errorf("failed to open local file: %w", err)
 	}
 	defer localFile.Close() // nolint:errcheck, gosec
 
 	// Open remote file for writing
 	remoteFile, err := client.Create(remotePath)
 	if err != nil {
-		return fmt.Errorf("failed to create remote file: %v", err)
+		return fmt.Errorf("failed to create remote file: %w", err)
 	}
 	defer remoteFile.Close() // nolint:errcheck, gosec
 
 	// Copy local file to remote file
 	if _, err := remoteFile.ReadFrom(localFile); err != nil {
-		return fmt.Errorf("failed to copy file content: %v", err)
+		return fmt.Errorf("failed to copy file content: %w", err)
 	}
 
 	return nil
@@ -394,12 +394,12 @@ func addScriptHeader(tpl *bytes.Buffer) error {
 	// Add shebang to the script
 	shebang := template.Must(template.New("shebang").Parse(Shebang))
 	if err := shebang.Execute(tpl, nil); err != nil {
-		return fmt.Errorf("failed to add shebang to the script: %v", err)
+		return fmt.Errorf("failed to add shebang to the script: %w", err)
 	}
 	// Add common functions to the script
 	commonFunctions := template.Must(template.New("common-functions").Parse(templates.CommonFunctions))
 	if err := commonFunctions.Execute(tpl, nil); err != nil {
-		return fmt.Errorf("failed to add common functions to the script: %v", err)
+		return fmt.Errorf("failed to add common functions to the script: %w", err)
 	}
 	return nil
 }
@@ -410,11 +410,11 @@ func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	var err error
 	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
-		return nil, fmt.Errorf("failed to read key file: %v", err)
+		return nil, fmt.Errorf("failed to read key file: %w", err)
 	}
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %v", err)
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 	sshConfig := &ssh.ClientConfig{
 		User: userName,

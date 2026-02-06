@@ -38,39 +38,39 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 
 	session, err := p.Client.NewSession()
 	if err != nil {
-		return fmt.Errorf("error creating session: %v", err)
+		return fmt.Errorf("error creating session: %w", err)
 	}
 	defer session.Close() // nolint:errcheck, gosec
 
 	// Set up a pipe to receive the remote file content
 	remoteFile, err := session.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("error creating remote file pipe: %v", err)
+		return fmt.Errorf("error creating remote file pipe: %w", err)
 	}
 
 	// Start the remote command to read the file content
 	err = session.Start(fmt.Sprintf("/usr/bin/cat  %s", remoteFilePath))
 	if err != nil {
-		return fmt.Errorf("error starting remote command: %v", err)
+		return fmt.Errorf("error starting remote command: %w", err)
 	}
 
 	// Create a new file on the local system to save the downloaded content
 	localFile, err := os.Create(dest) // nolint:gosec
 	if err != nil {
-		return fmt.Errorf("error creating local file: %v", err)
+		return fmt.Errorf("error creating local file: %w", err)
 	}
 	defer localFile.Close() // nolint:errcheck, gosec
 
 	// Copy the remote file content to the local file
 	_, err = io.Copy(localFile, remoteFile)
 	if err != nil {
-		return fmt.Errorf("error copying remote file to local: %v", err)
+		return fmt.Errorf("error copying remote file to local: %w", err)
 	}
 
 	// Wait for the remote command to finish
 	err = session.Wait()
 	if err != nil {
-		return fmt.Errorf("error waiting for remote command: %v", err)
+		return fmt.Errorf("error waiting for remote command: %w", err)
 	}
 
 	log.Info(fmt.Sprintf("Kubeconfig saved to %s\n", dest))
