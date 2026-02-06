@@ -138,11 +138,8 @@ func (l *FunLogger) Check(format string, a ...any) {
 }
 
 // Warning prints a warning message with a warning emoji.
-// Only prints if Verbosity >= VerbosityNormal.
+// Always prints regardless of verbosity level (like Error).
 func (l *FunLogger) Warning(format string, a ...any) {
-	if l.Verbosity < VerbosityNormal {
-		return
-	}
 	message := fmt.Sprintf(format, a...)
 	printMessage(yellowText, warningSign, message)
 }

@@ -153,15 +153,15 @@ func TestDebugModeShowsTrace(t *testing.T) {
 	}
 }
 
-func TestQuietModeSuppressesWarningAndCheck(t *testing.T) {
-	var buf bytes.Buffer
+func TestQuietModeSuppressesCheckButNotWarning(t *testing.T) {
 	l := NewLogger()
-	l.Out = &buf
 	l.SetVerbosity(VerbosityQuiet)
 
-	// Warning and Check use printMessage which writes to stdout, not l.Out
-	// So we just verify they don't panic in quiet mode
-	// The actual suppression is tested by verifying the verbosity check logic
+	// Warning always prints (like Error) - verify it doesn't panic in quiet mode
+	l.Warning("this should still print")
+
+	// Check is suppressed in quiet mode - verify it doesn't panic
+	l.Check("this is suppressed")
 }
 
 func TestDebugMethodFormat(t *testing.T) {
