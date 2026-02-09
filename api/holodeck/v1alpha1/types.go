@@ -744,7 +744,6 @@ type NVIDIAContainerToolkit struct {
 	Version string `json:"version,omitempty"`
 }
 
-
 // LoadBalancer defines load balancer configuration for HA clusters
 type LoadBalancer struct {
 	// Enabled enables creation of a Network Load Balancer

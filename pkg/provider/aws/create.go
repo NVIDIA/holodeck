@@ -424,9 +424,12 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		return fmt.Errorf("error getting AMI: %w", err)
 	}
 
-	// if the root volume size is not set, use the default size
+	// Use a local variable to avoid mutating the package-level storageSizeGB,
+	// which would cause a data race if multiple Create() calls run concurrently
+	// and pointer aliasing issues with the AWS SDK.
+	volumeSize := storageSizeGB
 	if p.Spec.RootVolumeSizeGB != nil {
-		storageSizeGB = *p.Spec.RootVolumeSizeGB
+		volumeSize = *p.Spec.RootVolumeSizeGB
 	}
 
 	instanceIn := &ec2.RunInstancesInput{
@@ -439,7 +442,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 			{
 				DeviceName: aws.String("/dev/sda1"),
 				Ebs: &types.EbsBlockDevice{
-					VolumeSize: &storageSizeGB,
+					VolumeSize: &volumeSize,
 					VolumeType: types.VolumeTypeGp2,
 				},
 			},

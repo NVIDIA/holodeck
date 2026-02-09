@@ -162,30 +162,16 @@ func update(env *v1alpha1.Environment, cachePath string) error {
 		return err
 	}
 
-	// if the cache file does not exist, check if the directory exists
-	// if the directory does not exist, create it
-	// if the directory exists, create the cache file
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
-		dir := filepath.Dir(cachePath)
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			err := os.MkdirAll(dir, 0750)
-			if err != nil {
-				return err
-			}
-		}
-		_, err := os.Create(cachePath) // nolint:gosec
-		if err != nil {
-			return err
-		}
-	}
-
-	// write to file
-	err = os.WriteFile(cachePath, data, 0600)
-	if err != nil {
+	// Ensure the parent directory exists
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0750); err != nil {
 		return err
 	}
 
-	return nil
+	if err := os.WriteFile(cachePath, data, 0600); err != nil {
+		return err
+	}
+	// Enforce permissions even if the file already existed with broader perms
+	return os.Chmod(cachePath, 0600)
 }
 
 // updateAvailableCondition is used to mark a given resource as "available".
