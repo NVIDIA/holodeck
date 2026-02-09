@@ -44,6 +44,13 @@ set -xe
 
 const remoteKindConfig = "/etc/kubernetes/kind.yaml"
 
+const (
+	// sshMaxRetries is the number of SSH connection attempts before giving up.
+	sshMaxRetries = 20
+	// sshRetryDelay is the delay between SSH connection retry attempts.
+	sshRetryDelay = 1 * time.Second
+)
+
 type Provisioner struct {
 	Client         *ssh.Client
 	SessionManager *ssm.Client
@@ -446,19 +453,18 @@ func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	}
 
 	connectionFailed := false
-	for range 20 {
+	for range sshMaxRetries {
 		client, err = ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
 			return client, nil // Connection succeeded, return the client.
 		}
 		connectionFailed = true
-		// Sleep for a brief moment before retrying.
-		// You can adjust the duration based on your requirements.
-		time.Sleep(1 * time.Second)
+		// Brief delay before retrying.
+		time.Sleep(sshRetryDelay)
 	}
 
 	if connectionFailed {
-		return nil, fmt.Errorf("failed to connect to %s after 10 retries, giving up", hostUrl)
+		return nil, fmt.Errorf("failed to connect to %s after %d retries, giving up", hostUrl, sshMaxRetries)
 	}
 
 	return client, nil
