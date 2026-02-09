@@ -199,13 +199,13 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get instance: %v", err)
+		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	// Load environment
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read environment: %v", err)
+		return fmt.Errorf("failed to read environment: %w", err)
 	}
 
 	// Track if we need to reprovision
@@ -310,15 +310,15 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 		// Save config first so provisioner reads updated values
 		data, err := jyaml.MarshalYAML(env)
 		if err != nil {
-			return fmt.Errorf("failed to marshal environment: %v", err)
+			return fmt.Errorf("failed to marshal environment: %w", err)
 		}
 		if err := os.WriteFile(instance.CacheFile, data, 0600); err != nil {
-			return fmt.Errorf("failed to update cache file: %v", err)
+			return fmt.Errorf("failed to update cache file: %w", err)
 		}
 
 		m.log.Info("Running provisioning...")
 		if err := m.runProvision(&env); err != nil {
-			return fmt.Errorf("provisioning failed: %v", err)
+			return fmt.Errorf("provisioning failed: %w", err)
 		}
 
 		// Mark as provisioned and save again
@@ -328,10 +328,10 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 		env.Labels[instances.InstanceProvisionedLabelKey] = "true"
 		data, err = jyaml.MarshalYAML(env)
 		if err != nil {
-			return fmt.Errorf("failed to marshal environment: %v", err)
+			return fmt.Errorf("failed to marshal environment: %w", err)
 		}
 		if err := os.WriteFile(instance.CacheFile, data, 0600); err != nil {
-			return fmt.Errorf("failed to update cache file: %v", err)
+			return fmt.Errorf("failed to update cache file: %w", err)
 		}
 
 		m.log.Info("Provisioning completed successfully")
@@ -339,10 +339,10 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 		// Only write if config changed but no provisioning needed
 		data, err := jyaml.MarshalYAML(env)
 		if err != nil {
-			return fmt.Errorf("failed to marshal environment: %v", err)
+			return fmt.Errorf("failed to marshal environment: %w", err)
 		}
 		if err := os.WriteFile(instance.CacheFile, data, 0600); err != nil {
-			return fmt.Errorf("failed to update cache file: %v", err)
+			return fmt.Errorf("failed to update cache file: %w", err)
 		}
 		m.log.Info("Configuration updated")
 	}
@@ -362,12 +362,12 @@ func (m *command) runProvision(env *v1alpha1.Environment) error {
 	// Single node - use shared host URL resolution
 	hostUrl, err := common.GetHostURL(env, "", false)
 	if err != nil {
-		return fmt.Errorf("failed to determine host URL: %v", err)
+		return fmt.Errorf("failed to determine host URL: %w", err)
 	}
 
 	p, err := provisioner.New(m.log, env.Spec.PrivateKey, env.Spec.Username, hostUrl)
 	if err != nil {
-		return fmt.Errorf("failed to create provisioner: %v", err)
+		return fmt.Errorf("failed to create provisioner: %w", err)
 	}
 	defer p.Client.Close() //nolint:errcheck
 

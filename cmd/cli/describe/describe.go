@@ -239,13 +239,13 @@ func (m command) run(instanceID string) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get instance: %v", err)
+		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	// Load environment
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read environment: %v", err)
+		return fmt.Errorf("failed to read environment: %w", err)
 	}
 
 	age := time.Since(instance.CreatedAt).Round(time.Second)

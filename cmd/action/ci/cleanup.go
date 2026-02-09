@@ -39,7 +39,7 @@ func cleanup(log *logger.FunLogger) error {
 	configFile = "/github/workspace/" + configFile
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
 	if err != nil {
-		return fmt.Errorf("error reading config file: %s", err)
+		return fmt.Errorf("error reading config file: %w", err)
 	}
 
 	// Set env name
@@ -54,7 +54,7 @@ func cleanup(log *logger.FunLogger) error {
 
 	provider, err := newProvider(log, &cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create provider: %v", err)
+		return fmt.Errorf("failed to create provider: %w", err)
 	}
 
 	if err := provider.Delete(); err != nil {
@@ -66,13 +66,13 @@ func cleanup(log *logger.FunLogger) error {
 	// if kubeconfig exists, delete it
 	if _, err := os.Stat(kubeconfig); err == nil {
 		if err := os.Remove(kubeconfig); err != nil {
-			log.Error(fmt.Errorf("error deleting kubeconfig: %s", err))
+			log.Error(fmt.Errorf("error deleting kubeconfig: %w", err))
 		}
 	}
 
 	if _, err := os.Stat(sshKeyFile); err == nil {
 		if err := os.Remove(sshKeyFile); err != nil {
-			log.Error(fmt.Errorf("error deleting ssh key: %s", err))
+			log.Error(fmt.Errorf("error deleting ssh key: %w", err))
 		}
 	}
 
@@ -93,17 +93,17 @@ func isTerminated(log *logger.FunLogger) (bool, error) {
 	configFile = "/github/workspace/" + configFile
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
 	if err != nil {
-		return false, fmt.Errorf("error reading config file: %s", err)
+		return false, fmt.Errorf("error reading config file: %w", err)
 	}
 
 	provider, err := newProvider(log, &cfg)
 	if err != nil {
-		return false, fmt.Errorf("failed to create provider: %v", err)
+		return false, fmt.Errorf("failed to create provider: %w", err)
 	}
 
 	status, err := provider.Status()
 	if err != nil {
-		return false, fmt.Errorf("failed to get status: %v", err)
+		return false, fmt.Errorf("failed to get status: %w", err)
 	}
 
 	for _, s := range status {

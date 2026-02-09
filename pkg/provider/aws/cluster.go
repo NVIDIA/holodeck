@@ -605,12 +605,12 @@ func (p *Provider) disableSourceDestCheck(cache *ClusterCache) error {
 func (p *Provider) createLoadBalancer(cache *ClusterCache) error {
 	// Create Network Load Balancer
 	if err := p.createNLB(cache); err != nil {
-		return fmt.Errorf("error creating NLB: %v", err)
+		return fmt.Errorf("error creating NLB: %w", err)
 	}
 
 	// Create target group for Kubernetes API (port 6443)
 	if err := p.createTargetGroup(cache); err != nil {
-		return fmt.Errorf("error creating target group: %v", err)
+		return fmt.Errorf("error creating target group: %w", err)
 	}
 
 	return nil

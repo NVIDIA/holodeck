@@ -117,6 +117,11 @@ func (p *Provisioner) waitForNodeReboot() error {
 }
 
 func (p *Provisioner) Run(env v1alpha1.Environment) error {
+	// Validate all user-supplied inputs that will be interpolated into shell scripts
+	if err := templates.ValidateTemplateInputs(env); err != nil {
+		return fmt.Errorf("template input validation failed: %w", err)
+	}
+
 	dependencies := NewDependencies(&env)
 
 	// Create kubeadm config file if required installer is kubeadm and not using legacy mode

@@ -69,7 +69,7 @@ func (m command) build() *cli.Command {
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				return fmt.Errorf("failed to read config file %s: %v", opts.envFile, err)
+				return fmt.Errorf("failed to read config file %s: %w", opts.envFile, err)
 			}
 
 			return nil
@@ -132,11 +132,11 @@ func connectOrDie(keyPath, userName, hostUrl string) error {
 	var err error
 	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
-		return fmt.Errorf("failed to read key file: %v", err)
+		return fmt.Errorf("failed to read key file: %w", err)
 	}
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return fmt.Errorf("failed to parse private key: %v", err)
+		return fmt.Errorf("failed to parse private key: %w", err)
 	}
 	sshConfig := &ssh.ClientConfig{
 		User: userName,

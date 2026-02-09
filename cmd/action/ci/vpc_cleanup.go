@@ -94,7 +94,7 @@ func RunCleanup(log *logger.FunLogger) error {
 		}
 
 		if cleanupErr != nil {
-			log.Error(fmt.Errorf("failed to cleanup VPC %s: %v", vpcID, cleanupErr))
+			log.Error(fmt.Errorf("failed to cleanup VPC %s: %w", vpcID, cleanupErr))
 			failCount++
 		} else {
 			log.Info("Successfully cleaned up VPC %s", vpcID)

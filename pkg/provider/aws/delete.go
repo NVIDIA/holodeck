@@ -65,7 +65,7 @@ func (p *Provider) deleteNLBForCluster(cache *ClusterCache) error {
 	describeInput := &elasticloadbalancingv2.DescribeLoadBalancersInput{}
 	describeOutput, err := p.elbv2.DescribeLoadBalancers(ctx, describeInput)
 	if err != nil {
-		return fmt.Errorf("error describing load balancers: %v", err)
+		return fmt.Errorf("error describing load balancers: %w", err)
 	}
 
 	// Find load balancer by DNS name
@@ -213,7 +213,7 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 					p.log.Info("Instance %s confirmed terminated despite waiter error", id)
 					return
 				}
-				errChan <- fmt.Errorf("error waiting for instance %s termination: %v", id, waitErr)
+				errChan <- fmt.Errorf("error waiting for instance %s termination: %w", id, waitErr)
 				return
 			}
 

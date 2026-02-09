@@ -150,19 +150,19 @@ func (m command) run(src, dst string) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get instance: %v", err)
+		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	// Load environment for SSH details
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read environment: %v", err)
+		return fmt.Errorf("failed to read environment: %w", err)
 	}
 
 	// Determine host URL
 	hostUrl, err := common.GetHostURL(&env, m.node, true)
 	if err != nil {
-		return fmt.Errorf("failed to get host URL: %v", err)
+		return fmt.Errorf("failed to get host URL: %w", err)
 	}
 
 	// Get SSH credentials
@@ -175,13 +175,13 @@ func (m command) run(src, dst string) error {
 	// Create SSH and SFTP clients
 	sshClient, err := common.ConnectSSH(m.log, keyPath, userName, hostUrl)
 	if err != nil {
-		return fmt.Errorf("failed to connect: %v", err)
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer sshClient.Close() //nolint:errcheck
 
 	sftpClient, err := sftp.NewClient(sshClient)
 	if err != nil {
-		return fmt.Errorf("failed to create SFTP client: %v", err)
+		return fmt.Errorf("failed to create SFTP client: %w", err)
 	}
 	defer sftpClient.Close() //nolint:errcheck
 
@@ -195,7 +195,7 @@ func (m command) run(src, dst string) error {
 func (m command) copyToRemote(client *sftp.Client, localPath, remotePath string) error {
 	info, err := os.Stat(localPath)
 	if err != nil {
-		return fmt.Errorf("failed to stat local path: %v", err)
+		return fmt.Errorf("failed to stat local path: %w", err)
 	}
 
 	if info.IsDir() {
@@ -212,7 +212,7 @@ func (m command) copyFileToRemote(client *sftp.Client, localPath, remotePath str
 	// Open local file
 	localFile, err := os.Open(localPath) //nolint:gosec // localPath is user-provided CLI arg
 	if err != nil {
-		return fmt.Errorf("failed to open local file: %v", err)
+		return fmt.Errorf("failed to open local file: %w", err)
 	}
 	defer localFile.Close() //nolint:errcheck
 
@@ -223,14 +223,14 @@ func (m command) copyFileToRemote(client *sftp.Client, localPath, remotePath str
 	// Create remote file
 	remoteFile, err := client.Create(remotePath)
 	if err != nil {
-		return fmt.Errorf("failed to create remote file: %v", err)
+		return fmt.Errorf("failed to create remote file: %w", err)
 	}
 	defer remoteFile.Close() //nolint:errcheck
 
 	// Copy content
 	bytes, err := io.Copy(remoteFile, localFile)
 	if err != nil {
-		return fmt.Errorf("failed to copy file: %v", err)
+		return fmt.Errorf("failed to copy file: %w", err)
 	}
 
 	m.log.Info("Copied %s -> %s (%d bytes)", localPath, remotePath, bytes)
@@ -262,7 +262,7 @@ func (m command) copyDirToRemote(client *sftp.Client, localPath, remotePath stri
 func (m command) copyFromRemote(client *sftp.Client, remotePath, localPath string) error {
 	info, err := client.Stat(remotePath)
 	if err != nil {
-		return fmt.Errorf("failed to stat remote path: %v", err)
+		return fmt.Errorf("failed to stat remote path: %w", err)
 	}
 
 	if info.IsDir() {
@@ -279,27 +279,27 @@ func (m command) copyFileFromRemote(client *sftp.Client, remotePath, localPath s
 	// Open remote file
 	remoteFile, err := client.Open(remotePath)
 	if err != nil {
-		return fmt.Errorf("failed to open remote file: %v", err)
+		return fmt.Errorf("failed to open remote file: %w", err)
 	}
 	defer remoteFile.Close() //nolint:errcheck
 
 	// Ensure local directory exists
 	localDir := filepath.Dir(localPath)
 	if err := os.MkdirAll(localDir, 0750); err != nil {
-		return fmt.Errorf("failed to create local directory: %v", err)
+		return fmt.Errorf("failed to create local directory: %w", err)
 	}
 
 	// Create local file
 	localFile, err := os.Create(localPath) //nolint:gosec // localPath is user-provided CLI arg
 	if err != nil {
-		return fmt.Errorf("failed to create local file: %v", err)
+		return fmt.Errorf("failed to create local file: %w", err)
 	}
 	defer localFile.Close() //nolint:errcheck
 
 	// Copy content
 	bytes, err := io.Copy(localFile, remoteFile)
 	if err != nil {
-		return fmt.Errorf("failed to copy file: %v", err)
+		return fmt.Errorf("failed to copy file: %w", err)
 	}
 
 	m.log.Info("Copied %s -> %s (%d bytes)", remotePath, localPath, bytes)

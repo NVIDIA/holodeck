@@ -108,7 +108,7 @@ func (m command) build() *cli.Command {
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				return fmt.Errorf("error reading config file: %s", err)
+				return fmt.Errorf("error reading config file: %w", err)
 			}
 
 			// if no containerruntime is specified, default to none
@@ -184,7 +184,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 	// Read cache after creating the environment
 	opts.cache, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.cacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read cache file: %v", err)
+		return fmt.Errorf("failed to read cache file: %w", err)
 	}
 
 	if opts.provision {
@@ -443,22 +443,22 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 		}
 		data, err := jyaml.MarshalYAML(opts.cfg)
 		if err != nil {
-			return fmt.Errorf("failed to marshal environment: %v", err)
+			return fmt.Errorf("failed to marshal environment: %w", err)
 		}
 		if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
-			return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+			return fmt.Errorf("failed to update cache file with provisioning status: %w", err)
 		}
-		return fmt.Errorf("failed to run provisioner: %v", err)
+		return fmt.Errorf("failed to run provisioner: %w", err)
 	}
 
 	// Set provisioning status to true after successful provisioning
 	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "true"
 	data, err := jyaml.MarshalYAML(opts.cfg)
 	if err != nil {
-		return fmt.Errorf("failed to marshal environment: %v", err)
+		return fmt.Errorf("failed to marshal environment: %w", err)
 	}
 	if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
-		return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+		return fmt.Errorf("failed to update cache file with provisioning status: %w", err)
 	}
 
 	// Download kubeconfig
@@ -476,7 +476,7 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 			}
 		}
 		if err = utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
-			return fmt.Errorf("failed to get kubeconfig: %v", err)
+			return fmt.Errorf("failed to get kubeconfig: %w", err)
 		}
 	}
 
@@ -524,22 +524,22 @@ func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
 		}
 		data, err := jyaml.MarshalYAML(opts.cfg)
 		if err != nil {
-			return fmt.Errorf("failed to marshal environment: %v", err)
+			return fmt.Errorf("failed to marshal environment: %w", err)
 		}
 		if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
-			return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+			return fmt.Errorf("failed to update cache file with provisioning status: %w", err)
 		}
-		return fmt.Errorf("failed to provision multinode cluster: %v", err)
+		return fmt.Errorf("failed to provision multinode cluster: %w", err)
 	}
 
 	// Set provisioning status to true after successful provisioning
 	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "true"
 	data, err := jyaml.MarshalYAML(opts.cfg)
 	if err != nil {
-		return fmt.Errorf("failed to marshal environment: %v", err)
+		return fmt.Errorf("failed to marshal environment: %w", err)
 	}
 	if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
-		return fmt.Errorf("failed to update cache file with provisioning status: %v", err)
+		return fmt.Errorf("failed to update cache file with provisioning status: %w", err)
 	}
 
 	// Download kubeconfig from first control-plane node
@@ -554,7 +554,7 @@ func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
 		}
 		if hostUrl != "" {
 			if err := utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
-				return fmt.Errorf("failed to get kubeconfig: %v", err)
+				return fmt.Errorf("failed to get kubeconfig: %w", err)
 			}
 		}
 	}

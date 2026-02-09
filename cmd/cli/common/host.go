@@ -87,12 +87,12 @@ const (
 func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	key, err := os.ReadFile(keyPath) //nolint:gosec // keyPath is from trusted env config
 	if err != nil {
-		return nil, fmt.Errorf("failed to read key file %s: %v", keyPath, err)
+		return nil, fmt.Errorf("failed to read key file %s: %w", keyPath, err)
 	}
 
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %v", err)
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
 	config := &ssh.ClientConfig{
@@ -116,5 +116,5 @@ func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.
 		time.Sleep(sshRetryDelay)
 	}
 
-	return nil, fmt.Errorf("failed to connect after %d attempts: %v", sshMaxRetries, err)
+	return nil, fmt.Errorf("failed to connect after %d attempts: %w", sshMaxRetries, err)
 }

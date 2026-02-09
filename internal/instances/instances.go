@@ -156,7 +156,7 @@ func (m *Manager) ListInstances() ([]Instance, error) {
 	// Read all cache files
 	files, err := os.ReadDir(m.cachePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read cache directory: %v", err)
+		return nil, fmt.Errorf("failed to read cache directory: %w", err)
 	}
 
 	for _, file := range files {
@@ -238,12 +238,12 @@ func (m *Manager) GetInstance(instanceID string) (*Instance, error) {
 
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read cache file: %v", err)
+		return nil, fmt.Errorf("failed to read cache file: %w", err)
 	}
 
 	fileInfo, err := os.Stat(cacheFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get file info: %v", err)
+		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
 	// Get instance status from provider
@@ -288,7 +288,7 @@ func (m *Manager) DeleteInstance(instanceID string) error {
 
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read cache file: %v", err)
+		return fmt.Errorf("failed to read cache file: %w", err)
 	}
 
 	// Delete resources based on provider
@@ -296,10 +296,10 @@ func (m *Manager) DeleteInstance(instanceID string) error {
 	case v1alpha1.ProviderAWS:
 		client, err := aws.New(m.log, env, cacheFile)
 		if err != nil {
-			return fmt.Errorf("failed to create AWS provider: %v", err)
+			return fmt.Errorf("failed to create AWS provider: %w", err)
 		}
 		if err := client.Delete(); err != nil {
-			return fmt.Errorf("failed to delete AWS resources: %v", err)
+			return fmt.Errorf("failed to delete AWS resources: %w", err)
 		}
 	case v1alpha1.ProviderSSH:
 		m.log.Info("SSH infrastructure cleanup not implemented")
@@ -307,7 +307,7 @@ func (m *Manager) DeleteInstance(instanceID string) error {
 
 	// Remove cache file
 	if err := os.Remove(cacheFile); err != nil {
-		return fmt.Errorf("failed to remove cache file: %v", err)
+		return fmt.Errorf("failed to remove cache file: %w", err)
 	}
 
 	return nil
@@ -319,12 +319,12 @@ func (m *Manager) GetInstanceByFilename(filename string) (*Instance, error) {
 
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read cache file: %v", err)
+		return nil, fmt.Errorf("failed to read cache file: %w", err)
 	}
 
 	fileInfo, err := os.Stat(cacheFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get file info: %v", err)
+		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
 	// Get instance status from provider

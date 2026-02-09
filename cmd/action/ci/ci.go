@@ -76,7 +76,7 @@ func readInputs() error {
 	if awsSshKey != "" {
 		err := os.Setenv("AWS_SSH_KEY", awsSshKey)
 		if err != nil {
-			return fmt.Errorf("failed to set AWS_SSH_KEY: %v", err)
+			return fmt.Errorf("failed to set AWS_SSH_KEY: %w", err)
 		}
 	}
 	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
@@ -85,14 +85,14 @@ func readInputs() error {
 	if accessKeyID != "" {
 		err := os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
 		if err != nil {
-			return fmt.Errorf("failed to set AWS_ACCESS_KEY_ID: %v", err)
+			return fmt.Errorf("failed to set AWS_ACCESS_KEY_ID: %w", err)
 		}
 	}
 	secretAccessKey := os.Getenv("INPUT_AWS_SECRET_ACCESS_KEY")
 	if secretAccessKey != "" {
 		err := os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
 		if err != nil {
-			return fmt.Errorf("failed to set AWS_SECRET_ACCESS_KEY: %v", err)
+			return fmt.Errorf("failed to set AWS_SECRET_ACCESS_KEY: %w", err)
 		}
 	}
 
@@ -101,7 +101,7 @@ func readInputs() error {
 	if vsphereSshKey != "" {
 		err := os.Setenv("VSPHERE_SSH_KEY", vsphereSshKey)
 		if err != nil {
-			return fmt.Errorf("failed to set VSPHERE_SSH_KEY: %v", err)
+			return fmt.Errorf("failed to set VSPHERE_SSH_KEY: %w", err)
 		}
 	}
 	// Map INPUT_VSPHERE_USERNAME and INPUT_VSPHERE_PASSWORD
@@ -110,14 +110,14 @@ func readInputs() error {
 	if vsphereUsername != "" {
 		err := os.Setenv("HOLODECK_VCENTER_USERNAME", vsphereUsername)
 		if err != nil {
-			return fmt.Errorf("failed to set HOLODECK_VCENTER_USERNAME: %v", err)
+			return fmt.Errorf("failed to set HOLODECK_VCENTER_USERNAME: %w", err)
 		}
 	}
 	vspherePassword := os.Getenv("INPUT_VSPHERE_PASSWORD")
 	if vspherePassword != "" {
 		err := os.Setenv("HOLODECK_VCENTER_PASSWORD", vspherePassword)
 		if err != nil {
-			return fmt.Errorf("failed to set HOLODECK_VCENTER_PASSWORD: %v", err)
+			return fmt.Errorf("failed to set HOLODECK_VCENTER_PASSWORD: %w", err)
 		}
 	}
 

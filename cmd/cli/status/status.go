@@ -161,7 +161,7 @@ func (m command) run(c *cli.Context, instanceID string) error {
 		// Try to get the instance by filename (for old cache files)
 		instance, err = manager.GetInstanceByFilename(instanceID)
 		if err != nil {
-			return fmt.Errorf("failed to get instance: %v", err)
+			return fmt.Errorf("failed to get instance: %w", err)
 		}
 	}
 

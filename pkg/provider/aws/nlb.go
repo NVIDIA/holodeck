@@ -65,7 +65,7 @@ func (p *Provider) createNLB(cache *ClusterCache) error {
 	createLBOutput, err := p.elbv2.CreateLoadBalancer(ctx, createLBInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating load balancer: %v", err)
+		return fmt.Errorf("error creating load balancer: %w", err)
 	}
 
 	if len(createLBOutput.LoadBalancers) == 0 {
@@ -115,7 +115,7 @@ func (p *Provider) createTargetGroup(cache *ClusterCache) error {
 	createTGOutput, err := p.elbv2.CreateTargetGroup(ctx, createTGInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error creating target group: %v", err)
+		return fmt.Errorf("error creating target group: %w", err)
 	}
 
 	if len(createTGOutput.TargetGroups) == 0 {
@@ -130,7 +130,7 @@ func (p *Provider) createTargetGroup(cache *ClusterCache) error {
 
 	// Create listener to forward traffic from NLB to target group
 	if err := p.createListener(cache); err != nil {
-		return fmt.Errorf("error creating listener: %v", err)
+		return fmt.Errorf("error creating listener: %w", err)
 	}
 
 	p.done()
@@ -167,7 +167,7 @@ func (p *Provider) createListener(cache *ClusterCache) error {
 
 	_, err := p.elbv2.CreateListener(ctx, createListenerInput)
 	if err != nil {
-		return fmt.Errorf("error creating listener: %v", err)
+		return fmt.Errorf("error creating listener: %w", err)
 	}
 
 	p.log.Info("Created listener on port %d", k8sAPIPort)
@@ -215,7 +215,7 @@ func (p *Provider) registerTargets(cache *ClusterCache) error {
 	_, err := p.elbv2.RegisterTargets(ctx, registerInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error registering targets: %v", err)
+		return fmt.Errorf("error registering targets: %w", err)
 	}
 
 	p.log.Info("Registered %d control-plane instance(s) with load balancer", len(targets))
@@ -258,7 +258,7 @@ func (p *Provider) deleteNLB(cache *ClusterCache) error {
 	_, err := p.elbv2.DeleteLoadBalancer(ctx, deleteLBInput)
 	if err != nil {
 		p.fail()
-		return fmt.Errorf("error deleting load balancer: %v", err)
+		return fmt.Errorf("error deleting load balancer: %w", err)
 	}
 
 	p.log.Info("Deleted Network Load Balancer: %s", cache.LoadBalancerArn)
@@ -282,7 +282,7 @@ func (p *Provider) deleteListener(cache *ClusterCache) error {
 
 	describeOutput, err := p.elbv2.DescribeListeners(ctx, describeInput)
 	if err != nil {
-		return fmt.Errorf("error describing listeners: %v", err)
+		return fmt.Errorf("error describing listeners: %w", err)
 	}
 
 	// Delete all listeners
@@ -296,7 +296,7 @@ func (p *Provider) deleteListener(cache *ClusterCache) error {
 		cancelDel()
 
 		if err != nil {
-			return fmt.Errorf("error deleting listener %s: %v", aws.ToString(listener.ListenerArn), err)
+			return fmt.Errorf("error deleting listener %s: %w", aws.ToString(listener.ListenerArn), err)
 		}
 	}
 
@@ -346,7 +346,7 @@ func (p *Provider) deleteTargetGroup(cache *ClusterCache) error {
 
 	_, err = p.elbv2.DeleteTargetGroup(ctx, deleteTGInput)
 	if err != nil {
-		return fmt.Errorf("error deleting target group: %v", err)
+		return fmt.Errorf("error deleting target group: %w", err)
 	}
 
 	return nil

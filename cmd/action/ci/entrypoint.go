@@ -41,7 +41,7 @@ func entrypoint(log *logger.FunLogger) error {
 	// Read the config file
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
 	if err != nil {
-		return fmt.Errorf("error reading config file: %s", err)
+		return fmt.Errorf("error reading config file: %w", err)
 	}
 	// If no containerruntime is specified, default to none
 	if cfg.Spec.ContainerRuntime.Name == "" {
@@ -53,7 +53,7 @@ func entrypoint(log *logger.FunLogger) error {
 
 	provider, err := newProvider(log, &cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create provider: %v", err)
+		return fmt.Errorf("failed to create provider: %w", err)
 	}
 
 	err = provider.Create()
@@ -64,7 +64,7 @@ func entrypoint(log *logger.FunLogger) error {
 	// Read cache after creating the environment
 	cache, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read cache file: %v", err)
+		return fmt.Errorf("failed to read cache file: %w", err)
 	}
 
 	// Get the host url
@@ -92,13 +92,13 @@ func entrypoint(log *logger.FunLogger) error {
 
 	log.Info("Provisioning \u2699")
 	if err = p.Run(cfg); err != nil {
-		return fmt.Errorf("failed to run provisioner: %v", err)
+		return fmt.Errorf("failed to run provisioner: %w", err)
 	}
 
 	if cfg.Spec.Kubernetes.Install {
 		err = utils.GetKubeConfig(log, &cfg, hostUrl, kubeconfig)
 		if err != nil {
-			return fmt.Errorf("failed to get kubeconfig: %v", err)
+			return fmt.Errorf("failed to get kubeconfig: %w", err)
 		}
 	}
 
