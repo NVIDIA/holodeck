@@ -55,7 +55,7 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	}
 
 	// Create a new file on the local system to save the downloaded content
-	localFile, err := os.Create(dest) // nolint:gosec
+	localFile, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("error creating local file: %w", err)
 	}
