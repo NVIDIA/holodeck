@@ -26,6 +26,7 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+	"github.com/NVIDIA/holodeck/pkg/sshutil"
 )
 
 // GetHostURL resolves the SSH-reachable host URL for an environment.
@@ -79,11 +80,7 @@ const (
 )
 
 // ConnectSSH establishes an SSH connection with retries.
-//
-// Host key verification is disabled because server host keys are generated
-// at instance boot time and there is no trusted channel to distribute them
-// to the client beforehand. The env file's privateKey/publicKey fields are
-// SSH *authentication* keys (client-to-server), not server host keys.
+// Host key verification uses Trust-On-First-Use (TOFU).
 func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	key, err := os.ReadFile(keyPath) //nolint:gosec // keyPath is from trusted env config
 	if err != nil {
@@ -100,9 +97,7 @@ func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		// Server host keys are generated at instance boot with no trusted
-		// distribution channel; disable verification (CWE-322 accepted risk).
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
+		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
 		Timeout:         30 * time.Second,
 	}
 

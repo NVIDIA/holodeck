@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package provisioner
+package sshutil
 
 import (
 	"crypto/ecdsa"
@@ -61,7 +61,7 @@ func TestTOFU_FirstConnection_RecordsKey(t *testing.T) {
 	key := generateTestKey(t)
 	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
 
-	cb := tofuHostKeyCallback()
+	cb := TOFUHostKeyCallback()
 	if err := cb("testhost:22", addr, key); err != nil {
 		t.Fatalf("first connection should succeed: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestTOFU_SubsequentConnection_SameKey_Accepted(t *testing.T) {
 	key := generateTestKey(t)
 	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
 
-	cb := tofuHostKeyCallback()
+	cb := TOFUHostKeyCallback()
 
 	if err := cb("testhost:22", addr, key); err != nil {
 		t.Fatalf("first connection should succeed: %v", err)
@@ -98,7 +98,7 @@ func TestTOFU_SubsequentConnection_DifferentKey_Rejected(t *testing.T) {
 	key2 := generateTestKey(t)
 	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
 
-	cb := tofuHostKeyCallback()
+	cb := TOFUHostKeyCallback()
 
 	if err := cb("testhost:22", addr, key1); err != nil {
 		t.Fatalf("first connection should succeed: %v", err)
@@ -125,7 +125,7 @@ func TestTOFU_UnreadableFile_ReturnsError(t *testing.T) {
 	key := generateTestKey(t)
 	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
 
-	cb := tofuHostKeyCallback()
+	cb := TOFUHostKeyCallback()
 	if err := cb("testhost:22", addr, key); err == nil {
 		t.Fatal("should return error when known_hosts is not readable")
 	}

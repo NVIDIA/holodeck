@@ -26,6 +26,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
+	"github.com/NVIDIA/holodeck/pkg/sshutil"
 
 	cli "github.com/urfave/cli/v2"
 	"golang.org/x/crypto/ssh"
@@ -143,7 +144,7 @@ func connectOrDie(keyPath, userName, hostUrl string) error {
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // nolint:gosec
+		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
 	}
 
 	connectionFailed := false
