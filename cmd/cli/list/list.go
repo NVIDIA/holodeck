@@ -133,7 +133,7 @@ func (m *command) run(c *cli.Context) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instList, err := manager.ListInstances()
 	if err != nil {
-		return fmt.Errorf("failed to list instances: %v", err)
+		return fmt.Errorf("failed to list instances: %w", err)
 	}
 
 	if len(instList) == 0 {

@@ -146,13 +146,13 @@ func (m command) runKubeconfig(instanceID string) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get instance: %v", err)
+		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	// Load environment
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read environment: %v", err)
+		return fmt.Errorf("failed to read environment: %w", err)
 	}
 
 	// Check if Kubernetes is installed
@@ -163,7 +163,7 @@ func (m command) runKubeconfig(instanceID string) error {
 	// Determine host URL
 	hostUrl, err := common.GetHostURL(&env, m.node, true)
 	if err != nil {
-		return fmt.Errorf("failed to get host URL: %v", err)
+		return fmt.Errorf("failed to get host URL: %w", err)
 	}
 
 	// Determine output path
@@ -171,18 +171,18 @@ func (m command) runKubeconfig(instanceID string) error {
 	if outputPath == "" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			return fmt.Errorf("failed to get home directory: %v", err)
+			return fmt.Errorf("failed to get home directory: %w", err)
 		}
 		kubeDir := filepath.Join(homeDir, ".kube")
 		if err := os.MkdirAll(kubeDir, 0750); err != nil {
-			return fmt.Errorf("failed to create .kube directory: %v", err)
+			return fmt.Errorf("failed to create .kube directory: %w", err)
 		}
 		outputPath = filepath.Join(kubeDir, fmt.Sprintf("config-%s", instanceID))
 	}
 
 	// Download kubeconfig
 	if err := utils.GetKubeConfig(m.log, &env, hostUrl, outputPath); err != nil {
-		return fmt.Errorf("failed to download kubeconfig: %v", err)
+		return fmt.Errorf("failed to download kubeconfig: %w", err)
 	}
 
 	m.log.Info("Kubeconfig saved to: %s", outputPath)
@@ -197,13 +197,13 @@ func (m command) runSSHConfig(instanceID string) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get instance: %v", err)
+		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	// Load environment
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read environment: %v", err)
+		return fmt.Errorf("failed to read environment: %w", err)
 	}
 
 	userName := env.Spec.Username
@@ -220,7 +220,7 @@ func (m command) runSSHConfig(instanceID string) error {
 	// Single node
 	hostUrl, err := common.GetHostURL(&env, m.node, false)
 	if err != nil {
-		return fmt.Errorf("failed to get host URL: %v", err)
+		return fmt.Errorf("failed to get host URL: %w", err)
 	}
 
 	fmt.Printf("# Holodeck instance: %s\n", instanceID)

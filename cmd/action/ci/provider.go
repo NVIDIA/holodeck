@@ -48,7 +48,7 @@ func newAwsProvider(log *logger.FunLogger, cfg *v1alpha1.Environment) (*aws.Prov
 	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
 		err := os.Mkdir(cachedir, 0750)
 		if err != nil {
-			log.Error(fmt.Errorf("error creating cache directory: %s", err))
+			log.Error(fmt.Errorf("error creating cache directory: %w", err))
 			return nil, err
 		}
 	}
@@ -77,14 +77,14 @@ func getSSHKeyFile(log *logger.FunLogger, envKey string) error {
 		}
 		err := os.WriteFile(sshKeyFile, []byte(envSshKey), 0600)
 		if err != nil {
-			log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
+			log.Error(fmt.Errorf("error writing ssh key to file: %w", err))
 			return err
 		}
 	} else {
 		// copy file to sshKeyFile
 		err := os.Rename(holodeckSSHKeyFile, sshKeyFile)
 		if err != nil {
-			log.Error(fmt.Errorf("error copying ssh key file: %s", err))
+			log.Error(fmt.Errorf("error copying ssh key file: %w", err))
 			return err
 		}
 	}

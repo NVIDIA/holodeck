@@ -73,12 +73,12 @@ func (m command) run(c *cli.Context) error {
 		// First check if the instance exists
 		instance, err := manager.GetInstance(instanceID)
 		if err != nil {
-			return fmt.Errorf("failed to get instance %s: %v", instanceID, err)
+			return fmt.Errorf("failed to get instance %s: %w", instanceID, err)
 		}
 
 		// Delete the instance
 		if err := manager.DeleteInstance(instanceID); err != nil {
-			return fmt.Errorf("failed to delete instance %s: %v", instanceID, err)
+			return fmt.Errorf("failed to delete instance %s: %w", instanceID, err)
 		}
 
 		m.log.Info("Successfully deleted instance %s (%s)", instanceID, instance.Name)

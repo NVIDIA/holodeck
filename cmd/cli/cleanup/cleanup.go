@@ -179,9 +179,9 @@ func (m *command) run(c *cli.Context) error {
 
 		if cleanupErr != nil {
 			if ctx.Err() != nil {
-				m.log.Error(fmt.Errorf("cleanup of VPC %s was cancelled: %v", vpcID, cleanupErr))
+				m.log.Error(fmt.Errorf("cleanup of VPC %s was cancelled: %w", vpcID, cleanupErr))
 			} else {
-				m.log.Error(fmt.Errorf("failed to cleanup VPC %s: %v", vpcID, cleanupErr))
+				m.log.Error(fmt.Errorf("failed to cleanup VPC %s: %w", vpcID, cleanupErr))
 			}
 			failCount++
 		} else {

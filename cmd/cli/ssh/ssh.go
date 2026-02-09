@@ -112,19 +112,19 @@ func (m command) run(instanceID string, remoteCmd []string) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get instance: %v", err)
+		return fmt.Errorf("failed to get instance: %w", err)
 	}
 
 	// Load environment for SSH details
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](instance.CacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read environment: %v", err)
+		return fmt.Errorf("failed to read environment: %w", err)
 	}
 
 	// Determine host URL
 	hostUrl, err := common.GetHostURL(&env, m.node, true)
 	if err != nil {
-		return fmt.Errorf("failed to get host URL: %v", err)
+		return fmt.Errorf("failed to get host URL: %w", err)
 	}
 
 	// Get SSH credentials from environment
@@ -142,7 +142,7 @@ func (m command) run(instanceID string, remoteCmd []string) error {
 	// For command execution, use Go SSH library
 	client, err := common.ConnectSSH(m.log, keyPath, userName, hostUrl)
 	if err != nil {
-		return fmt.Errorf("failed to connect: %v", err)
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer client.Close() //nolint:errcheck
 
@@ -152,7 +152,7 @@ func (m command) run(instanceID string, remoteCmd []string) error {
 func (m command) runCommand(client *ssh.Client, cmd []string) error {
 	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create session: %v", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
 	defer session.Close() //nolint:errcheck
 
