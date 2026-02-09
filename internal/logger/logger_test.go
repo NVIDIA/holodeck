@@ -212,3 +212,49 @@ func TestTraceMethodFormat(t *testing.T) {
 		t.Errorf("Trace() format not applied correctly, got: %s", output)
 	}
 }
+
+func TestNewLoggerInitializesFields(t *testing.T) {
+	l := NewLogger()
+	if l.Out == nil {
+		t.Error("NewLogger().Out should not be nil")
+	}
+	if l.Done == nil {
+		t.Error("NewLogger().Done channel should not be nil")
+	}
+	if l.Fail == nil {
+		t.Error("NewLogger().Fail channel should not be nil")
+	}
+	if l.Wg == nil {
+		t.Error("NewLogger().Wg should not be nil")
+	}
+	if l.ExitFunc == nil {
+		t.Error("NewLogger().ExitFunc should not be nil")
+	}
+}
+
+func TestInfoEmptyStringDoesNotPanic(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLogger()
+	l.Out = &buf
+
+	// This should not panic — previously format[len(format)-1] on empty string
+	// caused an index out of range panic.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Info(\"\") panicked: %v", r)
+		}
+	}()
+	l.Info("")
+}
+
+func TestLoadingCompletesOnDone(t *testing.T) {
+	l := NewLogger()
+	l.IsCI = true // Force non-interactive path for deterministic testing
+
+	l.Wg.Add(1)
+	go l.Loading("loading test")
+
+	// Signal completion
+	close(l.Done)
+	l.Wg.Wait() // Should return without hanging
+}

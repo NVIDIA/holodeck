@@ -127,7 +127,7 @@ func (l *FunLogger) Info(format string, a ...any) {
 	if l.getVerbosity() < VerbosityNormal {
 		return
 	}
-	if format[len(format)-1] != '\n' {
+	if len(format) == 0 || format[len(format)-1] != '\n' {
 		format += "\n"
 	}
 
@@ -163,7 +163,7 @@ func (l *FunLogger) Debug(format string, a ...any) {
 	if l.getVerbosity() < VerbosityVerbose {
 		return
 	}
-	if format[len(format)-1] != '\n' {
+	if len(format) == 0 || format[len(format)-1] != '\n' {
 		format += "\n"
 	}
 	fmt.Fprintf(l.Out, "[DEBUG] "+format, a...) // nolint: errcheck
@@ -175,7 +175,7 @@ func (l *FunLogger) Trace(format string, a ...any) {
 	if l.getVerbosity() < VerbosityDebug {
 		return
 	}
-	if format[len(format)-1] != '\n' {
+	if len(format) == 0 || format[len(format)-1] != '\n' {
 		format += "\n"
 	}
 	fmt.Fprintf(l.Out, "[TRACE] "+format, a...) // nolint: errcheck
@@ -204,7 +204,7 @@ func (l *FunLogger) Loading(format string, a ...any) {
 	}
 
 	// if message ends with a newline, remove it
-	if message[len(message)-1] == '\n' {
+	if len(message) > 0 && message[len(message)-1] == '\n' {
 		message = message[:len(message)-1]
 	}
 

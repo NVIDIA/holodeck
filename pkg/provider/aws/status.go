@@ -174,167 +174,73 @@ func update(env *v1alpha1.Environment, cachePath string) error {
 	return os.Chmod(cachePath, 0600)
 }
 
+// updateCondition is used to update the condition of a given resource.
+func (p *Provider) updateCondition(env v1alpha1.Environment, cache *AWS, conditions []metav1.Condition) error {
+	return p.updateStatus(env, cache, conditions)
+}
+
 // updateAvailableCondition is used to mark a given resource as "available".
 func (p *Provider) updateAvailableCondition(env v1alpha1.Environment, cache *AWS) error {
-	availableCondition := getAvailableConditions()
-	if err := p.updateStatus(env, cache, availableCondition); err != nil {
-		return err
-	}
-
-	return nil
+	return p.updateCondition(env, cache, getAvailableConditions())
 }
 
 // updateTerminatedCondition is used to mark a given resource as "terminated".
 func (p *Provider) updateTerminatedCondition(env v1alpha1.Environment, cache *AWS) error {
-	terminatedCondition := getTerminatedConditions("v1alpha1.Terminated", "AWS resources have been terminated")
-	if err := p.updateStatus(env, cache, terminatedCondition); err != nil {
-		return err
-	}
-
-	return nil
+	return p.updateCondition(env, cache, getTerminatedConditions("v1alpha1.Terminated", "AWS resources have been terminated"))
 }
 
 // updateProgressingCondition is used to mark a given resource as "progressing".
 func (p *Provider) updateProgressingCondition(env v1alpha1.Environment, cache *AWS, reason, message string) error {
-	progressingCondition := getProgressingConditions(reason, message)
-	if err := p.updateStatus(env, cache, progressingCondition); err != nil {
-		return err
-	}
-	return nil
+	return p.updateCondition(env, cache, getProgressingConditions(reason, message))
 }
 
 // updateDegradedCondition is used to mark a given resource as "degraded".
 func (p *Provider) updateDegradedCondition(env v1alpha1.Environment, cache *AWS, reason, message string) error {
-	degradedCondition := getDegradedConditions(reason, message)
-	if err := p.updateStatus(env, cache, degradedCondition); err != nil {
-		return err
-	}
-
-	return nil
+	return p.updateCondition(env, cache, getDegradedConditions(reason, message))
 }
 
-// getAvailableConditions returns a list of Condition objects and marks
-// every condition as FALSE except for ConditionAvailable so that the
-// reconciler can determine that the resource is available.
+// buildConditions creates a standard set of conditions with the specified type set to True.
+func buildConditions(trueType string, reason, message string) []metav1.Condition {
+	now := time.Now()
+	types := []string{
+		v1alpha1.ConditionAvailable,
+		v1alpha1.ConditionProgressing,
+		v1alpha1.ConditionDegraded,
+		v1alpha1.ConditionTerminated,
+	}
+	conditions := make([]metav1.Condition, 0, len(types))
+	for _, t := range types {
+		c := metav1.Condition{
+			Type:               t,
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Time{Time: now},
+		}
+		if t == trueType {
+			c.Status = metav1.ConditionTrue
+		}
+		// Propagate reason/message to the true condition and to ConditionTerminated
+		// (preserving original behavior where degraded/progressing set reason on Terminated)
+		if t == trueType || (t == v1alpha1.ConditionTerminated && reason != "") {
+			c.Reason = reason
+			c.Message = message
+		}
+		conditions = append(conditions, c)
+	}
+	return conditions
+}
+
 func getAvailableConditions() []metav1.Condition {
-	now := time.Now()
-	return []metav1.Condition{
-		{
-			Type:               v1alpha1.ConditionAvailable,
-			Status:             metav1.ConditionTrue,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionProgressing,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionDegraded,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionTerminated,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-	}
+	return buildConditions(v1alpha1.ConditionAvailable, "", "")
 }
 
-// getDegradedConditions returns a list of conditions.Condition objects and marks
-// every condition as FALSE except for conditions.ConditionDegraded so that the
-// reconciler can determine that the resource is degraded.
-func getDegradedConditions(reason string, message string) []metav1.Condition {
-	now := time.Now()
-	return []metav1.Condition{
-		{
-			Type:               v1alpha1.ConditionAvailable,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionProgressing,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionDegraded,
-			Status:             metav1.ConditionTrue,
-			LastTransitionTime: metav1.Time{Time: now},
-			Reason:             reason,
-			Message:            message,
-		},
-		{
-			Type:               v1alpha1.ConditionTerminated,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-			Reason:             reason,
-			Message:            message,
-		},
-	}
+func getDegradedConditions(reason, message string) []metav1.Condition {
+	return buildConditions(v1alpha1.ConditionDegraded, reason, message)
 }
 
-// getProgressingConditions returns a list of Condition objects and marks
-// every condition as FALSE except for ConditionProgressing so that the
-// reconciler can determine that the resource is progressing.
-func getProgressingConditions(reason string, message string) []metav1.Condition {
-	now := time.Now()
-	return []metav1.Condition{
-		{
-			Type:               v1alpha1.ConditionAvailable,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionProgressing,
-			Status:             metav1.ConditionTrue,
-			LastTransitionTime: metav1.Time{Time: now},
-			Reason:             reason,
-			Message:            message,
-		},
-		{
-			Type:               v1alpha1.ConditionDegraded,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionTerminated,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-			Reason:             reason,
-			Message:            message,
-		},
-	}
+func getProgressingConditions(reason, message string) []metav1.Condition {
+	return buildConditions(v1alpha1.ConditionProgressing, reason, message)
 }
 
-// getTerminatedConditions returns a list of conditions.Condition objects and marks
-// every condition as FALSE except for conditions.ConditionTerminated so that the
-// reconciler can determine that the resource is terminated.
-func getTerminatedConditions(reason string, message string) []metav1.Condition {
-	now := time.Now()
-	return []metav1.Condition{
-		{
-			Type:               v1alpha1.ConditionAvailable,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionProgressing,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionDegraded,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Time{Time: now},
-		},
-		{
-			Type:               v1alpha1.ConditionTerminated,
-			Status:             metav1.ConditionTrue,
-			LastTransitionTime: metav1.Time{Time: now},
-			Reason:             reason,
-			Message:            message,
-		},
-	}
+func getTerminatedConditions(reason, message string) []metav1.Condition {
+	return buildConditions(v1alpha1.ConditionTerminated, reason, message)
 }
