@@ -20,10 +20,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -214,28 +214,43 @@ func (p *Provisioner) provision() error {
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
+	defer func() { _ = session.Close() }()
+
 	reader, writer := io.Pipe()
 	session.Stdout = writer
 	session.Stderr = writer
 
+	var wg sync.WaitGroup
+	copyErrCh := make(chan error, 1)
+	wg.Add(1)
 	go func() {
-		defer func() { _ = writer.Close() }()
-		_, err := io.Copy(os.Stdout, reader)
-		if err != nil {
-			log.Fatalf("Failed to copy from reader: %v", err)
+		defer wg.Done()
+		if _, err := io.Copy(os.Stdout, reader); err != nil {
+			copyErrCh <- fmt.Errorf("failed to copy from reader: %w", err)
 		}
 	}()
-	defer func() { _ = session.Close() }()
 
 	script := p.tpl.String()
 
 	// run the script
-	err = session.Start(script)
-	if err != nil {
+	if err = session.Start(script); err != nil {
+		_ = writer.Close() // unblock io.Copy goroutine
+		wg.Wait()
 		return fmt.Errorf("failed to start session: %w", err)
 	}
-	if err := session.Wait(); err != nil {
+	if err = session.Wait(); err != nil {
+		_ = writer.Close()
+		wg.Wait()
 		return fmt.Errorf("failed to wait for session: %w", err)
+	}
+
+	_ = writer.Close()
+	wg.Wait()
+
+	select {
+	case copyErr := <-copyErrCh:
+		return copyErr
+	default:
 	}
 
 	return nil
