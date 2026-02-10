@@ -115,6 +115,8 @@ type FunLogger struct {
 	// activeCancels tracks cancel functions for active Loading goroutines,
 	// allowing Exit() to stop all animations.
 	activeCancels []context.CancelCauseFunc
+	// exited is set to true by Exit() to prevent new Loading goroutines from starting.
+	exited bool
 }
 
 // SetVerbosity sets the verbosity level for the logger.
@@ -201,10 +203,14 @@ func printMessage(color, emoji, message string) {
 // interfere with each other.
 func (l *FunLogger) Loading(format string, a ...any) context.CancelCauseFunc {
 	ctx, cancel := context.WithCancelCause(context.Background())
-	l.Wg.Add(1)
 
-	// Track for Exit() cleanup
 	l.mu.Lock()
+	if l.exited {
+		l.mu.Unlock()
+		cancel(nil)
+		return cancel
+	}
+	l.Wg.Add(1)
 	l.activeCancels = append(l.activeCancels, cancel)
 	l.mu.Unlock()
 
@@ -269,6 +275,7 @@ func (l *FunLogger) isCILogs() bool {
 func (l *FunLogger) Exit(code int) {
 	// Stop all active loading animations
 	l.mu.Lock()
+	l.exited = true
 	for _, cancel := range l.activeCancels {
 		cancel(nil)
 	}
