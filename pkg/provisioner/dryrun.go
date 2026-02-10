@@ -79,15 +79,13 @@ func validateCTKConfig(log *logger.FunLogger, env v1alpha1.Environment) error {
 // Dryrun validates the environment configuration without making changes.
 func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 	// Resolve dependencies from top to bottom
-	log.Wg.Add(1)
-
-	go log.Loading("Resolving dependencies \U0001F4E6\n")
+	cancel := log.Loading("Resolving dependencies \U0001F4E6\n")
 	// Kubernetes -> Container Toolkit -> Container Runtime -> NVDriver
 	if env.Spec.Kubernetes.Install && env.Spec.Kubernetes.KubernetesInstaller == "kubeadm" {
 		// check if env.Spec.Kubernetes.KubernetesVersion is in the format of vX.Y.Z
 		if env.Spec.Kubernetes.KubernetesVersion != "" {
 			if !strings.HasPrefix(env.Spec.Kubernetes.KubernetesVersion, "v") {
-				log.Fail <- struct{}{}
+				cancel(logger.ErrLoadingFailed)
 				return fmt.Errorf("kubernetes version %s is not in the format of vX.Y.Z", env.Spec.Kubernetes.KubernetesVersion)
 			}
 		}
@@ -99,7 +97,7 @@ func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 		} else if env.Spec.ContainerRuntime.Name != v1alpha1.ContainerRuntimeContainerd &&
 			env.Spec.ContainerRuntime.Name != v1alpha1.ContainerRuntimeCrio &&
 			env.Spec.ContainerRuntime.Name != v1alpha1.ContainerRuntimeDocker {
-			log.Fail <- struct{}{}
+			cancel(logger.ErrLoadingFailed)
 			return fmt.Errorf("container runtime %s not supported", env.Spec.ContainerRuntime.Name)
 		}
 	}
@@ -107,12 +105,12 @@ func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 	// Validate CTK configuration
 	if env.Spec.NVIDIAContainerToolkit.Install {
 		if err := validateCTKConfig(log, env); err != nil {
-			log.Fail <- struct{}{}
+			cancel(logger.ErrLoadingFailed)
 			return err
 		}
 	}
 
-	log.Done <- struct{}{}
+	cancel(nil)
 	log.Wg.Wait()
 
 	return nil

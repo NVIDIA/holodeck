@@ -19,6 +19,8 @@ package aws
 import (
 	"context"
 
+	"github.com/NVIDIA/holodeck/internal/logger"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -26,8 +28,7 @@ import (
 
 // Update updates an AWS resources tags
 func (p *Provider) UpdateResourcesTags(tags map[string]string, resources ...string) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Tagging AWS resources...")
+	cancel := p.log.Loading("Tagging AWS resources...")
 
 	var awsTags []types.Tag
 	for k, v := range tags {
@@ -44,10 +45,10 @@ func (p *Provider) UpdateResourcesTags(tags map[string]string, resources ...stri
 
 	_, err := p.ec2.CreateTags(context.Background(), createTagsIn)
 	if err != nil {
-		p.fail()
+		cancel(logger.ErrLoadingFailed)
 		return err
 	}
-	p.done()
+	cancel(nil)
 
 	return nil
 }

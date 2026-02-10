@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -162,8 +163,7 @@ func (p *Provider) Create() error {
 
 // createVPC creates a VPC with CIDR
 func (p *Provider) createVPC(cache *AWS) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating VPC")
+	cancelLoading := p.log.Loading("Creating VPC")
 
 	vpcInput := &ec2.CreateVpcInput{
 		CidrBlock:                   aws.String("10.0.0.0/16"),
@@ -183,7 +183,7 @@ func (p *Provider) createVPC(cache *AWS) error {
 
 	vpcOutput, err := p.ec2.CreateVpc(ctx, vpcInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating VPC: %w", err)
 	}
 	cache.Vpcid = *vpcOutput.Vpc.VpcId
@@ -195,18 +195,17 @@ func (p *Provider) createVPC(cache *AWS) error {
 
 	_, err = p.ec2.ModifyVpcAttribute(context.Background(), modVcp)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error modifying VPC attributes: %w", err)
 	}
-	p.done()
+	cancelLoading(nil)
 
 	return nil
 }
 
 // createSubnet creates a subnet for the VPC
 func (p *Provider) createSubnet(cache *AWS) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating subnet")
+	cancelLoading := p.log.Loading("Creating subnet")
 
 	subnetInput := &ec2.CreateSubnetInput{
 		VpcId:     aws.String(cache.Vpcid),
@@ -224,19 +223,18 @@ func (p *Provider) createSubnet(cache *AWS) error {
 
 	subnetOutput, err := p.ec2.CreateSubnet(ctx, subnetInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating subnet: %w", err)
 	}
 	cache.Subnetid = *subnetOutput.Subnet.SubnetId
 
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
 // createInternetGateway creates an Internet Gateway and attaches it to the VPC
 func (p *Provider) createInternetGateway(cache *AWS) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating Internet Gateway")
+	cancelLoading := p.log.Loading("Creating Internet Gateway")
 
 	gwInput := &ec2.CreateInternetGatewayInput{
 		TagSpecifications: []types.TagSpecification{
@@ -252,7 +250,7 @@ func (p *Provider) createInternetGateway(cache *AWS) error {
 
 	gwOutput, err := p.ec2.CreateInternetGateway(ctx, gwInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating Internet Gateway: %w", err)
 	}
 	cache.InternetGwid = *gwOutput.InternetGateway.InternetGatewayId
@@ -264,21 +262,20 @@ func (p *Provider) createInternetGateway(cache *AWS) error {
 	}
 	_, err = p.ec2.AttachInternetGateway(ctx, attachInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error attaching Internet Gateway: %w", err)
 	}
 	if len(gwOutput.InternetGateway.Attachments) > 0 {
 		cache.InternetGatewayAttachment = *gwOutput.InternetGateway.Attachments[0].VpcId
 	}
 
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
 // createRouteTable creates a route table and associates it with the subnet
 func (p *Provider) createRouteTable(cache *AWS) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating route table")
+	cancelLoading := p.log.Loading("Creating route table")
 
 	rtInput := &ec2.CreateRouteTableInput{
 		VpcId: aws.String(cache.Vpcid),
@@ -295,7 +292,7 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 
 	rtOutput, err := p.ec2.CreateRouteTable(ctx, rtInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating route table: %w", err)
 	}
 	cache.RouteTable = *rtOutput.RouteTable.RouteTableId
@@ -306,7 +303,7 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 		SubnetId:     aws.String(cache.Subnetid),
 	}
 	if _, err = p.ec2.AssociateRouteTable(context.Background(), assocInput); err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error associating route table: %w", err)
 	}
 
@@ -319,15 +316,14 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 		return fmt.Errorf("error creating route: %w", err)
 	}
 
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
 // createSecurityGroup creates a security group to allow external communication
 // with K8S control plane and SSH
 func (p *Provider) createSecurityGroup(cache *AWS) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating security group")
+	cancelLoading := p.log.Loading("Creating security group")
 
 	sgInput := &ec2.CreateSecurityGroupInput{
 		GroupName:   &p.ObjectMeta.Name,
@@ -346,7 +342,7 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 
 	sgOutput, err := p.ec2.CreateSecurityGroup(ctx, sgInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating security group: %w", err)
 	}
 	cache.SecurityGroupid = *sgOutput.GroupId
@@ -404,23 +400,22 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 	}
 
 	if _, err = p.ec2.AuthorizeSecurityGroupIngress(ctx, irInput); err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error authorizing security group ingress: %w", err)
 	}
 
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
 // createEC2Instance creates an EC2 instance with proper Network configuration
 func (p *Provider) createEC2Instance(cache *AWS) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating EC2 instance")
+	cancelLoading := p.log.Loading("Creating EC2 instance")
 
 	// Check if the image is provided, if not get the latest image
 	err := p.setAMI()
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error getting AMI: %w", err)
 	}
 
@@ -468,7 +463,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	}
 	instanceOut, err := p.ec2.RunInstances(context.Background(), instanceIn)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating instance: %w", err)
 	}
 	cache.Instanceid = *instanceOut.Instances[0].InstanceId
@@ -484,7 +479,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	if err = waiter.Wait(context.Background(), &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*instanceOut.Instances[0].InstanceId},
 	}, 5*time.Minute, waiterOptions...); err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error waiting for instance to be in running state: %w", err)
 	}
 
@@ -493,7 +488,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		InstanceIds: []string{*instanceOut.Instances[0].InstanceId},
 	})
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error describing instances: %w", err)
 	}
 	cache.PublicDnsName = *instanceRunning.Reservations[0].Instances[0].PublicDnsName
@@ -510,7 +505,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		Tags:      p.Tags,
 	})
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("fail to tag network to instance: %w", err)
 	}
 
@@ -525,10 +520,10 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 			},
 		})
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error disabling source/dest check: %w", err)
 	}
 
-	p.done()
+	cancelLoading(nil)
 	return nil
 }

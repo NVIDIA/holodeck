@@ -241,12 +241,3 @@ func (p *Provider) unmarsalCache() (*AWS, error) {
 	return aws, nil
 }
 
-func (p *Provider) done() {
-	p.log.Done <- struct{}{}
-	p.log.Wg.Wait()
-}
-
-func (p *Provider) fail() {
-	p.log.Fail <- struct{}{}
-	p.log.Wg.Wait()
-}

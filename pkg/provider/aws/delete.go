@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NVIDIA/holodeck/internal/logger"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -194,8 +196,7 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 		go func(id string) {
 			defer wg.Done()
 
-			p.log.Wg.Add(1)
-			go p.log.Loading("Waiting for instance %s to be terminated", id)
+			cancelLoading := p.log.Loading("Waiting for instance %s to be terminated", id)
 
 			ctx, cancel := context.WithTimeout(context.Background(), deletionTimeout)
 			defer cancel()
@@ -205,24 +206,26 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 				InstanceIds: []string{id},
 			}, deletionTimeout)
 
-			p.done()
-
 			if waitErr != nil {
 				// Verify if instance is actually terminated despite waiter error
 				if p.isInstanceTerminated(id) {
+					cancelLoading(nil)
 					p.log.Info("Instance %s confirmed terminated despite waiter error", id)
 					return
 				}
+				cancelLoading(logger.ErrLoadingFailed)
 				errChan <- fmt.Errorf("error waiting for instance %s termination: %w", id, waitErr)
 				return
 			}
 
 			// Additional verification
 			if !p.isInstanceTerminated(id) {
+				cancelLoading(logger.ErrLoadingFailed)
 				errChan <- fmt.Errorf("instance %s not terminated after waiting", id)
 				return
 			}
 
+			cancelLoading(nil)
 			p.log.Info("EC2 instance %s successfully terminated", id)
 		}(instanceID)
 	}
@@ -293,9 +296,8 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 }
 
 func (p *Provider) deleteVPCResources(cache *AWS) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Deleting VPC resources")
-	defer p.done()
+	cancel := p.log.Loading("Deleting VPC resources")
+	defer cancel(nil)
 
 	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting VPC resources"); err != nil {
 		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))

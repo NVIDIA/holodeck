@@ -18,28 +18,28 @@ package aws
 
 import (
 	"fmt"
+
+	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
 func (p *Provider) DryRun() error {
 	// Check if the desired instance type is supported in the region
-	p.log.Wg.Add(1)
-	go p.log.Loading("Checking if instance type %s is supported in region %s", p.Spec.Type, p.Spec.Region)
+	cancel := p.log.Loading("Checking if instance type %s is supported in region %s", p.Spec.Type, p.Spec.Region)
 	err := p.checkInstanceTypes()
 	if err != nil {
-		p.fail()
+		cancel(logger.ErrLoadingFailed)
 		return err
 	}
-	p.done()
+	cancel(nil)
 
 	// Check if the desired image is supported in the region
-	p.log.Wg.Add(1)
-	go p.log.Loading("Checking image")
+	cancel = p.log.Loading("Checking image")
 	err = p.checkImages()
 	if err != nil {
-		p.fail()
+		cancel(logger.ErrLoadingFailed)
 		return fmt.Errorf("failed to get images: %w", err)
 	}
-	p.done()
+	cancel(nil)
 
 	return nil
 }
