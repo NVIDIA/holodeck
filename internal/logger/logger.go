@@ -17,6 +17,8 @@
 package logger
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,6 +28,10 @@ import (
 
 	"github.com/mattn/go-isatty"
 )
+
+// ErrLoadingFailed is the sentinel cause passed to a Loading cancel function
+// to indicate the operation failed (displays red X instead of green checkmark).
+var ErrLoadingFailed = errors.New("loading failed")
 
 // fdWriter is the subset of file.File that implements io.Writer and Fd()
 type fdWriter interface {
@@ -70,8 +76,6 @@ const (
 func NewLogger() *FunLogger {
 	l := &FunLogger{
 		Out:      os.Stderr,
-		Done:     make(chan struct{}),
-		Fail:     make(chan struct{}),
 		Wg:       &sync.WaitGroup{},
 		ExitFunc: os.Exit,
 	}
@@ -85,7 +89,7 @@ type Logger interface {
 	Check(format string, a ...any)
 	Warning(format string, a ...any)
 	Error(err error)
-	Loading(loadingMessage string)
+	Loading(format string, a ...any) context.CancelCauseFunc
 	Debug(format string, a ...any)
 	Trace(format string, a ...any)
 	SetVerbosity(v Verbosity)
@@ -99,16 +103,20 @@ type FunLogger struct {
 	Out io.Writer
 	// Function to exit the application, defaults to `os.Exit()`
 	ExitFunc exitFunc
-	// Done is a channel that can be used to stop the loading animation.
-	Done chan struct{}
-	// Fail is a channel that can be used to stop the loading animation and print a failure message.
-	Fail chan struct{}
 	// Wg is a WaitGroup that can be used to wait for the loading animation to finish.
 	Wg *sync.WaitGroup
 	// IsCI is a boolean that is set to true if the logger is running in a CI environment.
 	IsCI bool
 	// verbosity controls the logging verbosity level (atomic for thread safety).
 	verbosity atomic.Int32
+
+	// mu protects activeCancels for concurrent Loading/Exit access.
+	mu sync.Mutex
+	// activeCancels tracks cancel functions for active Loading goroutines,
+	// allowing Exit() to stop all animations.
+	activeCancels []context.CancelCauseFunc
+	// exited is set to true by Exit() to prevent new Loading goroutines from starting.
+	exited bool
 }
 
 // SetVerbosity sets the verbosity level for the logger.
@@ -186,21 +194,39 @@ func printMessage(color, emoji, message string) {
 	fmt.Printf("%s%s%s\t%s\n", color, emoji, reset, message)
 }
 
-func (l *FunLogger) Loading(format string, a ...any) {
+// Loading starts a loading animation in a background goroutine and returns a
+// CancelCauseFunc. The caller MUST invoke the returned function to stop:
+//   - cancel(nil)                       → success (green checkmark)
+//   - cancel(logger.ErrLoadingFailed)   → failure (red X)
+//
+// Each invocation is independent — multiple concurrent Loading calls do not
+// interfere with each other.
+func (l *FunLogger) Loading(format string, a ...any) context.CancelCauseFunc {
+	ctx, cancel := context.WithCancelCause(context.Background())
+
+	l.mu.Lock()
+	if l.exited {
+		l.mu.Unlock()
+		cancel(nil)
+		return cancel
+	}
+	l.Wg.Add(1)
+	l.activeCancels = append(l.activeCancels, cancel)
+	l.mu.Unlock()
+
+	go l.runLoading(ctx, fmt.Sprintf(format, a...))
+	return cancel
+}
+
+func (l *FunLogger) runLoading(ctx context.Context, message string) {
 	defer l.Wg.Done()
-	message := fmt.Sprintf(format, a...)
+
 	// if running in a non-interactive terminal, don't print the loading animation
 	if !l.isInteractiveTerminal() {
 		// print the message with loading emoji
 		printMessage(yellowText, loadingEmoji, message)
-		for {
-			select {
-			case <-l.Done:
-				return
-			case <-l.Fail:
-				return
-			}
-		}
+		<-ctx.Done()
+		return
 	}
 
 	// if message ends with a newline, remove it
@@ -215,13 +241,13 @@ func (l *FunLogger) Loading(format string, a ...any) {
 
 	for {
 		select {
-		case <-l.Done:
+		case <-ctx.Done():
 			fmt.Print("\r\033[2K")
-			printMessage(green, checkmark, message)
-			return
-		case <-l.Fail:
-			fmt.Print("\r\033[2K")
-			printMessage(redText, redXEmoji, message)
+			if errors.Is(context.Cause(ctx), ErrLoadingFailed) {
+				printMessage(redText, redXEmoji, message)
+			} else {
+				printMessage(green, checkmark, message)
+			}
 			return
 		case <-ticker:
 			i++
@@ -247,8 +273,14 @@ func (l *FunLogger) isCILogs() bool {
 }
 
 func (l *FunLogger) Exit(code int) {
-	// Stop the loading animation if it's running
-	close(l.Done)
+	// Stop all active loading animations
+	l.mu.Lock()
+	l.exited = true
+	for _, cancel := range l.activeCancels {
+		cancel(nil)
+	}
+	l.activeCancels = nil
+	l.mu.Unlock()
 	l.Wg.Wait()
 
 	l.ExitFunc(code)

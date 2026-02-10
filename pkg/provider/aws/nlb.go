@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/NVIDIA/holodeck/internal/logger"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
@@ -40,8 +42,7 @@ const (
 
 // createNLB creates a Network Load Balancer for HA control plane
 func (p *Provider) createNLB(cache *ClusterCache) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating Network Load Balancer")
+	cancelLoading := p.log.Loading("Creating Network Load Balancer")
 
 	lbType := elbv2types.LoadBalancerTypeEnumNetwork
 	lbName := fmt.Sprintf("%s-nlb", p.ObjectMeta.Name)
@@ -64,12 +65,12 @@ func (p *Provider) createNLB(cache *ClusterCache) error {
 
 	createLBOutput, err := p.elbv2.CreateLoadBalancer(ctx, createLBInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating load balancer: %w", err)
 	}
 
 	if len(createLBOutput.LoadBalancers) == 0 {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("load balancer creation returned no load balancers")
 	}
 
@@ -78,7 +79,7 @@ func (p *Provider) createNLB(cache *ClusterCache) error {
 	cache.LoadBalancerDNS = aws.ToString(lb.DNSName)
 
 	p.log.Info("Created Network Load Balancer: %s (%s)", cache.LoadBalancerDNS, cache.LoadBalancerArn)
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
@@ -88,8 +89,7 @@ func (p *Provider) createTargetGroup(cache *ClusterCache) error {
 		return fmt.Errorf("load balancer ARN is required to create target group")
 	}
 
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating target group for Kubernetes API")
+	cancelLoading := p.log.Loading("Creating target group for Kubernetes API")
 
 	tgName := fmt.Sprintf("%s-k8s-api-tg", p.ObjectMeta.Name)
 
@@ -114,12 +114,12 @@ func (p *Provider) createTargetGroup(cache *ClusterCache) error {
 
 	createTGOutput, err := p.elbv2.CreateTargetGroup(ctx, createTGInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating target group: %w", err)
 	}
 
 	if len(createTGOutput.TargetGroups) == 0 {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("target group creation returned no target groups")
 	}
 
@@ -133,7 +133,7 @@ func (p *Provider) createTargetGroup(cache *ClusterCache) error {
 		return fmt.Errorf("error creating listener: %w", err)
 	}
 
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
@@ -184,8 +184,7 @@ func (p *Provider) registerTargets(cache *ClusterCache) error {
 		return fmt.Errorf("no control-plane instances to register")
 	}
 
-	p.log.Wg.Add(1)
-	go p.log.Loading("Registering control-plane instances with load balancer")
+	cancelLoading := p.log.Loading("Registering control-plane instances with load balancer")
 
 	// Build target list from control-plane instances
 	targets := make([]elbv2types.TargetDescription, 0, len(cache.ControlPlaneInstances))
@@ -200,7 +199,7 @@ func (p *Provider) registerTargets(cache *ClusterCache) error {
 	}
 
 	if len(targets) == 0 {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("no valid control-plane instances to register")
 	}
 
@@ -214,12 +213,12 @@ func (p *Provider) registerTargets(cache *ClusterCache) error {
 
 	_, err := p.elbv2.RegisterTargets(ctx, registerInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error registering targets: %w", err)
 	}
 
 	p.log.Info("Registered %d control-plane instance(s) with load balancer", len(targets))
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
@@ -230,8 +229,7 @@ func (p *Provider) deleteNLB(cache *ClusterCache) error {
 		return nil
 	}
 
-	p.log.Wg.Add(1)
-	go p.log.Loading("Deleting Network Load Balancer")
+	cancelLoading := p.log.Loading("Deleting Network Load Balancer")
 
 	// Delete listener first (if exists)
 	if cache.TargetGroupArn != "" {
@@ -257,12 +255,12 @@ func (p *Provider) deleteNLB(cache *ClusterCache) error {
 
 	_, err := p.elbv2.DeleteLoadBalancer(ctx, deleteLBInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error deleting load balancer: %w", err)
 	}
 
 	p.log.Info("Deleted Network Load Balancer: %s", cache.LoadBalancerArn)
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 

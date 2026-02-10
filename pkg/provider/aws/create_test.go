@@ -286,12 +286,10 @@ func (m *mockEC2Client) DescribeTags(ctx context.Context, params *ec2.DescribeTa
 	return &ec2.DescribeTagsOutput{}, nil
 }
 
-// mockLogger creates a logger for testing that doesn't block on channels.
+// mockLogger creates a logger for testing.
 func mockLogger() *logger.FunLogger {
 	log := &logger.FunLogger{
 		Out:  io.Discard,
-		Done: make(chan struct{}, 100),
-		Fail: make(chan struct{}, 100),
 		Wg:   &sync.WaitGroup{},
 		IsCI: true, // Prevents interactive terminal behavior
 	}

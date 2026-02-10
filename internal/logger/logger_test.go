@@ -218,12 +218,6 @@ func TestNewLoggerInitializesFields(t *testing.T) {
 	if l.Out == nil {
 		t.Error("NewLogger().Out should not be nil")
 	}
-	if l.Done == nil {
-		t.Error("NewLogger().Done channel should not be nil")
-	}
-	if l.Fail == nil {
-		t.Error("NewLogger().Fail channel should not be nil")
-	}
 	if l.Wg == nil {
 		t.Error("NewLogger().Wg should not be nil")
 	}
@@ -251,10 +245,40 @@ func TestLoadingCompletesOnDone(t *testing.T) {
 	l := NewLogger()
 	l.IsCI = true // Force non-interactive path for deterministic testing
 
-	l.Wg.Add(1)
-	go l.Loading("loading test")
+	cancel := l.Loading("loading test")
 
 	// Signal completion
-	close(l.Done)
+	cancel(nil)
 	l.Wg.Wait() // Should return without hanging
+}
+
+func TestLoadingConcurrentIndependence(t *testing.T) {
+	l := NewLogger()
+	l.IsCI = true
+
+	cancel1 := l.Loading("task one")
+	cancel2 := l.Loading("task two")
+
+	// Complete task one with success
+	cancel1(nil)
+	// Complete task two with failure
+	cancel2(ErrLoadingFailed)
+
+	l.Wg.Wait() // Both must exit cleanly
+}
+
+func TestExitStopsAllLoading(t *testing.T) {
+	exited := false
+	l := NewLogger()
+	l.IsCI = true
+	l.ExitFunc = func(code int) { exited = true }
+
+	_ = l.Loading("task one")
+	_ = l.Loading("task two")
+
+	l.Exit(0)
+
+	if !exited {
+		t.Error("ExitFunc should have been called")
+	}
 }

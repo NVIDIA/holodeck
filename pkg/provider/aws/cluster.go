@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -189,8 +190,7 @@ func (p *Provider) isHAEnabled() bool {
 
 // createClusterSecurityGroup creates a security group with rules for multinode cluster
 func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating cluster security group")
+	cancelLoading := p.log.Loading("Creating cluster security group")
 
 	sgInput := &ec2.CreateSecurityGroupInput{
 		GroupName:   aws.String(fmt.Sprintf("%s-cluster", p.ObjectMeta.Name)),
@@ -208,7 +208,7 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 	defer cancel()
 	sgOutput, err := p.ec2.CreateSecurityGroup(ctx, sgInput)
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating security group: %w", err)
 	}
 	cache.SecurityGroupid = *sgOutput.GroupId
@@ -219,7 +219,7 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 
 	ip, err := utils.GetIPAddress()
 	if err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error getting IP address: %w", err)
 	}
 	ipRangeMap[ip] = true
@@ -324,11 +324,11 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 	ctxIngress, cancelIngress := context.WithTimeout(context.Background(), ec2APITimeout)
 	defer cancelIngress()
 	if _, err = p.ec2.AuthorizeSecurityGroupIngress(ctxIngress, irInput); err != nil {
-		p.fail()
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error authorizing security group ingress: %w", err)
 	}
 
-	p.done()
+	cancelLoading(nil)
 	return nil
 }
 
@@ -337,8 +337,7 @@ func (p *Provider) createControlPlaneInstances(cache *ClusterCache) error {
 	cpSpec := p.Spec.Cluster.ControlPlane
 	count := int(cpSpec.Count)
 
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating %d control-plane instance(s)", count)
+	cancel := p.log.Loading("Creating %d control-plane instance(s)", count)
 
 	instances, err := p.createInstances(
 		cache, count, NodeRoleControlPlane,
@@ -346,7 +345,7 @@ func (p *Provider) createControlPlaneInstances(cache *ClusterCache) error {
 		cpSpec.OS, cpSpec.Image,
 	)
 	if err != nil {
-		p.fail()
+		cancel(logger.ErrLoadingFailed)
 		return err
 	}
 
@@ -357,7 +356,7 @@ func (p *Provider) createControlPlaneInstances(cache *ClusterCache) error {
 		cache.PublicDnsName = instances[0].PublicDNS
 	}
 
-	p.done()
+	cancel(nil)
 	return nil
 }
 
@@ -369,8 +368,7 @@ func (p *Provider) createWorkerInstances(cache *ClusterCache) error {
 	}
 
 	count := int(wSpec.Count)
-	p.log.Wg.Add(1)
-	go p.log.Loading("Creating %d worker instance(s)", count)
+	cancel := p.log.Loading("Creating %d worker instance(s)", count)
 
 	instances, err := p.createInstances(
 		cache, count, NodeRoleWorker,
@@ -378,12 +376,12 @@ func (p *Provider) createWorkerInstances(cache *ClusterCache) error {
 		wSpec.OS, wSpec.Image,
 	)
 	if err != nil {
-		p.fail()
+		cancel(logger.ErrLoadingFailed)
 		return err
 	}
 
 	cache.WorkerInstances = instances
-	p.done()
+	cancel(nil)
 	return nil
 }
 
@@ -568,8 +566,7 @@ func (p *Provider) createInstances(
 // This is required for Calico networking to work correctly
 // See: https://github.com/NVIDIA/holodeck/issues/586
 func (p *Provider) disableSourceDestCheck(cache *ClusterCache) error {
-	p.log.Wg.Add(1)
-	go p.log.Loading("Disabling Source/Destination Check for Calico networking")
+	cancel := p.log.Loading("Disabling Source/Destination Check for Calico networking")
 
 	// Use explicit allocation to avoid potential slice backing array mutation
 	allInstances := make([]InstanceInfo, 0, len(cache.ControlPlaneInstances)+len(cache.WorkerInstances))
@@ -591,13 +588,13 @@ func (p *Provider) disableSourceDestCheck(cache *ClusterCache) error {
 			})
 		cancelMod()
 		if err != nil {
-			p.fail()
+			cancel(logger.ErrLoadingFailed)
 			return fmt.Errorf("error disabling source/dest check on %s: %w", inst.Name, err)
 		}
 		p.log.Info("Disabled Source/Destination Check on %s", inst.Name)
 	}
 
-	p.done()
+	cancel(nil)
 	return nil
 }
 
