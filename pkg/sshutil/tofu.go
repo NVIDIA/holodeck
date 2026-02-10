@@ -26,8 +26,12 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// TOFUHostKeyCallback returns an ssh.HostKeyCallback implementing
-// Trust-On-First-Use host key verification.
+// TOFUHostKeyCallback returns an ssh.HostKeyCallback implementing a
+// Trust-On-First-Use (TOFU) pattern for SSH host key verification. On first
+// connection to a host, the key is recorded in a holodeck-specific known_hosts
+// file at $CACHE/holodeck/known_hosts (where $CACHE is os.UserCacheDir). On
+// subsequent connections the stored key is compared and a mismatch — indicating
+// a potential MITM attack — is rejected with an error.
 func TOFUHostKeyCallback() ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		cacheBase, err := os.UserCacheDir()
@@ -41,33 +45,32 @@ func TOFUHostKeyCallback() ssh.HostKeyCallback {
 		}
 
 		keyStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
-		host := hostname
 
 		// Try to read existing known hosts file
-		data, err := os.ReadFile(knownHostsPath) // nolint:gosec // path from UserCacheDir + static components
+		data, err := os.ReadFile(knownHostsPath) //nolint:gosec // path from UserCacheDir + static components
 		if err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to read known_hosts: %w", err)
 		}
 		if err == nil {
 			for _, line := range strings.Split(string(data), "\n") {
 				parts := strings.SplitN(line, " ", 2)
-				if len(parts) == 2 && parts[0] == host {
+				if len(parts) == 2 && parts[0] == hostname {
 					if strings.TrimSpace(parts[1]) == keyStr {
 						return nil // Key matches
 					}
-					return fmt.Errorf("host key mismatch for %s: stored key differs from presented key (possible MITM)", host)
+					return fmt.Errorf("host key mismatch for %s: stored key differs from presented key (possible MITM)", hostname)
 				}
 			}
 		}
 
 		// First connection to this host: record the key (TOFU)
-		f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) // nolint:gosec
+		f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec
 		if err != nil {
 			return fmt.Errorf("failed to open known_hosts for writing: %w", err)
 		}
 		defer func() { _ = f.Close() }()
 
-		if _, err := fmt.Fprintf(f, "%s %s\n", host, keyStr); err != nil {
+		if _, err := fmt.Fprintf(f, "%s %s\n", hostname, keyStr); err != nil {
 			return fmt.Errorf("failed to write known host: %w", err)
 		}
 
