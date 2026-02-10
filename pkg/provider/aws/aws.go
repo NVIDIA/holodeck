@@ -240,4 +240,3 @@ func (p *Provider) unmarsalCache() (*AWS, error) {
 
 	return aws, nil
 }
-
