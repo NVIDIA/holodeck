@@ -527,11 +527,12 @@ func formatSourceDetail(source, ref, commit, branch string) string {
 		return ""
 	}
 	parts := source
-	if commit != "" {
+	switch {
+	case commit != "":
 		parts += ", " + commit
-	} else if ref != "" {
+	case ref != "":
 		parts += ", " + ref
-	} else if branch != "" {
+	case branch != "":
 		parts += ", " + branch
 	}
 	return " (" + parts + ")"
