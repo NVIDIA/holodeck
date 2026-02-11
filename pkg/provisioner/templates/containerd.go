@@ -725,12 +725,13 @@ func NewContainerd(env v1alpha1.Environment) (*Containerd, error) {
 	switch c.Source {
 	case "package":
 		var version string
-		if cr.Package != nil && cr.Package.Version != "" {
+		switch {
+		case cr.Package != nil && cr.Package.Version != "":
 			version = cr.Package.Version
-		} else if cr.Version != "" {
+		case cr.Version != "":
 			// Legacy field support
 			version = cr.Version
-		} else {
+		default:
 			version = "1.7.27" // Default
 		}
 		version = strings.TrimPrefix(version, "v")

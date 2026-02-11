@@ -409,11 +409,12 @@ func NewDocker(env v1alpha1.Environment) (*Docker, error) {
 
 	switch d.Source {
 	case "package":
-		if cr.Package != nil && cr.Package.Version != "" {
+		switch {
+		case cr.Package != nil && cr.Package.Version != "":
 			d.Version = cr.Package.Version
-		} else if cr.Version != "" {
+		case cr.Version != "":
 			d.Version = cr.Version
-		} else {
+		default:
 			d.Version = "latest"
 		}
 
