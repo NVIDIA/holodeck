@@ -125,15 +125,24 @@ type KernelInfo struct {
 // NVIDIADriverInfo contains NVIDIA driver configuration
 type NVIDIADriverInfo struct {
 	Install bool   `json:"install" yaml:"install"`
+	Source  string `json:"source,omitempty" yaml:"source,omitempty"`
 	Branch  string `json:"branch,omitempty" yaml:"branch,omitempty"`
 	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+	Repo    string `json:"repo,omitempty" yaml:"repo,omitempty"`
+	Ref     string `json:"ref,omitempty" yaml:"ref,omitempty"`
+	Commit  string `json:"commit,omitempty" yaml:"commit,omitempty"`
 }
 
 // ContainerRuntimeInfo contains container runtime configuration
 type ContainerRuntimeInfo struct {
 	Install bool   `json:"install" yaml:"install"`
 	Name    string `json:"name" yaml:"name"`
+	Source  string `json:"source,omitempty" yaml:"source,omitempty"`
 	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+	Repo    string `json:"repo,omitempty" yaml:"repo,omitempty"`
+	Ref     string `json:"ref,omitempty" yaml:"ref,omitempty"`
+	Commit  string `json:"commit,omitempty" yaml:"commit,omitempty"`
+	Branch  string `json:"branch,omitempty" yaml:"branch,omitempty"`
 }
 
 // ContainerToolkitInfo contains NVIDIA Container Toolkit configuration
@@ -142,6 +151,10 @@ type ContainerToolkitInfo struct {
 	Source    string `json:"source,omitempty" yaml:"source,omitempty"`
 	Version   string `json:"version,omitempty" yaml:"version,omitempty"`
 	EnableCDI bool   `json:"enableCDI" yaml:"enableCDI"`
+	Repo      string `json:"repo,omitempty" yaml:"repo,omitempty"`
+	Ref       string `json:"ref,omitempty" yaml:"ref,omitempty"`
+	Commit    string `json:"commit,omitempty" yaml:"commit,omitempty"`
+	Branch    string `json:"branch,omitempty" yaml:"branch,omitempty"`
 }
 
 // KubernetesInfo contains Kubernetes configuration
@@ -150,6 +163,10 @@ type KubernetesInfo struct {
 	Installer string `json:"installer,omitempty" yaml:"installer,omitempty"`
 	Version   string `json:"version,omitempty" yaml:"version,omitempty"`
 	Source    string `json:"source,omitempty" yaml:"source,omitempty"`
+	Repo      string `json:"repo,omitempty" yaml:"repo,omitempty"`
+	Ref       string `json:"ref,omitempty" yaml:"ref,omitempty"`
+	Commit    string `json:"commit,omitempty" yaml:"commit,omitempty"`
+	Branch    string `json:"branch,omitempty" yaml:"branch,omitempty"`
 }
 
 // StatusInfo contains status and conditions
@@ -345,28 +362,87 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 	}
 
 	if env.Spec.NVIDIADriver.Install {
-		output.Components.NVIDIADriver = &NVIDIADriverInfo{
+		info := &NVIDIADriverInfo{
 			Install: true,
+			Source:  "package",
 			Branch:  env.Spec.NVIDIADriver.Branch,
 			Version: env.Spec.NVIDIADriver.Version,
 		}
+		// Merge provenance from status if available
+		if env.Status.Components != nil && env.Status.Components.Driver != nil {
+			p := env.Status.Components.Driver
+			info.Source = p.Source
+			if p.Repo != "" {
+				info.Repo = p.Repo
+			}
+			if p.Ref != "" {
+				info.Ref = p.Ref
+			}
+			if p.Commit != "" {
+				info.Commit = p.Commit
+			}
+			if p.Version != "" {
+				info.Version = p.Version
+			}
+			if p.Branch != "" {
+				info.Branch = p.Branch
+			}
+		}
+		output.Components.NVIDIADriver = info
 	}
 
 	if env.Spec.ContainerRuntime.Install {
-		output.Components.ContainerRuntime = &ContainerRuntimeInfo{
+		info := &ContainerRuntimeInfo{
 			Install: true,
 			Name:    string(env.Spec.ContainerRuntime.Name),
+			Source:  "package",
 			Version: env.Spec.ContainerRuntime.Version,
 		}
+		if env.Status.Components != nil && env.Status.Components.Runtime != nil {
+			p := env.Status.Components.Runtime
+			info.Source = p.Source
+			if p.Repo != "" {
+				info.Repo = p.Repo
+			}
+			if p.Ref != "" {
+				info.Ref = p.Ref
+			}
+			if p.Commit != "" {
+				info.Commit = p.Commit
+			}
+			if p.Branch != "" {
+				info.Branch = p.Branch
+			}
+		}
+		output.Components.ContainerRuntime = info
 	}
 
 	if env.Spec.NVIDIAContainerToolkit.Install {
-		output.Components.ContainerToolkit = &ContainerToolkitInfo{
+		info := &ContainerToolkitInfo{
 			Install:   true,
 			Source:    string(env.Spec.NVIDIAContainerToolkit.Source),
 			Version:   env.Spec.NVIDIAContainerToolkit.Version,
 			EnableCDI: env.Spec.NVIDIAContainerToolkit.EnableCDI,
 		}
+		if info.Source == "" {
+			info.Source = "package"
+		}
+		if env.Status.Components != nil && env.Status.Components.Toolkit != nil {
+			p := env.Status.Components.Toolkit
+			if p.Repo != "" {
+				info.Repo = p.Repo
+			}
+			if p.Ref != "" {
+				info.Ref = p.Ref
+			}
+			if p.Commit != "" {
+				info.Commit = p.Commit
+			}
+			if p.Branch != "" {
+				info.Branch = p.Branch
+			}
+		}
+		output.Components.ContainerToolkit = info
 	}
 
 	if env.Spec.Kubernetes.Install {
@@ -374,12 +450,31 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 		if env.Spec.Kubernetes.Release != nil {
 			k8sVersion = env.Spec.Kubernetes.Release.Version
 		}
-		output.Components.Kubernetes = &KubernetesInfo{
+		info := &KubernetesInfo{
 			Install:   true,
 			Installer: env.Spec.Kubernetes.KubernetesInstaller,
 			Version:   k8sVersion,
 			Source:    string(env.Spec.Kubernetes.Source),
 		}
+		if info.Source == "" {
+			info.Source = "release"
+		}
+		if env.Status.Components != nil && env.Status.Components.Kubernetes != nil {
+			p := env.Status.Components.Kubernetes
+			if p.Repo != "" {
+				info.Repo = p.Repo
+			}
+			if p.Ref != "" {
+				info.Ref = p.Ref
+			}
+			if p.Commit != "" {
+				info.Commit = p.Commit
+			}
+			if p.Branch != "" {
+				info.Branch = p.Branch
+			}
+		}
+		output.Components.Kubernetes = info
 	}
 
 	// Status
@@ -423,6 +518,23 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 	}
 
 	return output
+}
+
+// formatSourceDetail builds a parenthetical detail string showing source provenance.
+// Examples: " (package)", " (git, abc12345)", " (latest, main)"
+func formatSourceDetail(source, ref, commit, branch string) string {
+	if source == "" || source == "package" || source == "release" {
+		return ""
+	}
+	parts := source
+	if commit != "" {
+		parts += ", " + commit
+	} else if ref != "" {
+		parts += ", " + ref
+	} else if branch != "" {
+		parts += ", " + branch
+	}
+	return " (" + parts + ")"
 }
 
 //nolint:errcheck // stdout writes
@@ -497,42 +609,62 @@ func (m command) printTableFormat(d *DescribeOutput) error {
 		fmt.Printf("Kernel:              %s\n", d.Components.Kernel.Version)
 	}
 	if d.Components.NVIDIADriver != nil {
-		version := d.Components.NVIDIADriver.Version
+		di := d.Components.NVIDIADriver
+		version := di.Version
 		if version == "" {
-			version = d.Components.NVIDIADriver.Branch
+			version = di.Branch
 		}
 		if version == "" {
 			version = "latest"
 		}
-		fmt.Printf("NVIDIA Driver:       %s\n", version)
+		detail := formatSourceDetail(di.Source, di.Ref, di.Commit, di.Branch)
+		fmt.Printf("NVIDIA Driver:       %s%s\n", version, detail)
 	}
 	if d.Components.ContainerRuntime != nil {
-		version := d.Components.ContainerRuntime.Version
+		ri := d.Components.ContainerRuntime
+		version := ri.Version
 		if version == "" {
 			version = "latest"
 		}
-		fmt.Printf("Container Runtime:   %s (%s)\n", d.Components.ContainerRuntime.Name, version)
+		detail := formatSourceDetail(ri.Source, ri.Ref, ri.Commit, ri.Branch)
+		fmt.Printf("Container Runtime:   %s %s%s\n", ri.Name, version, detail)
 	}
 	if d.Components.ContainerToolkit != nil {
-		version := d.Components.ContainerToolkit.Version
-		if version == "" {
-			version = d.Components.ContainerToolkit.Source
+		ti := d.Components.ContainerToolkit
+		version := ti.Version
+		if version == "" && ti.Ref != "" {
+			version = ti.Ref
 		}
 		if version == "" {
 			version = "latest"
 		}
 		cdi := ""
-		if d.Components.ContainerToolkit.EnableCDI {
-			cdi = " (CDI enabled)"
+		if ti.EnableCDI {
+			cdi = ", CDI"
 		}
-		fmt.Printf("Container Toolkit:   %s%s\n", version, cdi)
+		detail := formatSourceDetail(ti.Source, ti.Ref, ti.Commit, ti.Branch)
+		if cdi != "" && detail != "" {
+			// Append CDI inside the parentheses
+			detail = detail[:len(detail)-1] + cdi + ")"
+		} else if cdi != "" {
+			detail = " (" + ti.Source + cdi + ")"
+		}
+		fmt.Printf("Container Toolkit:   %s%s\n", version, detail)
 	}
 	if d.Components.Kubernetes != nil {
-		version := d.Components.Kubernetes.Version
+		ki := d.Components.Kubernetes
+		version := ki.Version
 		if version == "" {
 			version = "latest"
 		}
-		fmt.Printf("Kubernetes:          %s (%s)\n", version, d.Components.Kubernetes.Installer)
+		detail := formatSourceDetail(ki.Source, ki.Ref, ki.Commit, ki.Branch)
+		if detail == "" {
+			detail = fmt.Sprintf(" (%s)", ki.Installer)
+		} else {
+			// Insert installer into detail
+			detail = fmt.Sprintf(" (%s, %s", ki.Installer, detail[2:])
+		}
+		fmt.Printf("Kubernetes:          %s%s\n", version, detail)
 	}
 
 	// AWS Resources

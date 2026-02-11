@@ -367,6 +367,69 @@ type ClusterStatus struct {
 	Phase string `json:"phase,omitempty"`
 }
 
+// ComponentProvenance tracks how a component was installed.
+type ComponentProvenance struct {
+	// Source is the installation method used (e.g., "package", "runfile", "git", "latest", "release").
+	Source string `json:"source"`
+
+	// Version is the installed version (if known).
+	// +optional
+	// +optional
+
+	Version string `json:"version,omitempty"`
+
+	// Branch is the package branch or tracked branch.
+	// +optional
+	// +optional
+
+	Branch string `json:"branch,omitempty"`
+
+	// Repo is the git repository URL (for git/latest sources).
+	// +optional
+	// +optional
+
+	Repo string `json:"repo,omitempty"`
+
+	// Ref is the git reference requested (for git sources).
+	// +optional
+	// +optional
+
+	Ref string `json:"ref,omitempty"`
+
+	// Commit is the resolved git commit SHA (for git/latest sources).
+	// +optional
+	// +optional
+
+	Commit string `json:"commit,omitempty"`
+}
+
+// ComponentsStatus tracks provisioned component information.
+type ComponentsStatus struct {
+	// Driver tracks the NVIDIA driver installation provenance.
+	// +optional
+	// +optional
+
+	Driver *ComponentProvenance `json:"driver,omitempty"`
+
+	// Runtime tracks the container runtime installation provenance.
+	// +optional
+	// +optional
+
+	Runtime *ComponentProvenance `json:"runtime,omitempty"`
+
+	// Toolkit tracks the NVIDIA Container Toolkit installation provenance.
+	// +optional
+	// +optional
+
+	Toolkit *ComponentProvenance `json:"toolkit,omitempty"`
+
+	// Kubernetes tracks the Kubernetes installation provenance.
+	// +optional
+	// +optional
+
+	Kubernetes *ComponentProvenance `json:"kubernetes,omitempty"`
+}
+
 // EnvironmentStatus defines the observed state of the infra provider
 type EnvironmentStatus struct {
 	// +listType=map
@@ -383,6 +446,13 @@ type EnvironmentStatus struct {
 	// +optional
 
 	Cluster *ClusterStatus `json:"cluster,omitempty"`
+
+	// Components tracks provenance information for installed components.
+	// Populated after provisioning with source, version, and commit details.
+	// +optional
+	// +optional
+
+	Components *ComponentsStatus `json:"components,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -91,7 +91,7 @@ func entrypoint(log *logger.FunLogger) error {
 	defer p.Client.Close() // nolint: errcheck
 
 	log.Info("Provisioning \u2699")
-	if err = p.Run(cfg); err != nil {
+	if _, err = p.Run(cfg); err != nil {
 		return fmt.Errorf("failed to run provisioner: %w", err)
 	}
 
