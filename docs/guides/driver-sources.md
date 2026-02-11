@@ -89,9 +89,9 @@ spec:
 **Build process:**
 
 1. Clones the repository at the specified ref
-2. Builds kernel modules with `make modules -j$(nproc)`
-3. Installs with `make modules_install`
-4. Runs `depmod` and loads the `nvidia` module
+1. Builds kernel modules with `make modules -j$(nproc)`
+1. Installs with `make modules_install`
+1. Runs `depmod` and loads the `nvidia` module
 
 > **Note:** Git source requires kernel headers and a C compiler on the target
 > host. These are installed automatically. Building kernel modules can take
