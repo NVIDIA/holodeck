@@ -19,12 +19,14 @@ in your Holodeck environment.
 ### Package (Recommended Default)
 
 **Use when:**
+
 - Deploying production or stable test environments
 - You need well-tested, signed packages
 - Reproducibility via version pinning is sufficient
 - You want the fastest provisioning time
 
 **Trade-offs:**
+
 - (+) Fastest installation
 - (+) Pre-built, tested packages
 - (+) Automatic dependency resolution
@@ -34,12 +36,14 @@ in your Holodeck environment.
 ### Git
 
 **Use when:**
+
 - Testing a specific commit or unreleased fix
 - Bisecting a regression across commits
 - Validating a PR before it merges
 - Testing a fork with custom modifications
 
 **Trade-offs:**
+
 - (+) Pin to any commit, tag, or branch
 - (+) Test unreleased code
 - (+) Use custom forks
@@ -50,11 +54,13 @@ in your Holodeck environment.
 ### Latest
 
 **Use when:**
+
 - CI/CD pipelines testing against upstream HEAD
 - Continuous compatibility testing
 - Catching regressions early in upstream development
 
 **Trade-offs:**
+
 - (+) Always tests newest code
 - (+) Catches breaking changes early
 - (-) Non-reproducible (branch moves)
@@ -64,11 +70,13 @@ in your Holodeck environment.
 ### Runfile (Driver Only)
 
 **Use when:**
+
 - Testing pre-release driver builds from NVIDIA
 - Using driver versions not in any package repository
 - Validating specific installer artifacts
 
 **Trade-offs:**
+
 - (+) Access to any published `.run` file
 - (+) Checksum verification for integrity
 - (-) Must manage URLs manually

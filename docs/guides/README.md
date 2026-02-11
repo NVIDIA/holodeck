@@ -15,8 +15,9 @@ This section is for in-depth guides and tutorials related to Holodeck.
     (containerd, Docker, CRI-O) installation from packages, git, or latest.
 - [CTK Installation Sources](ctk-sources.md): Configure NVIDIA Container
     Toolkit installation from packages, git, or tracking latest branches.
-- [IP Detection Guide](ip-detection.md): Learn about automatic IP detection for
-    AWS environments, including configuration, troubleshooting, and best practices.
+- [IP Detection Guide](ip-detection.md): Learn about automatic IP
+    detection for AWS environments, including configuration,
+    troubleshooting, and best practices.
 - [Multi-Node Clusters](multinode-clusters.md): Deploy Kubernetes clusters with
     multiple control-plane and worker nodes, including HA configuration.
 
