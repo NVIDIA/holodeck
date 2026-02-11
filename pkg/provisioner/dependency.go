@@ -77,18 +77,70 @@ func nvdriver(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 }
 
 func docker(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	docker := templates.NewDocker(env)
-	return docker.Execute(tpl, env)
+	d, err := templates.NewDocker(env)
+	if err != nil {
+		return err
+	}
+
+	// Resolve git ref if using git source
+	if d.Source == "git" {
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+
+		resolver := gitref.NewGitHubResolver()
+		_, shortSHA, err := resolver.Resolve(ctx, d.GitRepo, d.GitRef)
+		if err != nil {
+			return err
+		}
+		d.SetResolvedCommit(shortSHA)
+	}
+
+	return d.Execute(tpl, env)
 }
 
 func containerd(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	containerd := templates.NewContainerd(env)
-	return containerd.Execute(tpl, env)
+	c, err := templates.NewContainerd(env)
+	if err != nil {
+		return err
+	}
+
+	// Resolve git ref if using git source
+	if c.Source == "git" {
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+
+		resolver := gitref.NewGitHubResolver()
+		_, shortSHA, err := resolver.Resolve(ctx, c.GitRepo, c.GitRef)
+		if err != nil {
+			return err
+		}
+		c.SetResolvedCommit(shortSHA)
+	}
+	// Note: "latest" source resolves at provision time on the remote host
+
+	return c.Execute(tpl, env)
 }
 
 func criO(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	criO := templates.NewCriO(env)
-	return criO.Execute(tpl, env)
+	c, err := templates.NewCriO(env)
+	if err != nil {
+		return err
+	}
+
+	// Resolve git ref if using git source
+	if c.Source == "git" {
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+
+		resolver := gitref.NewGitHubResolver()
+		_, shortSHA, err := resolver.Resolve(ctx, c.GitRepo, c.GitRef)
+		if err != nil {
+			return err
+		}
+		c.SetResolvedCommit(shortSHA)
+	}
+
+	return c.Execute(tpl, env)
 }
 
 func containerToolkit(tpl *bytes.Buffer, env v1alpha1.Environment) error {

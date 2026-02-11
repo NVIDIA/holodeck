@@ -17,18 +17,20 @@ package templates
 
 import (
 	"bytes"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
 func TestNewDocker_Defaults(t *testing.T) {
 	env := v1alpha1.Environment{}
-	d := NewDocker(env)
-	if d.Version != "latest" {
-		t.Errorf("expected default Version to be 'latest', got '%s'", d.Version)
-	}
+	d, err := NewDocker(env)
+	require.NoError(t, err)
+	assert.Equal(t, "package", d.Source)
+	assert.Equal(t, "latest", d.Version)
 }
 
 func TestNewDocker_CustomVersion(t *testing.T) {
@@ -39,13 +41,65 @@ func TestNewDocker_CustomVersion(t *testing.T) {
 			},
 		},
 	}
-	d := NewDocker(env)
-	if d.Version != "20.10.7" {
-		t.Errorf("expected Version to be '20.10.7', got '%s'", d.Version)
-	}
+	d, err := NewDocker(env)
+	require.NoError(t, err)
+	assert.Equal(t, "20.10.7", d.Version)
 }
 
-func TestDocker_Execute(t *testing.T) {
+func TestNewDocker_PackageSpec(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Name:    v1alpha1.ContainerRuntimeDocker,
+				Source:  v1alpha1.RuntimeSourcePackage,
+				Package: &v1alpha1.RuntimePackageSpec{
+					Version: "24.0.0",
+				},
+			},
+		},
+	}
+	d, err := NewDocker(env)
+	require.NoError(t, err)
+	assert.Equal(t, "package", d.Source)
+	assert.Equal(t, "24.0.0", d.Version)
+}
+
+func TestNewDocker_GitSource(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Name:    v1alpha1.ContainerRuntimeDocker,
+				Source:  v1alpha1.RuntimeSourceGit,
+				Git: &v1alpha1.RuntimeGitSpec{
+					Ref: "v24.0.0",
+				},
+			},
+		},
+	}
+	d, err := NewDocker(env)
+	require.NoError(t, err)
+	assert.Equal(t, "git", d.Source)
+	assert.Equal(t, "v24.0.0", d.GitRef)
+	assert.Equal(t, "https://github.com/moby/moby.git", d.GitRepo)
+}
+
+func TestNewDocker_GitSourceMissingConfig(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Source:  v1alpha1.RuntimeSourceGit,
+			},
+		},
+	}
+	_, err := NewDocker(env)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "git source requires")
+}
+
+func TestDocker_Execute_PackageSource(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			ContainerRuntime: v1alpha1.ContainerRuntime{
@@ -53,55 +107,45 @@ func TestDocker_Execute(t *testing.T) {
 			},
 		},
 	}
-	d := NewDocker(env)
+	d, err := NewDocker(env)
+	require.NoError(t, err)
 	var buf bytes.Buffer
-	err := d.Execute(&buf, env)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
-	}
+	err = d.Execute(&buf, env)
+	require.NoError(t, err)
 	out := buf.String()
 
-	// Test idempotency framework usage
-	if !strings.Contains(out, `COMPONENT="docker"`) {
-		t.Error("template output missing COMPONENT definition")
-	}
-	if !strings.Contains(out, `DESIRED_VERSION="20.10.7"`) {
-		t.Errorf("template output missing version assignment: %s", out)
-	}
-	if !strings.Contains(out, "holodeck_progress") {
-		t.Error("template output missing holodeck_progress calls")
+	assert.Contains(t, out, `COMPONENT="docker"`)
+	assert.Contains(t, out, `SOURCE="package"`)
+	assert.Contains(t, out, `DESIRED_VERSION="20.10.7"`)
+	assert.Contains(t, out, "holodeck_progress")
+	assert.Contains(t, out, "docker-ce=$DESIRED_VERSION")
+	assert.Contains(t, out, "systemctl enable docker")
+	assert.Contains(t, out, `CRI_DOCKERD_VERSION="0.3.17"`)
+	assert.Contains(t, out, "sudo tar xzv -C /usr/local/bin --strip-components=1")
+	assert.Contains(t, out, "systemctl enable cri-docker.service")
+	assert.Contains(t, out, "systemctl enable cri-docker.socket")
+	assert.Contains(t, out, "systemctl start cri-docker.service")
+	assert.Contains(t, out, "holodeck_verify_docker")
+	assert.Contains(t, out, "holodeck_mark_installed")
+}
+
+func TestDocker_Execute_GitSource(t *testing.T) {
+	d := &Docker{
+		Source:    "git",
+		GitRepo:   "https://github.com/moby/moby.git",
+		GitRef:    "v24.0.0",
+		GitCommit: "abc12345",
 	}
 
-	// Test Docker installation
-	if !strings.Contains(out, "docker-ce=$DESIRED_VERSION") {
-		t.Errorf("template output missing expected docker version install command: %s", out)
-	}
-	if !strings.Contains(out, "systemctl enable docker") {
-		t.Errorf("template output missing enable docker: %s", out)
-	}
+	var buf bytes.Buffer
+	err := d.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+	out := buf.String()
 
-	// Test cri-dockerd installation
-	if !strings.Contains(out, "CRI_DOCKERD_VERSION=\"0.3.17\"") {
-		t.Errorf("template output missing cri-dockerd version: %s", out)
-	}
-	if !strings.Contains(out, "sudo tar xzv -C /usr/local/bin --strip-components=1") {
-		t.Errorf("template output missing cri-dockerd installation command: %s", out)
-	}
-	if !strings.Contains(out, "systemctl enable cri-docker.service") {
-		t.Errorf("template output missing enable cri-docker service: %s", out)
-	}
-	if !strings.Contains(out, "systemctl enable cri-docker.socket") {
-		t.Errorf("template output missing enable cri-docker socket: %s", out)
-	}
-	if !strings.Contains(out, "systemctl start cri-docker.service") {
-		t.Errorf("template output missing start cri-docker service: %s", out)
-	}
-
-	// Test verification
-	if !strings.Contains(out, "holodeck_verify_docker") {
-		t.Error("template output missing docker verification")
-	}
-	if !strings.Contains(out, "holodeck_mark_installed") {
-		t.Error("template output missing mark installed call")
-	}
+	assert.Contains(t, out, `SOURCE="git"`)
+	assert.Contains(t, out, `GIT_REF="v24.0.0"`)
+	assert.Contains(t, out, `GIT_COMMIT="abc12345"`)
+	assert.Contains(t, out, "hack/make.sh binary")
+	assert.Contains(t, out, "PROVENANCE.json")
+	assert.Contains(t, out, "holodeck_verify_docker")
 }

@@ -740,6 +740,143 @@ func TestNVIDIADriver_Validate(t *testing.T) {
 	}
 }
 
+func TestContainerRuntime_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cr      ContainerRuntime
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "Install disabled - always valid",
+			cr: ContainerRuntime{
+				Install: false,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Package source - default (no config)",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Package source - explicit with version",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+				Source:  RuntimeSourcePackage,
+				Package: &RuntimePackageSpec{
+					Version: "1.7.23",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Package source - legacy version field",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeDocker,
+				Version: "24.0.0",
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - valid",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+				Source:  RuntimeSourceGit,
+				Git: &RuntimeGitSpec{
+					Ref: "v1.7.23",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - with custom repo",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeCrio,
+				Source:  RuntimeSourceGit,
+				Git: &RuntimeGitSpec{
+					Repo: "https://github.com/myorg/cri-o.git",
+					Ref:  "main",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - missing config",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+				Source:  RuntimeSourceGit,
+			},
+			wantErr: true,
+			errMsg:  "git source requires",
+		},
+		{
+			name: "Git source - missing ref",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+				Source:  RuntimeSourceGit,
+				Git:     &RuntimeGitSpec{},
+			},
+			wantErr: true,
+			errMsg:  "ref",
+		},
+		{
+			name: "Latest source - default",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+				Source:  RuntimeSourceLatest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Latest source - with config",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+				Source:  RuntimeSourceLatest,
+				Latest: &RuntimeLatestSpec{
+					Track: "release/1.7",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Unknown source",
+			cr: ContainerRuntime{
+				Install: true,
+				Name:    ContainerRuntimeContainerd,
+				Source:  "unknown",
+			},
+			wantErr: true,
+			errMsg:  "unknown container runtime source",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cr.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestNVIDIAContainerToolkit_Validate(t *testing.T) {
 	tests := []struct {
 		name    string

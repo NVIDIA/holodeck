@@ -20,18 +20,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
 func TestNewContainerd_Defaults(t *testing.T) {
 	env := v1alpha1.Environment{}
-	c := NewContainerd(env)
-	if c.Version != "1.7.27" {
-		t.Errorf("expected default Version to be '1.7.27', got '%s'", c.Version)
-	}
-	if c.MajorVersion != 1 {
-		t.Errorf("expected default MajorVersion to be 1, got %d", c.MajorVersion)
-	}
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "package", c.Source)
+	assert.Equal(t, "1.7.27", c.Version)
+	assert.Equal(t, 1, c.MajorVersion)
 }
 
 func TestNewContainerd_CustomVersion(t *testing.T) {
@@ -42,13 +43,10 @@ func TestNewContainerd_CustomVersion(t *testing.T) {
 			},
 		},
 	}
-	c := NewContainerd(env)
-	if c.Version != "1.7.0" {
-		t.Errorf("expected Version to be '1.7.0', got '%s'", c.Version)
-	}
-	if c.MajorVersion != 1 {
-		t.Errorf("expected MajorVersion to be 1, got %d", c.MajorVersion)
-	}
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "1.7.0", c.Version)
+	assert.Equal(t, 1, c.MajorVersion)
 }
 
 func TestNewContainerd_EmptyVersion(t *testing.T) {
@@ -59,13 +57,10 @@ func TestNewContainerd_EmptyVersion(t *testing.T) {
 			},
 		},
 	}
-	c := NewContainerd(env)
-	if c.Version != "1.7.27" {
-		t.Errorf("expected default Version to be '1.7.27' when empty, got '%s'", c.Version)
-	}
-	if c.MajorVersion != 1 {
-		t.Errorf("expected default MajorVersion to be 1, got %d", c.MajorVersion)
-	}
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "1.7.27", c.Version)
+	assert.Equal(t, 1, c.MajorVersion)
 }
 
 func TestNewContainerd_Version2(t *testing.T) {
@@ -76,13 +71,97 @@ func TestNewContainerd_Version2(t *testing.T) {
 			},
 		},
 	}
-	c := NewContainerd(env)
-	if c.Version != "2.0.0" {
-		t.Errorf("expected Version to be '2.0.0', got '%s'", c.Version)
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0", c.Version)
+	assert.Equal(t, 2, c.MajorVersion)
+}
+
+func TestNewContainerd_PackageSpec(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Name:    v1alpha1.ContainerRuntimeContainerd,
+				Source:  v1alpha1.RuntimeSourcePackage,
+				Package: &v1alpha1.RuntimePackageSpec{
+					Version: "1.7.20",
+				},
+			},
+		},
 	}
-	if c.MajorVersion != 2 {
-		t.Errorf("expected MajorVersion to be 2, got %d", c.MajorVersion)
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "package", c.Source)
+	assert.Equal(t, "1.7.20", c.Version)
+}
+
+func TestNewContainerd_GitSource(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Name:    v1alpha1.ContainerRuntimeContainerd,
+				Source:  v1alpha1.RuntimeSourceGit,
+				Git: &v1alpha1.RuntimeGitSpec{
+					Ref: "v1.7.23",
+				},
+			},
+		},
 	}
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "git", c.Source)
+	assert.Equal(t, "v1.7.23", c.GitRef)
+	assert.Equal(t, "https://github.com/containerd/containerd.git", c.GitRepo)
+}
+
+func TestNewContainerd_GitSourceMissingConfig(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Source:  v1alpha1.RuntimeSourceGit,
+			},
+		},
+	}
+	_, err := NewContainerd(env)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "git source requires")
+}
+
+func TestNewContainerd_LatestSource(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Name:    v1alpha1.ContainerRuntimeContainerd,
+				Source:  v1alpha1.RuntimeSourceLatest,
+			},
+		},
+	}
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "latest", c.Source)
+	assert.Equal(t, "main", c.TrackBranch)
+	assert.Equal(t, "https://github.com/containerd/containerd.git", c.GitRepo)
+}
+
+func TestNewContainerd_LatestSourceCustomBranch(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Source:  v1alpha1.RuntimeSourceLatest,
+				Latest: &v1alpha1.RuntimeLatestSpec{
+					Track: "release/1.7",
+				},
+			},
+		},
+	}
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	assert.Equal(t, "release/1.7", c.TrackBranch)
 }
 
 func TestContainerd_Execute_Version1(t *testing.T) {
@@ -93,67 +172,27 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 			},
 		},
 	}
-	c := NewContainerd(env)
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
 	var buf bytes.Buffer
-	err := c.Execute(&buf, env)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
-	}
+	err = c.Execute(&buf, env)
+	require.NoError(t, err)
 	out := buf.String()
 
-	// Test idempotency framework
-	if !strings.Contains(out, `COMPONENT="containerd"`) {
-		t.Error("template output missing COMPONENT definition")
-	}
-	if !strings.Contains(out, "holodeck_progress") {
-		t.Error("template output missing holodeck_progress calls")
-	}
-
-	// Test v1 template specifics - supports both apt and dnf/yum
-	if !strings.Contains(out, "Installing containerd 1.7.26 using package repository") {
-		t.Error("template output missing version installation message")
-	}
-	// Template now supports multiple package managers, test for version reference
-	if !strings.Contains(out, "1.7.26") {
-		t.Error("template output missing containerd version")
-	}
-	if !strings.Contains(out, "download.docker.com") {
-		t.Error("template output missing Docker repository reference")
-	}
-
-	// Test Amazon Linux Fedora version mapping (P3 fix)
-	// The template uses the HOLODECK_AMZN_FEDORA_VERSION variable set by CommonFunctions
-	if !strings.Contains(out, "HOLODECK_AMZN_FEDORA_VERSION") {
-		t.Error("template output missing Amazon Linux Fedora version variable reference")
-	}
-	// Verify we use the variable instead of hardcoded "39"
-	if strings.Contains(out, `'s/\$releasever/39/g'`) {
-		t.Error("template should use HOLODECK_AMZN_FEDORA_VERSION, not hardcoded 39")
-	}
-
-	// Test common configuration
-	if !strings.Contains(out, "SystemdCgroup \\= true") {
-		t.Error("template output missing SystemdCgroup configuration")
-	}
-	if !strings.Contains(out, "containerd config default") {
-		t.Error("template output missing config generation")
-	}
-
-	// Test CNI path configuration fix
-	if !strings.Contains(out, `conf_dir = "/etc/cni/net.d"`) {
-		t.Error("template output missing CNI conf_dir configuration")
-	}
-	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
-		t.Error("template output missing CNI bin_dir configuration")
-	}
-
-	// Test verification
-	if !strings.Contains(out, "holodeck_verify_containerd") {
-		t.Error("template output missing containerd verification")
-	}
-	if !strings.Contains(out, "holodeck_mark_installed") {
-		t.Error("template output missing mark installed call")
-	}
+	assert.Contains(t, out, `COMPONENT="containerd"`)
+	assert.Contains(t, out, `SOURCE="package"`)
+	assert.Contains(t, out, "holodeck_progress")
+	assert.Contains(t, out, "Installing containerd 1.7.26 using package repository")
+	assert.Contains(t, out, "1.7.26")
+	assert.Contains(t, out, "download.docker.com")
+	assert.Contains(t, out, "HOLODECK_AMZN_FEDORA_VERSION")
+	assert.NotContains(t, out, `'s/\$releasever/39/g'`)
+	assert.Contains(t, out, `SystemdCgroup \= true`)
+	assert.Contains(t, out, "containerd config default")
+	assert.Contains(t, out, `conf_dir = "/etc/cni/net.d"`)
+	assert.Contains(t, out, `bin_dir = "/opt/cni/bin"`)
+	assert.Contains(t, out, "holodeck_verify_containerd")
+	assert.Contains(t, out, "holodeck_mark_installed")
 }
 
 func TestContainerd_Execute_Version2(t *testing.T) {
@@ -164,66 +203,67 @@ func TestContainerd_Execute_Version2(t *testing.T) {
 			},
 		},
 	}
-	c := NewContainerd(env)
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
 	var buf bytes.Buffer
-	err := c.Execute(&buf, env)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
-	}
+	err = c.Execute(&buf, env)
+	require.NoError(t, err)
 	out := buf.String()
 
-	// Test idempotency framework
-	if !strings.Contains(out, `COMPONENT="containerd"`) {
-		t.Error("template output missing COMPONENT definition")
-	}
-	if !strings.Contains(out, "holodeck_progress") {
-		t.Error("template output missing holodeck_progress calls")
+	assert.Contains(t, out, `COMPONENT="containerd"`)
+	assert.Contains(t, out, "holodeck_progress")
+	assert.Contains(t, out, "Installing containerd 2.0.0 from official binaries")
+	assert.Contains(t, out, "containerd-2.0.0-linux-${ARCH}.tar.gz")
+	assert.Contains(t, out, "https://github.com/containerd/containerd/releases/download/v2.0.0/")
+	assert.Contains(t, out, "SystemdCgroup = true")
+	assert.Contains(t, out, "containerd config default")
+	assert.Contains(t, out, `RUNC_VERSION="1.2.3"`)
+	assert.Contains(t, out, `CNI_VERSION="v1.6.2"`)
+	assert.Contains(t, out, `conf_dir = "/etc/cni/net.d"`)
+	assert.Contains(t, out, `bin_dir = "/opt/cni/bin"`)
+	assert.Contains(t, out, "holodeck_verify_containerd")
+	assert.Contains(t, out, "holodeck_mark_installed")
+}
+
+func TestContainerd_Execute_GitSource(t *testing.T) {
+	c := &Containerd{
+		Source:    "git",
+		GitRepo:   "https://github.com/containerd/containerd.git",
+		GitRef:    "v1.7.23",
+		GitCommit: "abc12345",
 	}
 
-	// Test v2 template specifics - now using official binaries
-	if !strings.Contains(out, "Installing containerd 2.0.0 from official binaries") {
-		t.Error("template output missing v2 installation message")
-	}
-	if !strings.Contains(out, "containerd-2.0.0-linux-${ARCH}.tar.gz") {
-		t.Error("template output missing containerd tarball name")
-	}
-	if !strings.Contains(out, "https://github.com/containerd/containerd/releases/download/v2.0.0/") {
-		t.Error("template output missing containerd download URL")
+	var buf bytes.Buffer
+	err := c.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+	out := buf.String()
+
+	assert.Contains(t, out, `SOURCE="git"`)
+	assert.Contains(t, out, `GIT_REF="v1.7.23"`)
+	assert.Contains(t, out, `GIT_COMMIT="abc12345"`)
+	assert.Contains(t, out, "make")
+	assert.Contains(t, out, "make install")
+	assert.Contains(t, out, "PROVENANCE.json")
+	assert.Contains(t, out, "holodeck_verify_containerd")
+}
+
+func TestContainerd_Execute_LatestSource(t *testing.T) {
+	c := &Containerd{
+		Source:      "latest",
+		GitRepo:     "https://github.com/containerd/containerd.git",
+		TrackBranch: "main",
 	}
 
-	// Test common configuration
-	if !strings.Contains(out, "SystemdCgroup = true") {
-		t.Error("template output missing SystemdCgroup configuration")
-	}
-	if !strings.Contains(out, "containerd config default") {
-		t.Error("template output missing config generation")
-	}
+	var buf bytes.Buffer
+	err := c.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+	out := buf.String()
 
-	// Test runc installation
-	if !strings.Contains(out, "RUNC_VERSION=\"1.2.3\"") {
-		t.Error("template output missing runc version")
-	}
-
-	// Test CNI plugins installation
-	if !strings.Contains(out, "CNI_VERSION=\"v1.6.2\"") {
-		t.Error("template output missing CNI version")
-	}
-
-	// Test CNI path configuration fix
-	if !strings.Contains(out, `conf_dir = "/etc/cni/net.d"`) {
-		t.Error("template output missing CNI conf_dir configuration")
-	}
-	if !strings.Contains(out, `bin_dir = "/opt/cni/bin"`) {
-		t.Error("template output missing CNI bin_dir configuration")
-	}
-
-	// Test verification
-	if !strings.Contains(out, "holodeck_verify_containerd") {
-		t.Error("template output missing containerd verification")
-	}
-	if !strings.Contains(out, "holodeck_mark_installed") {
-		t.Error("template output missing mark installed call")
-	}
+	assert.Contains(t, out, `SOURCE="latest"`)
+	assert.Contains(t, out, `TRACK_BRANCH="main"`)
+	assert.Contains(t, out, "git ls-remote")
+	assert.Contains(t, out, "PROVENANCE.json")
+	assert.Contains(t, out, "holodeck_verify_containerd")
 }
 
 func TestContainerd_Execute_CommonElements(t *testing.T) {
@@ -244,80 +284,34 @@ func TestContainerd_Execute_CommonElements(t *testing.T) {
 					},
 				},
 			}
-			c := NewContainerd(env)
+			c, err := NewContainerd(env)
+			require.NoError(t, err)
 			var buf bytes.Buffer
-			err := c.Execute(&buf, env)
-			if err != nil {
-				t.Fatalf("Execute failed: %v", err)
-			}
+			err = c.Execute(&buf, env)
+			require.NoError(t, err)
 			out := buf.String()
 
-			// Test kernel module handling (v2 has explicit modprobe, v1 relies on package manager)
 			if tt.version == "2.0.0" {
-				if !strings.Contains(out, "sudo modprobe overlay") {
-					t.Error("template output missing overlay module loading")
-				}
-				if !strings.Contains(out, "sudo modprobe br_netfilter") {
-					t.Error("template output missing br_netfilter module loading")
-				}
+				assert.True(t, strings.Contains(out, "sudo modprobe overlay"))
+				assert.True(t, strings.Contains(out, "sudo modprobe br_netfilter"))
+				assert.True(t, strings.Contains(out, "net.bridge.bridge-nf-call-iptables"))
+				assert.True(t, strings.Contains(out, "net.ipv4.ip_forward"))
+				assert.True(t, strings.Contains(out, "sudo sysctl --system"))
+				assert.True(t, strings.Contains(out, `if [[ "$ARCH" == "x86_64" ]]`))
+				assert.True(t, strings.Contains(out, `ARCH="amd64"`))
+				assert.True(t, strings.Contains(out, `elif [[ "$ARCH" == "aarch64" ]]`))
+				assert.True(t, strings.Contains(out, `ARCH="arm64"`))
+				assert.True(t, strings.Contains(out, `CNI_VERSION="v1.6.2"`))
+				assert.True(t, strings.Contains(out, "/opt/cni/bin"))
 			}
 
-			// Test sysctl settings (v2 has explicit sysctl, v1 relies on package setup)
-			if tt.version == "2.0.0" {
-				if !strings.Contains(out, "net.bridge.bridge-nf-call-iptables") {
-					t.Error("template output missing bridge-nf-call-iptables setting")
-				}
-				if !strings.Contains(out, "net.ipv4.ip_forward") {
-					t.Error("template output missing ip_forward setting")
-				}
-				if !strings.Contains(out, "sudo sysctl --system") {
-					t.Error("template output missing sysctl apply")
-				}
-			}
-
-			// Test architecture check - only v2 has explicit arch detection
-			if tt.version == "2.0.0" {
-				if !strings.Contains(out, "if [[ \"$ARCH\" == \"x86_64\" ]]") {
-					t.Error("template output missing x86_64 architecture check")
-				}
-				if !strings.Contains(out, "ARCH=\"amd64\"") {
-					t.Error("template output missing x86_64 to amd64 mapping")
-				}
-				if !strings.Contains(out, "elif [[ \"$ARCH\" == \"aarch64\" ]]") {
-					t.Error("template output missing aarch64 architecture check")
-				}
-				if !strings.Contains(out, "ARCH=\"arm64\"") {
-					t.Error("template output missing aarch64 to arm64 mapping")
-				}
-			}
-
-			// Test sudo usage in critical operations
-			if !strings.Contains(out, "sudo mkdir -p /etc/containerd") {
-				t.Error("template output missing sudo for directory creation")
-			}
-			// v1 uses restart then enable, v2 uses enable --now
+			assert.Contains(t, out, "sudo mkdir -p /etc/containerd")
 			if tt.version == "1.7.26" {
-				if !strings.Contains(out, "sudo systemctl restart containerd") {
-					t.Error("template output missing sudo for containerd restart")
-				}
+				assert.Contains(t, out, "sudo systemctl restart containerd")
 			} else {
-				if !strings.Contains(out, "sudo systemctl enable --now containerd") {
-					t.Error("template output missing sudo for containerd enable --now")
-				}
+				assert.Contains(t, out, "sudo systemctl enable --now containerd")
 			}
-			if !strings.Contains(out, "sudo systemctl enable") {
-				t.Error("template output missing sudo for service enable")
-			}
-
-			// Test CNI installation - only v2 has explicit CNI installation
-			if tt.version == "2.0.0" {
-				if !strings.Contains(out, "CNI_VERSION=\"v1.6.2\"") {
-					t.Error("template output missing CNI version")
-				}
-				if !strings.Contains(out, "/opt/cni/bin") {
-					t.Error("template output missing CNI directory")
-				}
-			}
+			assert.Contains(t, out, "sudo systemctl enable")
 		})
 	}
 }

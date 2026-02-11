@@ -599,15 +599,96 @@ type NVIDIADriver struct {
 	Version string `json:"version,omitempty"`
 }
 
+// RuntimeSource defines where to install the container runtime from.
+// +kubebuilder:validation:Enum=package;git;latest
+type RuntimeSource string
+
+const (
+	// RuntimeSourcePackage installs from distribution packages (default)
+	RuntimeSourcePackage RuntimeSource = "package"
+	// RuntimeSourceGit installs from a specific git reference
+	RuntimeSourceGit RuntimeSource = "git"
+	// RuntimeSourceLatest tracks a moving branch at provision time
+	RuntimeSourceLatest RuntimeSource = "latest"
+)
+
+// RuntimePackageSpec defines configuration for package-based runtime installation.
+type RuntimePackageSpec struct {
+	// Version pins to a specific package version.
+	// +optional
+	// +optional
+
+	Version string `json:"version,omitempty"`
+}
+
+// RuntimeGitSpec defines configuration for git-based runtime installation.
+type RuntimeGitSpec struct {
+	// Repo is the git repository URL.
+	// Defaults to the upstream repository for the selected runtime.
+	// +optional
+	// +optional
+
+	Repo string `json:"repo,omitempty"`
+
+	// Ref is the git reference (commit SHA, tag, branch, or PR ref).
+	// Examples: "v1.7.23", "refs/tags/v1.7.23", "refs/heads/main", "abc123"
+	// +required
+	Ref string `json:"ref"`
+}
+
+// RuntimeLatestSpec defines configuration for latest branch tracking.
+type RuntimeLatestSpec struct {
+	// Track specifies the branch to track at provision time.
+	// +kubebuilder:default=main
+	// +optional
+	// +optional
+
+	Track string `json:"track,omitempty"`
+
+	// Repo is the git repository URL.
+	// Defaults to the upstream repository for the selected runtime.
+	// +optional
+	// +optional
+
+	Repo string `json:"repo,omitempty"`
+}
+
+// ContainerRuntime defines the container runtime configuration.
 type ContainerRuntime struct {
 	Install bool `json:"install"`
 	// +kubebuilder:validation:Enum=docker;containerd;crio
 	Name ContainerRuntimeName `json:"name"`
-	// If not set the latest stable version will be used
+
+	// Source determines installation method.
+	// +kubebuilder:default=package
 	// +optional
 	// +optional
 
-	Version string `json:"version"`
+	Source RuntimeSource `json:"source,omitempty"`
+
+	// Package source configuration (when source=package).
+	// +optional
+	// +optional
+
+	Package *RuntimePackageSpec `json:"package,omitempty"`
+
+	// Git source configuration (when source=git).
+	// +optional
+	// +optional
+
+	Git *RuntimeGitSpec `json:"git,omitempty"`
+
+	// Latest source configuration (when source=latest).
+	// +optional
+	// +optional
+
+	Latest *RuntimeLatestSpec `json:"latest,omitempty"`
+
+	// Version is deprecated, use Package.Version instead.
+	// +optional
+	// +optional
+
+	Version string `json:"version,omitempty"`
 }
 
 type ContainerRuntimeName string

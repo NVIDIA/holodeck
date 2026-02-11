@@ -17,27 +17,23 @@ package templates
 
 import (
 	"bytes"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
-func TestNewCriO(t *testing.T) {
-	env := v1alpha1.Environment{
-		Spec: v1alpha1.EnvironmentSpec{
-			ContainerRuntime: v1alpha1.ContainerRuntime{
-				Version: "1.25",
-			},
-		},
-	}
-	crio := NewCriO(env)
-	if crio.Version != "1.25" {
-		t.Errorf("expected Version to be '1.25', got '%s'", crio.Version)
-	}
+func TestNewCriO_Defaults(t *testing.T) {
+	env := v1alpha1.Environment{}
+	c, err := NewCriO(env)
+	require.NoError(t, err)
+	assert.Equal(t, "package", c.Source)
+	assert.Equal(t, "", c.Version)
 }
 
-func TestCriO_Execute(t *testing.T) {
+func TestNewCriO_CustomVersion(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			ContainerRuntime: v1alpha1.ContainerRuntime{
@@ -45,35 +41,106 @@ func TestCriO_Execute(t *testing.T) {
 			},
 		},
 	}
-	crio := NewCriO(env)
-	var buf bytes.Buffer
-	err := crio.Execute(&buf, env)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
+	c, err := NewCriO(env)
+	require.NoError(t, err)
+	assert.Equal(t, "1.25", c.Version)
+}
+
+func TestNewCriO_PackageSpec(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Name:    v1alpha1.ContainerRuntimeCrio,
+				Source:  v1alpha1.RuntimeSourcePackage,
+				Package: &v1alpha1.RuntimePackageSpec{
+					Version: "1.30",
+				},
+			},
+		},
 	}
+	c, err := NewCriO(env)
+	require.NoError(t, err)
+	assert.Equal(t, "package", c.Source)
+	assert.Equal(t, "1.30", c.Version)
+}
+
+func TestNewCriO_GitSource(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Name:    v1alpha1.ContainerRuntimeCrio,
+				Source:  v1alpha1.RuntimeSourceGit,
+				Git: &v1alpha1.RuntimeGitSpec{
+					Ref: "v1.30.0",
+				},
+			},
+		},
+	}
+	c, err := NewCriO(env)
+	require.NoError(t, err)
+	assert.Equal(t, "git", c.Source)
+	assert.Equal(t, "v1.30.0", c.GitRef)
+	assert.Equal(t, "https://github.com/cri-o/cri-o.git", c.GitRepo)
+}
+
+func TestNewCriO_GitSourceMissingConfig(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Install: true,
+				Source:  v1alpha1.RuntimeSourceGit,
+			},
+		},
+	}
+	_, err := NewCriO(env)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "git source requires")
+}
+
+func TestCriO_Execute_PackageSource(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Version: "1.25",
+			},
+		},
+	}
+	c, err := NewCriO(env)
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	err = c.Execute(&buf, env)
+	require.NoError(t, err)
 	out := buf.String()
 
-	// Test idempotency framework usage
-	if !strings.Contains(out, `COMPONENT="crio"`) {
-		t.Error("template output missing COMPONENT definition")
-	}
-	if !strings.Contains(out, "holodeck_progress") {
-		t.Error("template output missing holodeck_progress calls")
+	assert.Contains(t, out, `COMPONENT="crio"`)
+	assert.Contains(t, out, `SOURCE="package"`)
+	assert.Contains(t, out, "holodeck_progress")
+	assert.Contains(t, out, "apt-get install -y cri-o")
+	assert.Contains(t, out, "systemctl start crio.service")
+	assert.Contains(t, out, "holodeck_verify_crio")
+	assert.Contains(t, out, "holodeck_mark_installed")
+}
+
+func TestCriO_Execute_GitSource(t *testing.T) {
+	c := &CriO{
+		Source:    "git",
+		GitRepo:   "https://github.com/cri-o/cri-o.git",
+		GitRef:    "v1.30.0",
+		GitCommit: "abc12345",
 	}
 
-	// Test CRI-O installation
-	if !strings.Contains(out, "apt-get install -y cri-o") {
-		t.Errorf("template output missing cri-o install: %s", out)
-	}
-	if !strings.Contains(out, "systemctl start crio.service") {
-		t.Errorf("template output missing crio start: %s", out)
-	}
+	var buf bytes.Buffer
+	err := c.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+	out := buf.String()
 
-	// Test verification
-	if !strings.Contains(out, "holodeck_verify_crio") {
-		t.Error("template output missing crio verification")
-	}
-	if !strings.Contains(out, "holodeck_mark_installed") {
-		t.Error("template output missing mark installed call")
-	}
+	assert.Contains(t, out, `SOURCE="git"`)
+	assert.Contains(t, out, `GIT_REF="v1.30.0"`)
+	assert.Contains(t, out, `GIT_COMMIT="abc12345"`)
+	assert.Contains(t, out, "make")
+	assert.Contains(t, out, "make install")
+	assert.Contains(t, out, "PROVENANCE.json")
+	assert.Contains(t, out, "holodeck_verify_crio")
 }
