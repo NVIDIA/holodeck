@@ -18,6 +18,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -419,6 +420,10 @@ func (p *Provider) createInstances(
 	instancesChan := make(chan InstanceInfo, count)
 	errorsChan := make(chan error, count)
 
+	// Copy tags to avoid data race if p.Tags is modified during creation
+	tagsCopy := make([]types.Tag, len(p.Tags))
+	copy(tagsCopy, p.Tags)
+
 	for i := 0; i < count; i++ {
 		wg.Add(1)
 		go func(index int) {
@@ -427,7 +432,7 @@ func (p *Provider) createInstances(
 			instanceName := fmt.Sprintf("%s-%s-%d", p.ObjectMeta.Name, role, index)
 			// Filter out the Name tag from p.Tags to avoid duplicates
 			var tags []types.Tag
-			for _, tag := range p.Tags {
+			for _, tag := range tagsCopy {
 				if aws.ToString(tag.Key) != "Name" {
 					tags = append(tags, tag)
 				}
@@ -550,7 +555,7 @@ func (p *Provider) createInstances(
 		errs = append(errs, err)
 	}
 	if len(errs) > 0 {
-		return nil, fmt.Errorf("errors creating instances: %v", errs)
+		return nil, fmt.Errorf("errors creating instances: %w", errors.Join(errs...))
 	}
 
 	// Collect instances
