@@ -24,8 +24,9 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
-const dockerTemplate = `
+const dockerPackageTemplate = `
 COMPONENT="docker"
+SOURCE="package"
 DESIRED_VERSION="{{.Version}}"
 
 holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
@@ -228,28 +229,230 @@ holodeck_mark_installed "$COMPONENT" "$FINAL_VERSION"
 holodeck_log "INFO" "$COMPONENT" "Successfully installed Docker ${FINAL_VERSION}"
 `
 
+// dockerGitTemplate builds Docker (moby) from source.
+const dockerGitTemplate = `
+COMPONENT="docker"
+SOURCE="git"
+GIT_REPO="{{.GitRepo}}"
+GIT_REF="{{.GitRef}}"
+GIT_COMMIT="{{.GitCommit}}"
+
+holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
+
+if command -v dockerd &>/dev/null; then
+    if [[ -f /etc/docker/PROVENANCE.json ]]; then
+        if command -v jq &>/dev/null; then
+            INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/docker/PROVENANCE.json)
+            if [[ "$INSTALLED_COMMIT" == "$GIT_COMMIT" ]]; then
+                if holodeck_verify_docker; then
+                    holodeck_log "INFO" "$COMPONENT" "Already installed from commit: ${GIT_COMMIT}"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+fi
+
+holodeck_progress "$COMPONENT" 2 6 "Installing build dependencies"
+
+holodeck_retry 3 "$COMPONENT" sudo apt-get update
+holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+    build-essential ca-certificates curl git libseccomp-dev pkg-config
+
+GO_VERSION="${DOCKER_GO_VERSION:-1.23.4}"
+GO_ARCH="$(uname -m)"
+case "${GO_ARCH}" in
+    x86_64|amd64)  GO_ARCH="amd64" ;;
+    aarch64|arm64) GO_ARCH="arm64" ;;
+    *) holodeck_log "ERROR" "$COMPONENT" "Unsupported arch: ${GO_ARCH}"; exit 1 ;;
+esac
+if ! command -v /usr/local/go/bin/go &>/dev/null; then
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" | \
+        sudo tar -C /usr/local -xzf -
+fi
+export PATH="/usr/local/go/bin:$PATH"
+export GOTOOLCHAIN=auto
+
+holodeck_progress "$COMPONENT" 3 6 "Cloning moby repository"
+
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+if ! git clone --depth 1 "${GIT_REPO}" "${WORK_DIR}/src"; then
+    holodeck_log "ERROR" "$COMPONENT" "Failed to clone ${GIT_REPO}"
+    exit 1
+fi
+cd "${WORK_DIR}/src" || exit 1
+if ! git fetch --depth 1 origin "${GIT_REF}"; then
+    holodeck_log "ERROR" "$COMPONENT" "Failed to fetch ref ${GIT_REF}"
+    exit 1
+fi
+git checkout FETCH_HEAD
+
+holodeck_progress "$COMPONENT" 4 6 "Building from source"
+
+# Build dockerd and docker CLI
+DOCKER_BUILDTAGS="seccomp" hack/make.sh binary || {
+    holodeck_log "ERROR" "$COMPONENT" "Build failed"
+    exit 1
+}
+
+holodeck_progress "$COMPONENT" 5 6 "Installing binaries"
+
+# Install built binaries
+sudo install -m 755 bundles/binary-daemon/dockerd /usr/local/bin/
+sudo install -m 755 bundles/binary-daemon/docker-proxy /usr/local/bin/
+# Install CLI if built
+if [[ -f bundles/binary-client/docker ]]; then
+    sudo install -m 755 bundles/binary-client/docker /usr/local/bin/
+fi
+
+# Install containerd.io and runc as dependencies
+holodeck_retry 3 "$COMPONENT" install_packages_with_retry containerd.io
+
+# Create Docker daemon config
+sudo mkdir -p /etc/docker
+if [[ ! -f /etc/docker/daemon.json ]]; then
+    sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+{
+  "exec-opts": ["native.cgroupdriver=systemd"],
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "100m" },
+  "storage-driver": "overlay2"
+}
+EOF
+fi
+
+# Create systemd service
+if [[ ! -f /etc/systemd/system/docker.service ]]; then
+    cat <<EOF | sudo tee /etc/systemd/system/docker.service
+[Unit]
+Description=Docker Application Container Engine
+After=network-online.target containerd.service
+[Service]
+ExecStart=/usr/local/bin/dockerd
+Type=notify
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now docker
+
+# Install cri-dockerd for Kubernetes compatibility
+CRI_DOCKERD_VERSION="0.3.17"
+if [[ ! -f /usr/local/bin/cri-dockerd ]]; then
+    CRI_DOCKERD_URL="https://github.com/Mirantis/cri-dockerd/releases/download/v${CRI_DOCKERD_VERSION}/cri-dockerd-${CRI_DOCKERD_VERSION}.${GO_ARCH}.tgz"
+    curl -L "${CRI_DOCKERD_URL}" | sudo tar xzv -C /usr/local/bin --strip-components=1
+fi
+
+holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
+
+timeout=120
+while ! sudo docker info &>/dev/null; do
+    if [[ $timeout -le 0 ]]; then
+        holodeck_error 11 "$COMPONENT" "Timeout waiting for Docker" \
+            "Check 'systemctl status docker'"
+    fi
+    sleep 1; ((timeout--))
+done
+
+if ! holodeck_verify_docker; then
+    holodeck_error 5 "$COMPONENT" "Docker verification failed after git build" \
+        "Check build logs and 'systemctl status docker'"
+fi
+
+FINAL_VERSION=$(sudo docker version --format '{{"{{"}}{{".Server.Version"}}{{"}}"}}' || echo "${GIT_COMMIT}")
+
+sudo mkdir -p /etc/docker
+printf '%s\n' '{
+  "source": "git",
+  "repo": "'"${GIT_REPO}"'",
+  "ref": "'"${GIT_REF}"'",
+  "commit": "'"${GIT_COMMIT}"'",
+  "version": "'"${FINAL_VERSION}"'",
+  "installed_at": "'"$(date -Iseconds)"'"
+}' | sudo tee /etc/docker/PROVENANCE.json > /dev/null
+
+holodeck_mark_installed "$COMPONENT" "${FINAL_VERSION}"
+holodeck_log "INFO" "$COMPONENT" "Successfully installed Docker from git: ${GIT_COMMIT}"
+`
+
+// Docker holds configuration for Docker installation.
 type Docker struct {
+	// Source configuration
+	Source string // "package", "git"
+
+	// Package source fields
 	Version string
+
+	// Git source fields
+	GitRepo   string
+	GitRef    string
+	GitCommit string
 }
 
-func NewDocker(env v1alpha1.Environment) *Docker {
-	var version string
+// NewDocker creates a Docker from an Environment spec.
+func NewDocker(env v1alpha1.Environment) (*Docker, error) {
+	cr := env.Spec.ContainerRuntime
 
-	if env.Spec.ContainerRuntime.Version != "" {
-		version = env.Spec.ContainerRuntime.Version
-	} else {
-		version = "latest"
+	d := &Docker{
+		Source: string(cr.Source),
 	}
-	return &Docker{
-		Version: version,
+
+	if d.Source == "" {
+		d.Source = "package"
 	}
+
+	switch d.Source {
+	case "package":
+		switch {
+		case cr.Package != nil && cr.Package.Version != "":
+			d.Version = cr.Package.Version
+		case cr.Version != "":
+			d.Version = cr.Version
+		default:
+			d.Version = "latest"
+		}
+
+	case "git":
+		if cr.Git == nil {
+			return nil, fmt.Errorf("git source requires 'git' configuration")
+		}
+		d.GitRepo = cr.Git.Repo
+		d.GitRef = cr.Git.Ref
+		if d.GitRepo == "" {
+			d.GitRepo = "https://github.com/moby/moby.git"
+		}
+	}
+
+	return d, nil
 }
 
+// SetResolvedCommit sets the resolved git commit SHA.
+func (t *Docker) SetResolvedCommit(shortSHA string) {
+	t.GitCommit = shortSHA
+}
+
+// Execute renders the appropriate template based on source.
 func (t *Docker) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	dockerTemplate := template.Must(template.New("docker").Parse(dockerTemplate))
-	if err := dockerTemplate.Execute(tpl, t); err != nil {
+	var templateContent string
+
+	switch t.Source {
+	case "package", "":
+		templateContent = dockerPackageTemplate
+	case "git":
+		templateContent = dockerGitTemplate
+	default:
+		return fmt.Errorf("unknown docker source: %s", t.Source)
+	}
+
+	tmpl := template.Must(template.New("docker").Parse(templateContent))
+	if err := tmpl.Execute(tpl, t); err != nil {
 		return fmt.Errorf("failed to execute docker template: %w", err)
 	}
-
 	return nil
 }

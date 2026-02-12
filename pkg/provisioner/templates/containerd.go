@@ -29,6 +29,7 @@ import (
 // Supports both Debian-based (apt) and RHEL-based (dnf/yum) distributions
 const containerdV1Template = `
 COMPONENT="containerd"
+SOURCE="package"
 DESIRED_VERSION="{{.Version}}"
 
 holodeck_progress "$COMPONENT" 1 4 "Checking existing installation"
@@ -200,6 +201,7 @@ holodeck_log "INFO" "$COMPONENT" "Successfully installed containerd ${FINAL_VERS
 // Based on official containerd installation guide for v2.x
 const containerdV2Template = `
 COMPONENT="containerd"
+SOURCE="package"
 DESIRED_VERSION="{{.Version}}"
 
 holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
@@ -371,53 +373,432 @@ holodeck_mark_installed "$COMPONENT" "$FINAL_VERSION"
 holodeck_log "INFO" "$COMPONENT" "Successfully installed containerd ${FINAL_VERSION} (v2.x)"
 `
 
+// containerdGitTemplate builds and installs containerd from source.
+const containerdGitTemplate = `
+COMPONENT="containerd"
+SOURCE="git"
+GIT_REPO="{{.GitRepo}}"
+GIT_REF="{{.GitRef}}"
+GIT_COMMIT="{{.GitCommit}}"
+
+holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
+
+# Check if already installed with this commit
+if command -v containerd &>/dev/null; then
+    if [[ -f /etc/containerd/PROVENANCE.json ]]; then
+        if command -v jq &>/dev/null; then
+            INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/containerd/PROVENANCE.json)
+            if [[ "$INSTALLED_COMMIT" == "$GIT_COMMIT" ]]; then
+                if holodeck_verify_containerd; then
+                    holodeck_log "INFO" "$COMPONENT" "Already installed from commit: ${GIT_COMMIT}"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+fi
+
+holodeck_progress "$COMPONENT" 2 6 "Installing build dependencies"
+
+holodeck_retry 3 "$COMPONENT" sudo apt-get update
+holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+    build-essential ca-certificates curl git libseccomp-dev pkg-config
+
+# Install Go toolchain
+GO_VERSION="${CONTAINERD_GO_VERSION:-1.23.4}"
+GO_ARCH="$(uname -m)"
+case "${GO_ARCH}" in
+    x86_64|amd64)  GO_ARCH="amd64" ;;
+    aarch64|arm64) GO_ARCH="arm64" ;;
+    *) holodeck_log "ERROR" "$COMPONENT" "Unsupported arch: ${GO_ARCH}"; exit 1 ;;
+esac
+if ! command -v /usr/local/go/bin/go &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Installing Go ${GO_VERSION}"
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" | \
+        sudo tar -C /usr/local -xzf -
+fi
+export PATH="/usr/local/go/bin:$PATH"
+export GOTOOLCHAIN=auto
+
+holodeck_progress "$COMPONENT" 3 6 "Cloning repository"
+
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+if [[ -z "${GIT_REPO}" ]]; then
+    holodeck_log "ERROR" "$COMPONENT" "GIT_REPO is empty"
+    exit 1
+fi
+
+if ! git clone --depth 1 "${GIT_REPO}" "${WORK_DIR}/src"; then
+    holodeck_log "ERROR" "$COMPONENT" "Failed to clone ${GIT_REPO}"
+    exit 1
+fi
+cd "${WORK_DIR}/src" || exit 1
+if ! git fetch --depth 1 origin "${GIT_REF}"; then
+    holodeck_log "ERROR" "$COMPONENT" "Failed to fetch ref ${GIT_REF}"
+    exit 1
+fi
+git checkout FETCH_HEAD
+
+holodeck_progress "$COMPONENT" 4 6 "Building from source"
+
+if ! make; then
+    holodeck_log "ERROR" "$COMPONENT" "Build failed"
+    exit 1
+fi
+
+holodeck_progress "$COMPONENT" 5 6 "Installing binaries"
+
+sudo make install
+
+# Install runc if not present
+RUNC_VERSION="1.2.3"
+if [[ ! -f /usr/local/sbin/runc ]]; then
+    ARCH="${GO_ARCH}"
+    curl -fsSL -o "runc.${ARCH}" \
+        "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH}"
+    sudo install -m 755 "runc.${ARCH}" /usr/local/sbin/runc
+fi
+
+# Install CNI plugins if not present
+CNI_VERSION="v1.6.2"
+if [[ ! -f /opt/cni/bin/bridge ]]; then
+    ARCH="${GO_ARCH}"
+    CNI_TAR="cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz"
+    curl -fsSL -o "${CNI_TAR}" \
+        "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/${CNI_TAR}"
+    sudo mkdir -p /opt/cni/bin
+    sudo tar Cxzvf /opt/cni/bin "${CNI_TAR}"
+fi
+
+# Configure containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+sudo sed -i 's|conf_dir = .*|conf_dir = "/etc/cni/net.d"|g' /etc/containerd/config.toml
+sudo sed -i 's|bin_dir = .*|bin_dir = "/opt/cni/bin"|g' /etc/containerd/config.toml
+
+# Create systemd service
+if [[ ! -f /etc/systemd/system/containerd.service ]]; then
+    cat <<EOF | sudo tee /etc/systemd/system/containerd.service
+[Unit]
+Description=containerd container runtime
+After=network.target local-fs.target
+[Service]
+ExecStart=/usr/local/bin/containerd
+Type=notify
+Delegate=yes
+KillMode=process
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now containerd
+
+holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
+
+timeout=120
+while ! sudo ctr version &>/dev/null; do
+    if [[ $timeout -le 0 ]]; then
+        holodeck_error 11 "$COMPONENT" "Timeout waiting for containerd" \
+            "Check 'systemctl status containerd'"
+    fi
+    sleep 1; ((timeout--))
+done
+
+if ! holodeck_verify_containerd; then
+    holodeck_error 5 "$COMPONENT" "Containerd verification failed after git build" \
+        "Check build logs and 'systemctl status containerd'"
+fi
+
+FINAL_VERSION=$(containerd --version | awk '{print $3}')
+
+sudo mkdir -p /etc/containerd
+printf '%s\n' '{
+  "source": "git",
+  "repo": "'"${GIT_REPO}"'",
+  "ref": "'"${GIT_REF}"'",
+  "commit": "'"${GIT_COMMIT}"'",
+  "version": "'"${FINAL_VERSION}"'",
+  "installed_at": "'"$(date -Iseconds)"'"
+}' | sudo tee /etc/containerd/PROVENANCE.json > /dev/null
+
+holodeck_mark_installed "$COMPONENT" "${FINAL_VERSION}"
+holodeck_log "INFO" "$COMPONENT" "Successfully installed containerd ${FINAL_VERSION} from git: ${GIT_COMMIT}"
+`
+
+// containerdLatestTemplate tracks a branch at provision time.
+const containerdLatestTemplate = `
+COMPONENT="containerd"
+SOURCE="latest"
+GIT_REPO="{{.GitRepo}}"
+TRACK_BRANCH="{{.TrackBranch}}"
+
+holodeck_progress "$COMPONENT" 1 6 "Resolving latest commit on ${TRACK_BRANCH}"
+
+if [[ -z "${GIT_REPO}" ]]; then
+    holodeck_log "ERROR" "$COMPONENT" "GIT_REPO is empty"
+    exit 1
+fi
+
+if ! LATEST_COMMIT=$(git ls-remote "${GIT_REPO}" "refs/heads/${TRACK_BRANCH}" | cut -f1); then
+    holodeck_log "ERROR" "$COMPONENT" "Failed to resolve ${TRACK_BRANCH} from ${GIT_REPO}"
+    exit 1
+fi
+if [[ -z "$LATEST_COMMIT" ]]; then
+    holodeck_log "ERROR" "$COMPONENT" "No commit found for branch ${TRACK_BRANCH}"
+    exit 1
+fi
+SHORT_COMMIT="${LATEST_COMMIT:0:8}"
+holodeck_log "INFO" "$COMPONENT" "Tracking ${TRACK_BRANCH} at ${SHORT_COMMIT}"
+
+# Check if already at latest
+if command -v containerd &>/dev/null; then
+    if [[ -f /etc/containerd/PROVENANCE.json ]]; then
+        if command -v jq &>/dev/null; then
+            INSTALLED_COMMIT=$(jq -r '.commit // empty' /etc/containerd/PROVENANCE.json)
+            if [[ "$INSTALLED_COMMIT" == "$SHORT_COMMIT" ]]; then
+                if holodeck_verify_containerd; then
+                    holodeck_log "INFO" "$COMPONENT" "Already at latest: ${SHORT_COMMIT}"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+fi
+
+holodeck_progress "$COMPONENT" 2 6 "Installing build dependencies"
+
+holodeck_retry 3 "$COMPONENT" sudo apt-get update
+holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+    build-essential ca-certificates curl git libseccomp-dev pkg-config
+
+GO_VERSION="${CONTAINERD_GO_VERSION:-1.23.4}"
+GO_ARCH="$(uname -m)"
+case "${GO_ARCH}" in
+    x86_64|amd64)  GO_ARCH="amd64" ;;
+    aarch64|arm64) GO_ARCH="arm64" ;;
+    *) holodeck_log "ERROR" "$COMPONENT" "Unsupported arch: ${GO_ARCH}"; exit 1 ;;
+esac
+if ! command -v /usr/local/go/bin/go &>/dev/null; then
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" | \
+        sudo tar -C /usr/local -xzf -
+fi
+export PATH="/usr/local/go/bin:$PATH"
+export GOTOOLCHAIN=auto
+
+holodeck_progress "$COMPONENT" 3 6 "Cloning repository at ${TRACK_BRANCH}"
+
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+if ! git clone --depth 1 --branch "${TRACK_BRANCH}" "${GIT_REPO}" "${WORK_DIR}/src"; then
+    holodeck_log "ERROR" "$COMPONENT" "Failed to clone ${GIT_REPO} branch ${TRACK_BRANCH}"
+    exit 1
+fi
+cd "${WORK_DIR}/src" || exit 1
+
+holodeck_progress "$COMPONENT" 4 6 "Building from source"
+
+if ! make; then
+    holodeck_log "ERROR" "$COMPONENT" "Build failed"
+    exit 1
+fi
+
+holodeck_progress "$COMPONENT" 5 6 "Installing binaries"
+
+sudo make install
+
+# Install runc and CNI if not present (same as git template)
+RUNC_VERSION="1.2.3"
+if [[ ! -f /usr/local/sbin/runc ]]; then
+    ARCH="${GO_ARCH}"
+    curl -fsSL -o "runc.${ARCH}" \
+        "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH}"
+    sudo install -m 755 "runc.${ARCH}" /usr/local/sbin/runc
+fi
+CNI_VERSION="v1.6.2"
+if [[ ! -f /opt/cni/bin/bridge ]]; then
+    ARCH="${GO_ARCH}"
+    CNI_TAR="cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz"
+    curl -fsSL -o "${CNI_TAR}" \
+        "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/${CNI_TAR}"
+    sudo mkdir -p /opt/cni/bin
+    sudo tar Cxzvf /opt/cni/bin "${CNI_TAR}"
+fi
+
+# Configure and start containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+sudo sed -i 's|conf_dir = .*|conf_dir = "/etc/cni/net.d"|g' /etc/containerd/config.toml
+sudo sed -i 's|bin_dir = .*|bin_dir = "/opt/cni/bin"|g' /etc/containerd/config.toml
+
+if [[ ! -f /etc/systemd/system/containerd.service ]]; then
+    cat <<EOF | sudo tee /etc/systemd/system/containerd.service
+[Unit]
+Description=containerd container runtime
+After=network.target local-fs.target
+[Service]
+ExecStart=/usr/local/bin/containerd
+Type=notify
+Delegate=yes
+KillMode=process
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now containerd
+
+holodeck_progress "$COMPONENT" 6 6 "Verifying installation"
+
+timeout=120
+while ! sudo ctr version &>/dev/null; do
+    if [[ $timeout -le 0 ]]; then
+        holodeck_error 11 "$COMPONENT" "Timeout waiting for containerd" \
+            "Check 'systemctl status containerd'"
+    fi
+    sleep 1; ((timeout--))
+done
+
+if ! holodeck_verify_containerd; then
+    holodeck_error 5 "$COMPONENT" "Containerd verification failed" \
+        "Check build logs and 'systemctl status containerd'"
+fi
+
+FINAL_VERSION=$(containerd --version | awk '{print $3}')
+
+sudo mkdir -p /etc/containerd
+printf '%s\n' '{
+  "source": "latest",
+  "repo": "'"${GIT_REPO}"'",
+  "branch": "'"${TRACK_BRANCH}"'",
+  "commit": "'"${SHORT_COMMIT}"'",
+  "version": "'"${FINAL_VERSION}"'",
+  "installed_at": "'"$(date -Iseconds)"'"
+}' | sudo tee /etc/containerd/PROVENANCE.json > /dev/null
+
+holodeck_mark_installed "$COMPONENT" "${FINAL_VERSION}"
+holodeck_log "INFO" "$COMPONENT" "Successfully installed containerd from ${TRACK_BRANCH}: ${SHORT_COMMIT}"
+`
+
+// Containerd holds configuration for containerd installation.
 type Containerd struct {
+	// Source configuration
+	Source string // "package", "git", "latest"
+
+	// Package source fields
 	Version      string
 	MajorVersion int
+
+	// Git source fields
+	GitRepo   string
+	GitRef    string
+	GitCommit string // Resolved short SHA
+
+	// Latest source fields
+	TrackBranch string
 }
 
-func NewContainerd(env v1alpha1.Environment) *Containerd {
-	var version string
+// NewContainerd creates a Containerd from an Environment spec.
+func NewContainerd(env v1alpha1.Environment) (*Containerd, error) {
+	cr := env.Spec.ContainerRuntime
 
-	if env.Spec.ContainerRuntime.Version == "" {
-		version = "1.7.27" // Default to v1.7.x
-	} else {
-		// remove the 'v' prefix from the version if it exists
-		version = strings.TrimPrefix(env.Spec.ContainerRuntime.Version, "v")
+	c := &Containerd{
+		Source: string(cr.Source),
 	}
 
-	// Parse major version
-	majorVersion := 1
-	parts := strings.Split(version, ".")
-	if len(parts) > 0 {
-		if major := parts[0]; major == "2" {
-			majorVersion = 2
-			// If user specifies "2" without minor/patch, use latest stable v2
+	// Default to package source
+	if c.Source == "" {
+		c.Source = "package"
+	}
+
+	switch c.Source {
+	case "package":
+		var version string
+		switch {
+		case cr.Package != nil && cr.Package.Version != "":
+			version = cr.Package.Version
+		case cr.Version != "":
+			// Legacy field support
+			version = cr.Version
+		default:
+			version = "1.7.27" // Default
+		}
+		version = strings.TrimPrefix(version, "v")
+
+		// Parse major version
+		c.MajorVersion = 1
+		parts := strings.Split(version, ".")
+		if len(parts) > 0 && parts[0] == "2" {
+			c.MajorVersion = 2
 			if version == "2" {
 				version = "2.0.0"
 			}
 		}
+		c.Version = version
+
+	case "git":
+		if cr.Git == nil {
+			return nil, fmt.Errorf("git source requires 'git' configuration")
+		}
+		c.GitRepo = cr.Git.Repo
+		c.GitRef = cr.Git.Ref
+		if c.GitRepo == "" {
+			c.GitRepo = "https://github.com/containerd/containerd.git"
+		}
+
+	case "latest":
+		c.TrackBranch = "main"
+		c.GitRepo = "https://github.com/containerd/containerd.git"
+		if cr.Latest != nil {
+			if cr.Latest.Track != "" {
+				c.TrackBranch = cr.Latest.Track
+			}
+			if cr.Latest.Repo != "" {
+				c.GitRepo = cr.Latest.Repo
+			}
+		}
 	}
 
-	return &Containerd{
-		Version:      version,
-		MajorVersion: majorVersion,
-	}
+	return c, nil
 }
 
+// SetResolvedCommit sets the resolved git commit SHA.
+func (t *Containerd) SetResolvedCommit(shortSHA string) {
+	t.GitCommit = shortSHA
+}
+
+// Execute renders the appropriate template based on source.
 func (t *Containerd) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	// Choose template based on major version
 	var templateContent string
-	switch t.MajorVersion {
-	case 2:
-		templateContent = containerdV2Template
+
+	switch t.Source {
+	case "package", "":
+		if t.MajorVersion == 2 {
+			templateContent = containerdV2Template
+		} else {
+			templateContent = containerdV1Template
+		}
+	case "git":
+		templateContent = containerdGitTemplate
+	case "latest":
+		templateContent = containerdLatestTemplate
 	default:
-		templateContent = containerdV1Template
+		return fmt.Errorf("unknown containerd source: %s", t.Source)
 	}
 
-	containerdTemplate := template.Must(template.New("containerd").Parse(templateContent))
-	err := containerdTemplate.Execute(tpl, t)
-	if err != nil {
+	tmpl := template.Must(template.New("containerd").Parse(templateContent))
+	if err := tmpl.Execute(tpl, t); err != nil {
 		return fmt.Errorf("failed to execute containerd template: %w", err)
 	}
 	return nil

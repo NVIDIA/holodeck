@@ -193,6 +193,40 @@ func (d *NVIDIADriver) Validate() error {
 	}
 }
 
+// Validate validates the ContainerRuntime configuration.
+func (cr *ContainerRuntime) Validate() error {
+	if !cr.Install {
+		return nil
+	}
+
+	source := cr.Source
+	if source == "" {
+		source = RuntimeSourcePackage
+	}
+
+	switch source {
+	case RuntimeSourcePackage:
+		// Package source is always valid; version is optional
+		return nil
+
+	case RuntimeSourceGit:
+		if cr.Git == nil {
+			return fmt.Errorf("container runtime git source requires 'git' configuration")
+		}
+		if cr.Git.Ref == "" {
+			return fmt.Errorf("container runtime git source requires 'ref' to be specified")
+		}
+		return nil
+
+	case RuntimeSourceLatest:
+		// Latest source is valid with or without explicit config
+		return nil
+
+	default:
+		return fmt.Errorf("unknown container runtime source: %s", source)
+	}
+}
+
 // Validate validates the NVIDIAContainerToolkit configuration.
 func (nct *NVIDIAContainerToolkit) Validate() error {
 	if !nct.Install {
