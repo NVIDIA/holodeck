@@ -500,19 +500,103 @@ type Auth struct {
 	PrivateKey string `json:"privateKey"`
 }
 
+// DriverSource defines where to install the NVIDIA driver from.
+// +kubebuilder:validation:Enum=package;runfile;git
+type DriverSource string
+
+const (
+	// DriverSourcePackage installs from CUDA repository packages (default)
+	DriverSourcePackage DriverSource = "package"
+	// DriverSourceRunfile installs from an NVIDIA .run file
+	DriverSourceRunfile DriverSource = "runfile"
+	// DriverSourceGit builds from the open-gpu-kernel-modules repository
+	DriverSourceGit DriverSource = "git"
+)
+
+// DriverPackageSpec defines configuration for package-based driver installation.
+type DriverPackageSpec struct {
+	// Branch specifies the driver branch (e.g., "560", "550").
+	// +optional
+	// +optional
+
+	Branch string `json:"branch,omitempty"`
+
+	// Version pins to a specific package version (e.g., "560.35.03").
+	// If set, takes precedence over Branch for version selection.
+	// +optional
+	// +optional
+
+	Version string `json:"version,omitempty"`
+}
+
+// DriverRunfileSpec defines configuration for runfile-based driver installation.
+type DriverRunfileSpec struct {
+	// URL is the download URL for the .run file.
+	// +required
+	URL string `json:"url"`
+
+	// Checksum is the expected SHA256 checksum of the .run file (e.g., "sha256:abc123...").
+	// +optional
+	// +optional
+
+	Checksum string `json:"checksum,omitempty"`
+}
+
+// DriverGitSpec defines configuration for git-based driver installation.
+type DriverGitSpec struct {
+	// Repo is the git repository URL.
+	// +kubebuilder:default="https://github.com/NVIDIA/open-gpu-kernel-modules.git"
+	// +optional
+	// +optional
+
+	Repo string `json:"repo,omitempty"`
+
+	// Ref is the git reference (commit SHA, tag, or branch).
+	// Examples: "560.35.03", "refs/tags/560.35.03", "refs/heads/main", "abc123"
+	// +required
+	Ref string `json:"ref"`
+}
+
+// NVIDIADriver defines the NVIDIA GPU driver configuration.
 type NVIDIADriver struct {
 	Install bool `json:"install"`
-	// Branch specifies the driver branch.
-	// If a version is specified, this takes precedence.
+
+	// Source determines driver installation method.
+	// +kubebuilder:default=package
 	// +optional
 	// +optional
 
-	Branch string `json:"branch"`
-	// If not set the latest stable version will be used
+	Source DriverSource `json:"source,omitempty"`
+
+	// Package source configuration (when source=package).
 	// +optional
 	// +optional
 
-	Version string `json:"version"`
+	Package *DriverPackageSpec `json:"package,omitempty"`
+
+	// Runfile source configuration (when source=runfile).
+	// +optional
+	// +optional
+
+	Runfile *DriverRunfileSpec `json:"runfile,omitempty"`
+
+	// Git source configuration (when source=git).
+	// +optional
+	// +optional
+
+	Git *DriverGitSpec `json:"git,omitempty"`
+
+	// Branch is deprecated, use Package.Branch instead.
+	// +optional
+	// +optional
+
+	Branch string `json:"branch,omitempty"`
+
+	// Version is deprecated, use Package.Version instead.
+	// +optional
+	// +optional
+
+	Version string `json:"version,omitempty"`
 }
 
 type ContainerRuntime struct {

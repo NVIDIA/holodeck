@@ -55,8 +55,25 @@ var (
 type ProvisionFunc func(tpl *bytes.Buffer, env v1alpha1.Environment) error
 
 func nvdriver(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	nvdriver := templates.NewNvDriver(env)
-	return nvdriver.Execute(tpl, env)
+	nvd, err := templates.NewNvDriver(env)
+	if err != nil {
+		return err
+	}
+
+	// Resolve git ref if using git source
+	if nvd.Source == "git" {
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+
+		resolver := gitref.NewGitHubResolver()
+		_, shortSHA, err := resolver.Resolve(ctx, nvd.GitRepo, nvd.GitRef)
+		if err != nil {
+			return err
+		}
+		nvd.SetResolvedCommit(shortSHA)
+	}
+
+	return nvd.Execute(tpl, env)
 }
 
 func docker(tpl *bytes.Buffer, env v1alpha1.Environment) error {

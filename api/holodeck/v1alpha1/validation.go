@@ -154,6 +154,45 @@ func (ha *HAConfig) Validate(controlPlaneCount int32) error {
 	return nil
 }
 
+// Validate validates the NVIDIADriver configuration.
+func (d *NVIDIADriver) Validate() error {
+	if !d.Install {
+		return nil
+	}
+
+	source := d.Source
+	if source == "" {
+		source = DriverSourcePackage
+	}
+
+	switch source {
+	case DriverSourcePackage:
+		// Package source is always valid; branch/version are optional
+		return nil
+
+	case DriverSourceRunfile:
+		if d.Runfile == nil {
+			return fmt.Errorf("driver runfile source requires 'runfile' configuration")
+		}
+		if d.Runfile.URL == "" {
+			return fmt.Errorf("driver runfile source requires 'url' to be specified")
+		}
+		return nil
+
+	case DriverSourceGit:
+		if d.Git == nil {
+			return fmt.Errorf("driver git source requires 'git' configuration")
+		}
+		if d.Git.Ref == "" {
+			return fmt.Errorf("driver git source requires 'ref' to be specified")
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unknown driver source: %s", source)
+	}
+}
+
 // Validate validates the NVIDIAContainerToolkit configuration.
 func (nct *NVIDIAContainerToolkit) Validate() error {
 	if !nct.Install {

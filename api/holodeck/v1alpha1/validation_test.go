@@ -578,6 +578,168 @@ func TestHAConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestNVIDIADriver_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		driver  NVIDIADriver
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "Install disabled - always valid",
+			driver: NVIDIADriver{
+				Install: false,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Package source - default (no config)",
+			driver: NVIDIADriver{
+				Install: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Package source - explicit with branch",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourcePackage,
+				Package: &DriverPackageSpec{
+					Branch: "560",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Package source - explicit with version",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourcePackage,
+				Package: &DriverPackageSpec{
+					Version: "560.35.03",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Package source - legacy fields",
+			driver: NVIDIADriver{
+				Install: true,
+				Branch:  "550",
+				Version: "550.90.07",
+			},
+			wantErr: false,
+		},
+		{
+			name: "Runfile source - valid",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceRunfile,
+				Runfile: &DriverRunfileSpec{
+					URL: "https://download.nvidia.com/driver.run",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Runfile source - with checksum",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceRunfile,
+				Runfile: &DriverRunfileSpec{
+					URL:      "https://download.nvidia.com/driver.run",
+					Checksum: "sha256:abc123",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Runfile source - missing config",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceRunfile,
+			},
+			wantErr: true,
+			errMsg:  "runfile source requires",
+		},
+		{
+			name: "Runfile source - missing URL",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceRunfile,
+				Runfile: &DriverRunfileSpec{},
+			},
+			wantErr: true,
+			errMsg:  "url",
+		},
+		{
+			name: "Git source - valid",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceGit,
+				Git: &DriverGitSpec{
+					Ref: "560.35.03",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - with custom repo",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceGit,
+				Git: &DriverGitSpec{
+					Repo: "https://github.com/myorg/open-gpu-kernel-modules.git",
+					Ref:  "main",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Git source - missing config",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceGit,
+			},
+			wantErr: true,
+			errMsg:  "git source requires",
+		},
+		{
+			name: "Git source - missing ref",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  DriverSourceGit,
+				Git:     &DriverGitSpec{},
+			},
+			wantErr: true,
+			errMsg:  "ref",
+		},
+		{
+			name: "Unknown source",
+			driver: NVIDIADriver{
+				Install: true,
+				Source:  "unknown",
+			},
+			wantErr: true,
+			errMsg:  "unknown driver source",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.driver.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestNVIDIAContainerToolkit_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
