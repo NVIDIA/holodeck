@@ -344,9 +344,13 @@ func (cp *ClusterProvisioner) extractJoinInfo(provisioner *Provisioner) error {
 		cp.CertificateKey = strings.TrimSpace(string(certKeyOut))
 	}
 
-	cp.log.Info("Join credentials ready - Token: %s, CA Hash: %s", cp.JoinToken, cp.CACertHash[:32]+"...")
+	hashPreview := cp.CACertHash
+	if len(hashPreview) > 32 {
+		hashPreview = hashPreview[:32] + "..."
+	}
+	cp.log.Info("Join credentials ready - Token: [REDACTED], CA Hash: %s", hashPreview)
 	if cp.CertificateKey != "" {
-		cp.log.Info("Certificate key for control-plane joins: %s...", cp.CertificateKey[:16])
+		cp.log.Info("Certificate key for control-plane joins: [REDACTED]")
 	}
 
 	return nil
