@@ -430,7 +430,8 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 	}
 	defer p.Client.Close() // nolint: errcheck
 
-	if err = p.Run(opts.cfg); err != nil {
+	componentsStatus, runErr := p.Run(opts.cfg)
+	if runErr != nil {
 		// Set degraded condition when provisioning fails
 		opts.cfg.Status.Conditions = []metav1.Condition{
 			{
@@ -438,7 +439,7 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 				Status:             metav1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				Reason:             "ProvisioningFailed",
-				Message:            fmt.Sprintf("Failed to provision environment: %v", err),
+				Message:            fmt.Sprintf("Failed to provision environment: %v", runErr),
 			},
 		}
 		data, err := jyaml.MarshalYAML(opts.cfg)
@@ -448,11 +449,12 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 		if err := os.WriteFile(opts.cacheFile, data, 0600); err != nil {
 			return fmt.Errorf("failed to update cache file with provisioning status: %w", err)
 		}
-		return fmt.Errorf("failed to run provisioner: %w", err)
+		return fmt.Errorf("failed to run provisioner: %w", runErr)
 	}
 
-	// Set provisioning status to true after successful provisioning
+	// Set provisioning status and component provenance after successful provisioning
 	opts.cfg.Labels[instances.InstanceProvisionedLabelKey] = "true"
+	opts.cfg.Status.Components = componentsStatus
 	data, err := jyaml.MarshalYAML(opts.cfg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal environment: %w", err)

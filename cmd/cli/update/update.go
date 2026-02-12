@@ -371,7 +371,12 @@ func (m *command) runProvision(env *v1alpha1.Environment) error {
 	}
 	defer p.Client.Close() //nolint:errcheck
 
-	return p.Run(*env)
+	componentsStatus, err := p.Run(*env)
+	if err != nil {
+		return err
+	}
+	env.Status.Components = componentsStatus
+	return nil
 }
 
 func (m *command) runClusterProvision(env *v1alpha1.Environment) error {

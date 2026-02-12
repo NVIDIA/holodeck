@@ -141,7 +141,8 @@ var _ = DescribeTable("AWS Environment E2E",
 				p.Client = nil
 			}
 		}()
-		Expect(p.Run(env)).To(Succeed(), "Failed to provision environment")
+		_, runErr := p.Run(env)
+		Expect(runErr).NotTo(HaveOccurred(), "Failed to provision environment")
 
 		By("Kubernetes Configuration")
 		k8s := state.opts.cfg.Spec.Kubernetes

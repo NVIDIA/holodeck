@@ -124,10 +124,13 @@ func (p *Provisioner) waitForNodeReboot() error {
 	return nil
 }
 
-func (p *Provisioner) Run(env v1alpha1.Environment) error {
+// Run provisions the environment and returns component provenance status.
+// The returned ComponentsStatus captures source/version/commit information
+// for each installed component.
+func (p *Provisioner) Run(env v1alpha1.Environment) (*v1alpha1.ComponentsStatus, error) {
 	// Validate all user-supplied inputs that will be interpolated into shell scripts
 	if err := templates.ValidateTemplateInputs(env); err != nil {
-		return fmt.Errorf("template input validation failed: %w", err)
+		return nil, fmt.Errorf("template input validation failed: %w", err)
 	}
 
 	dependencies := NewDependencies(&env)
@@ -140,13 +143,13 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		// Check if we need to use legacy mode
 		kubernetes, err := templates.NewKubernetes(env)
 		if err != nil {
-			return fmt.Errorf("failed to create kubernetes template: %w", err)
+			return nil, fmt.Errorf("failed to create kubernetes template: %w", err)
 		}
 
 		// Only create kubeadm config file if not using legacy mode
 		if !kubernetes.UseLegacyInit {
 			if err := p.createKubeAdmConfig(env); err != nil {
-				return fmt.Errorf("failed to create kubeadm config file: %w", err)
+				return nil, fmt.Errorf("failed to create kubeadm config file: %w", err)
 			}
 		}
 	}
@@ -155,34 +158,34 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 	// Create kind config file if it is provided
 	if env.Spec.Kubernetes.KubernetesInstaller == "kind" && env.Spec.Kubernetes.KindConfig != "" {
 		if err := p.createKindConfig(env); err != nil {
-			return fmt.Errorf("failed to create kind config file: %w", err)
+			return nil, fmt.Errorf("failed to create kind config file: %w", err)
 		}
 	}
 
 	for _, node := range dependencies.Resolve() {
 		// Add script header and common functions to the script
 		if err := addScriptHeader(&p.tpl); err != nil {
-			return fmt.Errorf("failed to add shebang to the script: %w", err)
+			return nil, fmt.Errorf("failed to add shebang to the script: %w", err)
 		}
 		// Execute the template for the dependency
 		if err := node(&p.tpl, env); err != nil {
-			return fmt.Errorf("failed to execute template: %w", err)
+			return nil, fmt.Errorf("failed to execute template: %w", err)
 		}
 		// Provision the instance
 		if err := p.provision(); err != nil {
-			return fmt.Errorf("failed to provision: %w", err)
+			return nil, fmt.Errorf("failed to provision: %w", err)
 		}
 
 		// If kernel version is specified, wait for the node to reboot
 		if env.Spec.Kernel.Version != "" {
 			if err := p.waitForNodeReboot(); err != nil {
-				return err
+				return nil, err
 			}
 		} else {
 			// Reset the connection, this step is needed to make sure some configuration changes take effect
 			// e.g after installing docker, the user needs to be added to the docker group
 			if err := p.resetConnection(); err != nil {
-				return fmt.Errorf("failed to reset connection: %w", err)
+				return nil, fmt.Errorf("failed to reset connection: %w", err)
 			}
 		}
 
@@ -190,7 +193,8 @@ func (p *Provisioner) Run(env v1alpha1.Environment) error {
 		p.tpl.Reset()
 	}
 
-	return nil
+	// Build component provenance status from spec
+	return BuildComponentsStatus(env), nil
 }
 
 // resetConnection resets the ssh connection, and retries if it fails to connect

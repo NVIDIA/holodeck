@@ -171,7 +171,7 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 		envCopy := cp.Environment.DeepCopy()
 		envCopy.Spec.Kubernetes.Install = false
 
-		if err := provisioner.Run(*envCopy); err != nil {
+		if _, err := provisioner.Run(*envCopy); err != nil {
 			if provisioner.Client != nil {
 				_ = provisioner.Client.Close()
 			}
