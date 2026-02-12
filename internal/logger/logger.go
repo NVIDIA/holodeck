@@ -211,11 +211,21 @@ func (l *FunLogger) Loading(format string, a ...any) context.CancelCauseFunc {
 		return cancel
 	}
 	l.Wg.Add(1)
+	idx := len(l.activeCancels)
 	l.activeCancels = append(l.activeCancels, cancel)
 	l.mu.Unlock()
 
 	go l.runLoading(ctx, fmt.Sprintf(format, a...))
-	return cancel
+
+	// Return a wrapper that cancels and marks the slot as nil
+	return func(cause error) {
+		cancel(cause)
+		l.mu.Lock()
+		if idx < len(l.activeCancels) {
+			l.activeCancels[idx] = nil
+		}
+		l.mu.Unlock()
+	}
 }
 
 func (l *FunLogger) runLoading(ctx context.Context, message string) {
@@ -277,7 +287,9 @@ func (l *FunLogger) Exit(code int) {
 	l.mu.Lock()
 	l.exited = true
 	for _, cancel := range l.activeCancels {
-		cancel(nil)
+		if cancel != nil {
+			cancel(nil)
+		}
 	}
 	l.activeCancels = nil
 	l.mu.Unlock()
