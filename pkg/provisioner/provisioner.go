@@ -452,20 +452,13 @@ func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
 	}
 
-	connectionFailed := false
 	for range sshMaxRetries {
 		client, err = ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
-			return client, nil // Connection succeeded, return the client.
+			return client, nil
 		}
-		connectionFailed = true
-		// Brief delay before retrying.
 		time.Sleep(sshRetryDelay)
 	}
 
-	if connectionFailed {
-		return nil, fmt.Errorf("failed to connect to %s after %d retries, giving up", hostUrl, sshMaxRetries)
-	}
-
-	return client, nil
+	return nil, fmt.Errorf("failed to connect to %s after %d retries: %w", hostUrl, sshMaxRetries, err)
 }
