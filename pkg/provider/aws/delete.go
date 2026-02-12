@@ -102,7 +102,7 @@ func (p *Provider) delete(cache *AWS) error {
 			// But we can also store it in status.Cluster properties
 			// Actually, let's check if we can get it from the environment status
 			if err := p.deleteNLBForCluster(clusterCache); err != nil {
-				p.log.Warning("Error deleting load balancer: %v", err)
+				return fmt.Errorf("failed to delete load balancer (resources may be leaked): %w", err)
 			}
 		}
 	}

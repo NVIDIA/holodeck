@@ -329,7 +329,9 @@ func (p *Provider) deleteTargetGroup(cache *ClusterCache) error {
 				Targets:        targets,
 			}
 			ctxDereg, cancelDereg := context.WithTimeout(context.Background(), elbv2APITimeout)
-			_, _ = p.elbv2.DeregisterTargets(ctxDereg, deregisterInput)
+			if _, err := p.elbv2.DeregisterTargets(ctxDereg, deregisterInput); err != nil {
+				p.log.Warning("Failed to deregister targets from %s: %v", cache.TargetGroupArn, err)
+			}
 			cancelDereg()
 		}
 	}
