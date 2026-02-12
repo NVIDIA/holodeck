@@ -451,3 +451,33 @@ func TestOptionsValidation(t *testing.T) {
 	assert.Equal(t, "/tmp/cache.yaml", opts.cachePath)
 	assert.Equal(t, "test-env", opts.cfg.Name)
 }
+
+func TestCreateSSHProviderDoesNotPanic(t *testing.T) {
+	log := logger.NewLogger()
+	tmpDir := t.TempDir()
+
+	opts := &options{
+		cfg: v1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-ssh-env",
+			},
+			Spec: v1alpha1.EnvironmentSpec{
+				Provider: v1alpha1.ProviderSSH,
+				Instance: v1alpha1.Instance{
+					HostUrl: "192.168.1.100",
+				},
+				Auth: v1alpha1.Auth{
+					PrivateKey: "/path/to/key",
+					Username:   "root",
+				},
+			},
+		},
+		cachePath: tmpDir,
+	}
+	cmd := command{log: log}
+
+	// Should not panic — should either succeed or return an error
+	assert.NotPanics(t, func() {
+		_ = cmd.run(nil, opts)
+	})
+}
