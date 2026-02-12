@@ -1,0 +1,36 @@
+# Example: Build NVIDIA driver from open-gpu-kernel-modules source
+#
+# This configuration builds the NVIDIA driver kernel modules from source
+# by cloning the open-gpu-kernel-modules repository at a specific ref.
+#
+# Useful for testing specific driver commits, branches, or patches.
+# Build requires kernel headers and a C compiler (installed automatically).
+#
+# Note: Building kernel modules can take several minutes.
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: driver-git-test
+  description: "Test environment with driver built from source"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+    source: git
+    git:
+      ref: "560.35.03"  # Tag, commit SHA, or branch name
+      # repo: https://github.com/NVIDIA/open-gpu-kernel-modules.git  # optional
