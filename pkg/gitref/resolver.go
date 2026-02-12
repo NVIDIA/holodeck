@@ -132,14 +132,15 @@ func (r *GitHubResolver) Resolve(
 	return fullSHA, shortSHA, nil
 }
 
+var repoURLPattern = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/.]+)`)
+
 // ParseRepoURL extracts owner and repo name from a GitHub URL.
 // Handles:
 //   - https://github.com/NVIDIA/nvidia-container-toolkit.git
 //   - git@github.com:NVIDIA/nvidia-container-toolkit.git
 //   - github.com/NVIDIA/nvidia-container-toolkit
 func ParseRepoURL(repo string) (owner, name string, err error) {
-	re := regexp.MustCompile(`github\.com[:/]([^/]+)/([^/.]+)`)
-	matches := re.FindStringSubmatch(repo)
+	matches := repoURLPattern.FindStringSubmatch(repo)
 	if len(matches) != 3 {
 		return "", "", fmt.Errorf("invalid GitHub repo URL: %s", repo)
 	}

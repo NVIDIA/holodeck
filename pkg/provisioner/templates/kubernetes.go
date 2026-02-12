@@ -1428,6 +1428,16 @@ holodeck_mark_installed "$COMPONENT" "${SHORT_COMMIT}"
 holodeck_log "INFO" "$COMPONENT" "Successfully installed Kubernetes from ${TRACK_BRANCH}: ${SHORT_COMMIT}"
 `
 
+var (
+	kubeadmReleaseTmpl = template.Must(template.New("kubeadm").Parse(KubeadmTemplate))
+	kubeadmGitTmpl     = template.Must(template.New("kubeadm-git").Parse(kubeadmGitTemplate))
+	kubeadmLatestTmpl  = template.Must(template.New("kubeadm-latest").Parse(kubeadmLatestTemplate))
+	kindReleaseTmpl    = template.Must(template.New("kind").Parse(KindTemplate))
+	kindGitTmpl        = template.Must(template.New("kind-git").Parse(kindGitTemplate))
+	kindLatestTmpl     = template.Must(template.New("kind-latest").Parse(kindLatestTemplate))
+	microk8sTmpl       = template.Must(template.New("microk8s").Parse(microk8sTemplate))
+)
+
 // Default Versions
 const (
 	defaultArch                  = "amd64"
@@ -1590,8 +1600,7 @@ func (k *Kubernetes) SetResolvedCommit(shortSHA string) {
 // Execute renders the appropriate Kubernetes template based on installer and
 // source.
 func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	var templateContent string
-	var templateName string
+	var tmpl *template.Template
 
 	installer := env.Spec.Kubernetes.KubernetesInstaller
 	if installer == "" {
@@ -1600,47 +1609,33 @@ func (k *Kubernetes) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error 
 
 	switch installer {
 	case "kubeadm":
-		// Select template based on source
 		switch k.Source {
 		case "git":
-			templateName = "kubeadm-git"
-			templateContent = kubeadmGitTemplate
+			tmpl = kubeadmGitTmpl
 		case "latest":
-			templateName = "kubeadm-latest"
-			templateContent = kubeadmLatestTemplate
-		default: // "release"
-			templateName = "kubeadm"
-			templateContent = KubeadmTemplate
+			tmpl = kubeadmLatestTmpl
+		default:
+			tmpl = kubeadmReleaseTmpl
 		}
 
 	case "kind":
-		// Select template based on source
 		switch k.Source {
 		case "git":
-			templateName = "kind-git"
-			templateContent = kindGitTemplate
+			tmpl = kindGitTmpl
 		case "latest":
-			templateName = "kind-latest"
-			templateContent = kindLatestTemplate
-		default: // "release"
-			templateName = "kind"
-			templateContent = KindTemplate
+			tmpl = kindLatestTmpl
+		default:
+			tmpl = kindReleaseTmpl
 		}
 
 	case "microk8s":
-		// MicroK8s only supports release source (validated earlier)
-		templateName = "microk8s"
-		templateContent = microk8sTemplate
+		tmpl = microk8sTmpl
 
 	default:
 		return fmt.Errorf("unknown kubernetes installer: %s", installer)
 	}
 
-	kubernetesTemplate := template.Must(
-		template.New(templateName).Parse(templateContent),
-	)
-
-	if err := kubernetesTemplate.Execute(tpl, k); err != nil {
+	if err := tmpl.Execute(tpl, k); err != nil {
 		return fmt.Errorf("failed to execute kubernetes template: %w", err)
 	}
 

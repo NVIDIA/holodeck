@@ -286,6 +286,12 @@ holodeck_mark_installed "$COMPONENT" "joined"
 holodeck_log "INFO" "$COMPONENT" "Node joined successfully"
 `
 
+var (
+	kubeadmInitTmpl   = template.Must(template.New("kubeadm-init").Parse(KubeadmInitTemplate))
+	kubeadmJoinTmpl   = template.Must(template.New("kubeadm-join").Parse(KubeadmJoinTemplate))
+	kubeadmPrereqTmpl = template.Must(template.New("kubeadm-prereq").Parse(strings.TrimSpace(KubeadmPrereqTemplate)))
+)
+
 // KubeadmInitConfig holds configuration for kubeadm init
 type KubeadmInitConfig struct {
 	Environment          *v1alpha1.Environment
@@ -310,8 +316,7 @@ func (c *KubeadmInitConfig) Execute(tpl *bytes.Buffer) error {
 		IsHA:                 fmt.Sprintf("%t", c.IsHA),
 	}
 
-	tmpl := template.Must(template.New("kubeadm-init").Parse(KubeadmInitTemplate))
-	if err := tmpl.Execute(tpl, data); err != nil {
+	if err := kubeadmInitTmpl.Execute(tpl, data); err != nil {
 		return fmt.Errorf("failed to execute kubeadm init template: %w", err)
 	}
 	return nil
@@ -342,8 +347,7 @@ func (c *KubeadmJoinConfig) Execute(tpl *bytes.Buffer) error {
 		IsControlPlane:       fmt.Sprintf("%t", c.IsControlPlane),
 	}
 
-	tmpl := template.Must(template.New("kubeadm-join").Parse(KubeadmJoinTemplate))
-	if err := tmpl.Execute(tpl, data); err != nil {
+	if err := kubeadmJoinTmpl.Execute(tpl, data); err != nil {
 		return fmt.Errorf("failed to execute kubeadm join template: %w", err)
 	}
 	return nil
@@ -434,8 +438,7 @@ func (c *KubeadmPrereqConfig) Execute(tpl *bytes.Buffer) error {
 		return fmt.Errorf("failed to create kubernetes config: %w", err)
 	}
 
-	tmpl := template.Must(template.New("kubeadm-prereq").Parse(strings.TrimSpace(KubeadmPrereqTemplate)))
-	if err := tmpl.Execute(tpl, k); err != nil {
+	if err := kubeadmPrereqTmpl.Execute(tpl, k); err != nil {
 		return fmt.Errorf("failed to execute kubeadm prereq template: %w", err)
 	}
 	return nil

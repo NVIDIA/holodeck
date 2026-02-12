@@ -691,6 +691,14 @@ holodeck_mark_installed "$COMPONENT" "${FINAL_VERSION}"
 holodeck_log "INFO" "$COMPONENT" "Successfully installed containerd from ${TRACK_BRANCH}: ${SHORT_COMMIT}"
 `
 
+// Pre-compiled templates for containerd installation.
+var (
+	containerdV1Tmpl     = template.Must(template.New("containerd-v1").Parse(containerdV1Template))
+	containerdV2Tmpl     = template.Must(template.New("containerd-v2").Parse(containerdV2Template))
+	containerdGitTmpl    = template.Must(template.New("containerd-git").Parse(containerdGitTemplate))
+	containerdLatestTmpl = template.Must(template.New("containerd-latest").Parse(containerdLatestTemplate))
+)
+
 // Containerd holds configuration for containerd installation.
 type Containerd struct {
 	// Source configuration
@@ -780,24 +788,22 @@ func (t *Containerd) SetResolvedCommit(shortSHA string) {
 
 // Execute renders the appropriate template based on source.
 func (t *Containerd) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	var templateContent string
+	var tmpl *template.Template
 
 	switch t.Source {
 	case "package", "":
 		if t.MajorVersion == 2 {
-			templateContent = containerdV2Template
+			tmpl = containerdV2Tmpl
 		} else {
-			templateContent = containerdV1Template
+			tmpl = containerdV1Tmpl
 		}
 	case "git":
-		templateContent = containerdGitTemplate
+		tmpl = containerdGitTmpl
 	case "latest":
-		templateContent = containerdLatestTemplate
+		tmpl = containerdLatestTmpl
 	default:
 		return fmt.Errorf("unknown containerd source: %s", t.Source)
 	}
-
-	tmpl := template.Must(template.New("containerd").Parse(templateContent))
 	if err := tmpl.Execute(tpl, t); err != nil {
 		return fmt.Errorf("failed to execute containerd template: %w", err)
 	}

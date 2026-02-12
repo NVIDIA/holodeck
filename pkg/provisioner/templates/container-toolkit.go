@@ -522,6 +522,12 @@ holodeck_mark_installed "$COMPONENT" "${SHORT_COMMIT}"
 holodeck_log "INFO" "$COMPONENT" "Successfully installed from ${TRACK_BRANCH}: ${SHORT_COMMIT}"
 `
 
+var (
+	ctkPackageTmpl = template.Must(template.New("ctk-package").Parse(containerToolkitPackageTemplate))
+	ctkGitTmpl     = template.Must(template.New("ctk-git").Parse(containerToolkitGitTemplate))
+	ctkLatestTmpl  = template.Must(template.New("ctk-latest").Parse(containerToolkitLatestTemplate))
+)
+
 // ContainerToolkit holds configuration for NVIDIA Container Toolkit installation.
 type ContainerToolkit struct {
 	ContainerRuntime string
@@ -603,20 +609,19 @@ func (t *ContainerToolkit) SetResolvedCommit(shortSHA string) {
 
 // Execute renders the appropriate template based on source.
 func (t *ContainerToolkit) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error {
-	var templateContent string
+	var tmpl *template.Template
 
 	switch t.Source {
 	case "package", "":
-		templateContent = containerToolkitPackageTemplate
+		tmpl = ctkPackageTmpl
 	case "git":
-		templateContent = containerToolkitGitTemplate
+		tmpl = ctkGitTmpl
 	case "latest":
-		templateContent = containerToolkitLatestTemplate
+		tmpl = ctkLatestTmpl
 	default:
 		return fmt.Errorf("unknown CTK source: %s", t.Source)
 	}
 
-	tmpl := template.Must(template.New("container-toolkit").Parse(templateContent))
 	if err := tmpl.Execute(tpl, t); err != nil {
 		return fmt.Errorf("failed to execute container-toolkit template: %w", err)
 	}
