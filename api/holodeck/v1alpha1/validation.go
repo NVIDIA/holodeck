@@ -18,7 +18,22 @@ package v1alpha1
 
 import (
 	"fmt"
+	"regexp"
 )
+
+var k8sLabelPattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._\-/]*[a-zA-Z0-9])?$`)
+
+func validateLabels(labels map[string]string) error {
+	for k, v := range labels {
+		if !k8sLabelPattern.MatchString(k) {
+			return fmt.Errorf("invalid label key %q: contains disallowed characters", k)
+		}
+		if v != "" && !k8sLabelPattern.MatchString(v) {
+			return fmt.Errorf("invalid label value %q for key %q: contains disallowed characters", v, k)
+		}
+	}
+	return nil
+}
 
 // Validate validates the ClusterSpec configuration.
 func (c *ClusterSpec) Validate() error {
@@ -40,6 +55,16 @@ func (c *ClusterSpec) Validate() error {
 	if c.Workers != nil {
 		if err := c.Workers.Validate(); err != nil {
 			return fmt.Errorf("workers validation failed: %w", err)
+		}
+	}
+
+	// Validate labels for shell-injection safety
+	if err := validateLabels(c.ControlPlane.Labels); err != nil {
+		return fmt.Errorf("control-plane labels: %w", err)
+	}
+	if c.Workers != nil {
+		if err := validateLabels(c.Workers.Labels); err != nil {
+			return fmt.Errorf("worker labels: %w", err)
 		}
 	}
 
