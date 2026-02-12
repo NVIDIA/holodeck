@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	cli "github.com/urfave/cli/v2"
@@ -171,12 +172,14 @@ func (m command) runCommand(client *ssh.Client, cmd []string) error {
 // runInteractiveSystemSSH uses the system's ssh command for interactive sessions
 // This provides better terminal support (colors, window resize, etc.)
 func (m command) runInteractiveSystemSSH(keyPath, userName, hostUrl string) error {
-	// Server host keys are generated at instance boot with no trusted
-	// distribution channel, so host key verification is disabled.
+	// Use holodeck's known_hosts file for TOFU-consistent host key verification.
+	cacheBase, _ := os.UserCacheDir()
+	knownHostsPath := filepath.Join(cacheBase, "holodeck", "known_hosts")
+
 	args := []string{
 		"-i", keyPath,
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", fmt.Sprintf("UserKnownHostsFile=%s", knownHostsPath),
 		"-o", "LogLevel=ERROR",
 		fmt.Sprintf("%s@%s", userName, hostUrl),
 	}
