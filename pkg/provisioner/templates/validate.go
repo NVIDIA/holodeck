@@ -38,6 +38,12 @@ var (
 	// gitRefPattern matches safe git references (branches, tags, SHAs, PR refs).
 	// Allows "/" for refs like "refs/tags/v1.31.0" or "refs/pull/123/head".
 	gitRefPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.\-+~/]*$`)
+
+	// featureGatePattern matches valid Kubernetes feature gates like "FeatureName=true".
+	featureGatePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*=(true|false)$`)
+
+	// hostnamePattern matches safe hostnames and IP addresses.
+	hostnamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.\-:]*$`)
 )
 
 // ValidateTemplateInputs validates user-supplied fields that will be interpolated
@@ -111,6 +117,32 @@ func ValidateTemplateInputs(env v1alpha1.Environment) error {
 	for name, value := range gitRefs {
 		if value != "" && !gitRefPattern.MatchString(value) {
 			return fmt.Errorf("invalid %s: %q contains disallowed characters", name, value)
+		}
+	}
+
+	// Validate track branches (same rules as git refs)
+	if env.Spec.Kubernetes.Latest != nil && env.Spec.Kubernetes.Latest.Track != "" {
+		if !gitRefPattern.MatchString(env.Spec.Kubernetes.Latest.Track) {
+			return fmt.Errorf("invalid kubernetes latest track branch: %q contains disallowed characters", env.Spec.Kubernetes.Latest.Track)
+		}
+	}
+	if env.Spec.NVIDIAContainerToolkit.Latest != nil && env.Spec.NVIDIAContainerToolkit.Latest.Track != "" {
+		if !gitRefPattern.MatchString(env.Spec.NVIDIAContainerToolkit.Latest.Track) {
+			return fmt.Errorf("invalid nvidia container toolkit latest track branch: %q contains disallowed characters", env.Spec.NVIDIAContainerToolkit.Latest.Track)
+		}
+	}
+
+	// Validate feature gates
+	for _, gate := range env.Spec.Kubernetes.K8sFeatureGates {
+		if !featureGatePattern.MatchString(gate) {
+			return fmt.Errorf("invalid kubernetes feature gate: %q must match FeatureName=true|false", gate)
+		}
+	}
+
+	// Validate endpoint host
+	if env.Spec.Kubernetes.K8sEndpointHost != "" {
+		if !hostnamePattern.MatchString(env.Spec.Kubernetes.K8sEndpointHost) {
+			return fmt.Errorf("invalid kubernetes endpoint host: %q contains disallowed characters", env.Spec.Kubernetes.K8sEndpointHost)
 		}
 	}
 
