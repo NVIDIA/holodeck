@@ -35,6 +35,7 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	if err != nil {
 		return err
 	}
+	defer func() { _ = p.Client.Close() }()
 
 	session, err := p.Client.NewSession()
 	if err != nil {
