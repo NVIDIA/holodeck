@@ -396,7 +396,12 @@ func (p *Provider) createInstances(
 	image *v1alpha1.Image,
 ) ([]InstanceInfo, error) {
 	// Resolve AMI for this node pool
-	resolved, err := p.resolveImageForNode(os, image, "")
+	// Determine architecture from image spec
+	var arch string
+	if image != nil && image.Architecture != "" {
+		arch = image.Architecture
+	}
+	resolved, err := p.resolveImageForNode(os, image, arch)
 	if err != nil {
 		return nil, fmt.Errorf("error resolving AMI: %w", err)
 	}
