@@ -178,3 +178,33 @@ func TestNVDriverTemplate(t *testing.T) {
 		})
 	}
 }
+
+func TestNVDriverTemplate_CUDARepoArch(t *testing.T) {
+	driver := &NvDriver{
+		Branch: defaultNVBranch,
+	}
+
+	var output bytes.Buffer
+	err := driver.Execute(&output, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	outStr := output.String()
+
+	// Must NOT contain hardcoded x86_64 in the CUDA repo URL
+	require.NotContains(t, outStr, "cuda/repos/$distribution/x86_64/",
+		"Template must not hardcode x86_64 in the CUDA repository URL")
+
+	// Must contain runtime architecture detection
+	require.Contains(t, outStr, `CUDA_ARCH="$(uname -m)"`,
+		"Template must detect architecture at runtime via uname -m")
+
+	// Must contain aarch64 -> sbsa mapping
+	require.Contains(t, outStr, `if [[ "$CUDA_ARCH" == "aarch64" ]]; then`,
+		"Template must check for aarch64 architecture")
+	require.Contains(t, outStr, `CUDA_ARCH="sbsa"`,
+		"Template must map aarch64 to sbsa for NVIDIA CUDA repos")
+
+	// Must use CUDA_ARCH variable in the wget URL
+	require.Contains(t, outStr, "${CUDA_ARCH}/cuda-keyring",
+		"Template must use CUDA_ARCH variable in the wget URL")
+}
