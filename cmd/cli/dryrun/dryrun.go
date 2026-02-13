@@ -147,22 +147,16 @@ func connectOrDie(keyPath, userName, hostUrl string) error {
 		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
 	}
 
-	connectionFailed := false
+	var lastErr error
 	for range 20 {
 		client, err := ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
-			client.Close() // nolint:errcheck, gosec
-			return nil     // Connection succeeded,
+			_ = client.Close()
+			return nil
 		}
-		connectionFailed = true
-		// Sleep for a brief moment before retrying.
-		// You can adjust the duration based on your requirements.
+		lastErr = err
 		time.Sleep(1 * time.Second)
 	}
 
-	if connectionFailed {
-		return fmt.Errorf("failed to connect to %s", hostUrl)
-	}
-
-	return nil
+	return fmt.Errorf("failed to connect to %s after 20 retries: %w", hostUrl, lastErr)
 }
