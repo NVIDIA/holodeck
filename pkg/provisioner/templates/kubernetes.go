@@ -34,7 +34,7 @@ K8S_VERSION="{{.Version}}"
 CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
 CALICO_VERSION="{{.CalicoVersion}}"
 CRICTL_VERSION="{{.CrictlVersion}}"
-ARCH="{{.Arch}}"
+{{if .Arch}}ARCH="{{.Arch}}"{{else}}ARCH="$(dpkg --print-architecture 2>/dev/null || (uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'))"{{end}}
 KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
 K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
 
@@ -822,7 +822,7 @@ GIT_COMMIT="{{.GitCommit}}"
 CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
 CALICO_VERSION="{{.CalicoVersion}}"
 CRICTL_VERSION="{{.CrictlVersion}}"
-ARCH="{{.Arch}}"
+{{if .Arch}}ARCH="{{.Arch}}"{{else}}ARCH="$(dpkg --print-architecture 2>/dev/null || (uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'))"{{end}}
 KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
 K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
 
@@ -1153,7 +1153,7 @@ TRACK_BRANCH="{{.TrackBranch}}"
 CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
 CALICO_VERSION="{{.CalicoVersion}}"
 CRICTL_VERSION="{{.CrictlVersion}}"
-ARCH="{{.Arch}}"
+{{if .Arch}}ARCH="{{.Arch}}"{{else}}ARCH="$(dpkg --print-architecture 2>/dev/null || (uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'))"{{end}}
 KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
 K8S_ENDPOINT_HOST="{{.K8sEndpointHost}}"
 
@@ -1545,9 +1545,8 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 	}
 	if env.Spec.Kubernetes.Arch != "" {
 		kubernetes.Arch = env.Spec.Kubernetes.Arch
-	} else {
-		kubernetes.Arch = "amd64"
 	}
+	// When Arch is empty, the template uses runtime detection
 	if env.Spec.Kubernetes.CniPluginsVersion != "" {
 		kubernetes.CniPluginsVersion = env.Spec.Kubernetes.CniPluginsVersion
 	} else {

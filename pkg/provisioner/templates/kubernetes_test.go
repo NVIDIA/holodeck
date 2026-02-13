@@ -31,7 +31,7 @@ func TestNewKubernetes(t *testing.T) {
 			want: &Kubernetes{
 				Version:               "v1.30.0",
 				KubeletReleaseVersion: defaultKubeletReleaseVersion,
-				Arch:                  defaultArch,
+				Arch:                  "", // empty = runtime detection
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
@@ -56,7 +56,7 @@ func TestNewKubernetes(t *testing.T) {
 			want: &Kubernetes{
 				Version:               "v1.31.0",
 				KubeletReleaseVersion: defaultKubeletReleaseVersion,
-				Arch:                  defaultArch,
+				Arch:                  "", // empty = runtime detection
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
@@ -116,7 +116,7 @@ func TestNewKubernetes(t *testing.T) {
 			},
 			want: &Kubernetes{
 				KubeletReleaseVersion: defaultKubeletReleaseVersion,
-				Arch:                  defaultArch,
+				Arch:                  "", // empty = runtime detection
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
@@ -144,7 +144,7 @@ func TestNewKubernetes(t *testing.T) {
 			},
 			want: &Kubernetes{
 				KubeletReleaseVersion: defaultKubeletReleaseVersion,
-				Arch:                  defaultArch,
+				Arch:                  "", // empty = runtime detection
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
@@ -172,7 +172,7 @@ func TestNewKubernetes(t *testing.T) {
 			},
 			want: &Kubernetes{
 				KubeletReleaseVersion: defaultKubeletReleaseVersion,
-				Arch:                  defaultArch,
+				Arch:                  "", // empty = runtime detection
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
@@ -197,7 +197,7 @@ func TestNewKubernetes(t *testing.T) {
 			},
 			want: &Kubernetes{
 				KubeletReleaseVersion: defaultKubeletReleaseVersion,
-				Arch:                  defaultArch,
+				Arch:                  "", // empty = runtime detection
 				CniPluginsVersion:     defaultCNIPluginsVersion,
 				CalicoVersion:         defaultCalicoVersion,
 				CrictlVersion:         defaultCRIVersion,
@@ -815,6 +815,174 @@ func TestIsLegacyKubernetesVersion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := isLegacyKubernetesVersion(tt.version)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestKubernetes_ArchRuntimeDetection(t *testing.T) {
+	tests := []struct {
+		name           string
+		arch           string
+		expectedString string
+		notExpected    string
+	}{
+		{
+			name:           "empty arch uses runtime detection",
+			arch:           "",
+			expectedString: `dpkg --print-architecture`,
+			notExpected:    "\nARCH=\"amd64\"\n",
+		},
+		{
+			name:           "explicit arm64 arch",
+			arch:           "arm64",
+			expectedString: `ARCH="arm64"`,
+			notExpected:    `dpkg --print-architecture`,
+		},
+		{
+			name:           "explicit amd64 arch",
+			arch:           "amd64",
+			expectedString: `ARCH="amd64"`,
+			notExpected:    `dpkg --print-architecture`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesVersion:   "v1.30.0",
+						KubernetesInstaller: "kubeadm",
+						Arch:                tt.arch,
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			}
+
+			k, err := NewKubernetes(env)
+			assert.NoError(t, err)
+
+			var buf bytes.Buffer
+			err = k.Execute(&buf, env)
+			assert.NoError(t, err)
+
+			out := buf.String()
+			assert.Contains(t, out, tt.expectedString,
+				"template output should contain %q", tt.expectedString)
+			assert.NotContains(t, out, tt.notExpected,
+				"template output should not contain %q", tt.notExpected)
+		})
+	}
+}
+
+func TestKubernetes_ArchRuntimeDetection_GitSource(t *testing.T) {
+	tests := []struct {
+		name           string
+		arch           string
+		expectedString string
+		notExpected    string
+	}{
+		{
+			name:           "git source empty arch uses runtime detection",
+			arch:           "",
+			expectedString: `dpkg --print-architecture`,
+			notExpected:    "\nARCH=\"amd64\"\n",
+		},
+		{
+			name:           "git source explicit arm64 arch",
+			arch:           "arm64",
+			expectedString: `ARCH="arm64"`,
+			notExpected:    `dpkg --print-architecture`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesInstaller: "kubeadm",
+						Arch:                tt.arch,
+						Source:              v1alpha1.K8sSourceGit,
+						Git: &v1alpha1.K8sGitSpec{
+							Ref: "v1.32.0-alpha.1",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			}
+
+			k, err := NewKubernetes(env)
+			assert.NoError(t, err)
+
+			var buf bytes.Buffer
+			err = k.Execute(&buf, env)
+			assert.NoError(t, err)
+
+			out := buf.String()
+			assert.Contains(t, out, tt.expectedString,
+				"template output should contain %q", tt.expectedString)
+			assert.NotContains(t, out, tt.notExpected,
+				"template output should not contain %q", tt.notExpected)
+		})
+	}
+}
+
+func TestKubernetes_ArchRuntimeDetection_LatestSource(t *testing.T) {
+	tests := []struct {
+		name           string
+		arch           string
+		expectedString string
+		notExpected    string
+	}{
+		{
+			name:           "latest source empty arch uses runtime detection",
+			arch:           "",
+			expectedString: `dpkg --print-architecture`,
+			notExpected:    "\nARCH=\"amd64\"\n",
+		},
+		{
+			name:           "latest source explicit arm64 arch",
+			arch:           "arm64",
+			expectedString: `ARCH="arm64"`,
+			notExpected:    `dpkg --print-architecture`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesInstaller: "kubeadm",
+						Arch:                tt.arch,
+						Source:              v1alpha1.K8sSourceLatest,
+						Latest: &v1alpha1.K8sLatestSpec{
+							Track: "master",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			}
+
+			k, err := NewKubernetes(env)
+			assert.NoError(t, err)
+
+			var buf bytes.Buffer
+			err = k.Execute(&buf, env)
+			assert.NoError(t, err)
+
+			out := buf.String()
+			assert.Contains(t, out, tt.expectedString,
+				"template output should contain %q", tt.expectedString)
+			assert.NotContains(t, out, tt.notExpected,
+				"template output should not contain %q", tt.notExpected)
 		})
 	}
 }
