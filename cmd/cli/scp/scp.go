@@ -218,7 +218,9 @@ func (m command) copyFileToRemote(client *sftp.Client, localPath, remotePath str
 
 	// Ensure remote directory exists (use path, not filepath, for POSIX remote paths)
 	remoteDir := path.Dir(remotePath)
-	_ = client.MkdirAll(remoteDir) // best-effort, directory may already exist
+	if err := client.MkdirAll(remoteDir); err != nil {
+		m.log.Warning("Failed to create remote directory %s (may already exist): %v", remoteDir, err)
+	}
 
 	// Create remote file
 	remoteFile, err := client.Create(remotePath)
