@@ -22,9 +22,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 )
+
+// tofuMu serialises access to the known_hosts file so that concurrent SSH
+// connections (e.g. during multi-node cluster provisioning) do not race on the
+// read-then-write.
+var tofuMu sync.Mutex
 
 // TOFUHostKeyCallback returns an ssh.HostKeyCallback implementing a
 // Trust-On-First-Use (TOFU) pattern for SSH host key verification. On first
@@ -34,6 +40,9 @@ import (
 // a potential MITM attack — is rejected with an error.
 func TOFUHostKeyCallback() ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		tofuMu.Lock()
+		defer tofuMu.Unlock()
+
 		cacheBase, err := os.UserCacheDir()
 		if err != nil {
 			return fmt.Errorf("cannot determine cache directory for TOFU host keys: %w", err)
