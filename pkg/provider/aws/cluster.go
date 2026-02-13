@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"golang.org/x/sync/errgroup"
 )
 
 // ClusterCache extends AWS cache with multinode-specific resources
@@ -573,7 +574,7 @@ func (p *Provider) createInstances(
 }
 
 // disableSourceDestCheck disables Source/Destination Check on all cluster instances
-// This is required for Calico networking to work correctly
+// in parallel. This is required for Calico networking to work correctly.
 // See: https://github.com/NVIDIA/holodeck/issues/586
 func (p *Provider) disableSourceDestCheck(cache *ClusterCache) error {
 	cancel := p.log.Loading("Disabling Source/Destination Check for Calico networking")
@@ -583,25 +584,31 @@ func (p *Provider) disableSourceDestCheck(cache *ClusterCache) error {
 	allInstances = append(allInstances, cache.ControlPlaneInstances...)
 	allInstances = append(allInstances, cache.WorkerInstances...)
 
+	g, _ := errgroup.WithContext(context.Background())
 	for _, inst := range allInstances {
+		inst := inst // capture loop variable
 		if inst.NetworkInterface == "" {
 			continue
 		}
-
-		ctxMod, cancelMod := context.WithTimeout(context.Background(), ec2APITimeout)
-		_, err := p.ec2.ModifyNetworkInterfaceAttribute(ctxMod,
-			&ec2.ModifyNetworkInterfaceAttributeInput{
-				NetworkInterfaceId: aws.String(inst.NetworkInterface),
-				SourceDestCheck: &types.AttributeBooleanValue{
-					Value: aws.Bool(false),
-				},
-			})
-		cancelMod()
-		if err != nil {
-			cancel(logger.ErrLoadingFailed)
-			return fmt.Errorf("error disabling source/dest check on %s: %w", inst.Name, err)
-		}
-		p.log.Info("Disabled Source/Destination Check on %s", inst.Name)
+		g.Go(func() error {
+			ctxMod, cancelMod := context.WithTimeout(context.Background(), ec2APITimeout)
+			defer cancelMod()
+			_, err := p.ec2.ModifyNetworkInterfaceAttribute(ctxMod,
+				&ec2.ModifyNetworkInterfaceAttributeInput{
+					NetworkInterfaceId: aws.String(inst.NetworkInterface),
+					SourceDestCheck: &types.AttributeBooleanValue{
+						Value: aws.Bool(false),
+					},
+				})
+			if err != nil {
+				return fmt.Errorf("error disabling source/dest check on %s: %w", inst.Name, err)
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		cancel(logger.ErrLoadingFailed)
+		return err
 	}
 
 	cancel(nil)

@@ -18,6 +18,7 @@ package provisioner
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -28,6 +29,8 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provisioner/templates"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // ClusterProvisioner handles provisioning of multinode Kubernetes clusters
@@ -157,42 +160,51 @@ func (cp *ClusterProvisioner) determineControlPlaneEndpoint(firstCP NodeInfo) st
 }
 
 // provisionBaseOnAllNodes provisions base dependencies (kernel, driver, runtime, toolkit)
-// on all nodes before Kubernetes installation
+// on all nodes in parallel before Kubernetes installation
 func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
-	// For each node, provision base dependencies (excluding Kubernetes)
+	// Phase 1: Provision base dependencies in parallel
+	g, _ := errgroup.WithContext(context.Background())
 	for _, node := range nodes {
-		cp.log.Info("Provisioning base dependencies on %s (%s)", node.Name, node.PublicIP)
+		node := node // capture loop variable
+		g.Go(func() error {
+			cp.log.Info("Provisioning base dependencies on %s (%s)", node.Name, node.PublicIP)
 
-		provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
-		if err != nil {
-			return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
-		}
+			provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
+			if err != nil {
+				return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
+			}
 
-		// Create a modified environment without Kubernetes install
-		envCopy := cp.Environment.DeepCopy()
-		envCopy.Spec.Kubernetes.Install = false
+			// Create a modified environment without Kubernetes install
+			envCopy := cp.Environment.DeepCopy()
+			envCopy.Spec.Kubernetes.Install = false
 
-		if _, err := provisioner.Run(*envCopy); err != nil {
+			if _, err := provisioner.Run(*envCopy); err != nil {
+				if provisioner.Client != nil {
+					_ = provisioner.Client.Close()
+				}
+				return fmt.Errorf("failed to provision base on %s: %w", node.Name, err)
+			}
+			// Client may be nil after Run() if node rebooted
 			if provisioner.Client != nil {
 				_ = provisioner.Client.Close()
 			}
-			return fmt.Errorf("failed to provision base on %s: %w", node.Name, err)
-		}
-		// Client may be nil after Run() if node rebooted
-		if provisioner.Client != nil {
-			_ = provisioner.Client.Close()
-		}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
-	// Install Kubernetes prerequisites (kubeadm, kubelet, kubectl, CNI) on all nodes
+	// Phase 2: Install K8s prerequisites in parallel
 	cp.log.Info("Installing Kubernetes prerequisites on all nodes...")
+	g2, _ := errgroup.WithContext(context.Background())
 	for _, node := range nodes {
-		if err := cp.installK8sPrereqs(node); err != nil {
-			return fmt.Errorf("failed to install K8s prerequisites on %s: %w", node.Name, err)
-		}
+		node := node // capture loop variable
+		g2.Go(func() error {
+			return cp.installK8sPrereqs(node)
+		})
 	}
-
-	return nil
+	return g2.Wait()
 }
 
 // installK8sPrereqs installs Kubernetes binaries on a node
@@ -299,50 +311,39 @@ func (cp *ClusterProvisioner) initFirstControlPlane(node NodeInfo) error {
 // extractJoinInfo creates fresh join credentials from the initialized control plane.
 // This always generates new tokens and re-uploads certificates to ensure full control
 // over the provisioning process and enable future scale-up operations.
+// All credentials are extracted in a single SSH session for efficiency.
 func (cp *ClusterProvisioner) extractJoinInfo(provisioner *Provisioner) error {
-	// Step 1: Always create a fresh bootstrap token (never reuse existing)
-	// This ensures we have full control and enables future cluster scaling
-	cp.log.Info("Creating fresh bootstrap token...")
+	cp.log.Info("Extracting join credentials...")
 	session, err := provisioner.Client.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	tokenOut, err := session.CombinedOutput("sudo kubeadm token create --ttl 2h")
-	_ = session.Close()
-	if err != nil {
-		return fmt.Errorf("failed to create bootstrap token: %w", err)
-	}
-	cp.JoinToken = strings.TrimSpace(string(tokenOut))
+	defer func() { _ = session.Close() }()
 
-	// Step 2: Compute CA cert hash from PKI files
-	// This is deterministic based on the CA certificate
-	cp.log.Info("Computing CA certificate hash...")
-	session2, err := provisioner.Client.NewSession()
-	if err != nil {
-		return fmt.Errorf("failed to create session: %w", err)
-	}
-	hashOut, err := session2.CombinedOutput("openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'")
-	_ = session2.Close()
-	if err != nil {
-		return fmt.Errorf("failed to compute CA hash: %w", err)
-	}
-	cp.CACertHash = "sha256:" + strings.TrimSpace(string(hashOut))
+	script := `set -e
+TOKEN=$(sudo kubeadm token create --ttl 2h)
+HASH=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')
+CERTKEY=""
+` + fmt.Sprintf(`if [ "%t" = "true" ]; then
+  CERTKEY=$(sudo kubeadm init phase upload-certs --upload-certs 2>/dev/null | tail -1)
+fi`, cp.isHAEnabled()) + `
+printf '%%s\n%%s\n%%s' "$TOKEN" "$HASH" "$CERTKEY"
+`
 
-	// Step 3: For HA clusters, always re-upload certificates with a fresh encryption key
-	// This creates/overwrites the kubeadm-certs secret with new credentials
-	if cp.isHAEnabled() {
-		cp.log.Info("Uploading control-plane certificates for HA join...")
-		session3, err := provisioner.Client.NewSession()
-		if err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-		// Re-upload certs to kubeadm-certs secret with a new encryption key
-		certKeyOut, err := session3.CombinedOutput("sudo kubeadm init phase upload-certs --upload-certs 2>/dev/null | tail -1")
-		_ = session3.Close()
-		if err != nil {
-			return fmt.Errorf("failed to upload certificates: %w", err)
-		}
-		cp.CertificateKey = strings.TrimSpace(string(certKeyOut))
+	out, err := session.CombinedOutput(script)
+	if err != nil {
+		return fmt.Errorf("failed to extract join credentials: %w", err)
+	}
+
+	outLines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(outLines) < 2 {
+		return fmt.Errorf("unexpected join credentials output: %s", string(out))
+	}
+
+	cp.JoinToken = strings.TrimSpace(outLines[0])
+	cp.CACertHash = "sha256:" + strings.TrimSpace(outLines[1])
+	if len(outLines) >= 3 && strings.TrimSpace(outLines[2]) != "" {
+		cp.CertificateKey = strings.TrimSpace(outLines[2])
 	}
 
 	hashPreview := cp.CACertHash
