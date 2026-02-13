@@ -176,9 +176,11 @@ func (m command) run(c *cli.Context, opts *options) error {
 		opts.cache = opts.cfg
 	}
 
-	err = provider.Create()
-	if err != nil {
-		return err
+	if provider != nil {
+		err = provider.Create()
+		if err != nil {
+			return err
+		}
 	}
 
 	// Read cache after creating the environment
