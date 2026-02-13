@@ -49,8 +49,11 @@ func WithRetry[T any](ctx context.Context, cfg RetryConfig, fn func() (T, error)
 
 		if attempt < cfg.MaxRetries {
 			// Add jitter
-			n, _ := rand.Int(rand.Reader, big.NewInt(int64(backoff/2)))
-			jitter := time.Duration(n.Int64())
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(backoff/2)))
+			var jitter time.Duration
+			if err == nil {
+				jitter = time.Duration(n.Int64())
+			}
 			sleepDuration := backoff + jitter
 			if sleepDuration > cfg.MaxBackoff {
 				sleepDuration = cfg.MaxBackoff
