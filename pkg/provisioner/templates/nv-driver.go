@@ -115,8 +115,13 @@ holodeck_progress "$COMPONENT" 3 5 "Adding CUDA repository"
 if [[ ! -f /etc/apt/sources.list.d/cuda*.list ]] || \
    [[ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ]]; then
     distribution=$(. /etc/os-release; echo "${ID}${VERSION_ID}" | sed -e 's/\.//g')
+    # Determine CUDA repo architecture (NVIDIA uses "sbsa" for arm64 servers)
+    CUDA_ARCH="$(uname -m)"
+    if [[ "$CUDA_ARCH" == "aarch64" ]]; then
+        CUDA_ARCH="sbsa"
+    fi
     holodeck_retry 3 "$COMPONENT" wget -q \
-        "https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-keyring_1.1-1_all.deb"
+        "https://developer.download.nvidia.com/compute/cuda/repos/$distribution/${CUDA_ARCH}/cuda-keyring_1.1-1_all.deb"
     sudo dpkg -i cuda-keyring_1.1-1_all.deb
     rm -f cuda-keyring_1.1-1_all.deb
     holodeck_retry 3 "$COMPONENT" sudo apt-get update
