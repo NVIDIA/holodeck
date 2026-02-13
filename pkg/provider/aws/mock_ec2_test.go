@@ -298,8 +298,22 @@ func (m *MockEC2Client) DescribeInstanceTypes(ctx context.Context, params *ec2.D
 	}
 	return &ec2.DescribeInstanceTypesOutput{
 		InstanceTypes: []types.InstanceTypeInfo{
-			{InstanceType: types.InstanceTypeT3Medium},
-			{InstanceType: types.InstanceTypeT3Large},
+			{
+				InstanceType: types.InstanceTypeT3Medium,
+				ProcessorInfo: &types.ProcessorInfo{
+					SupportedArchitectures: []types.ArchitectureType{
+						types.ArchitectureTypeX8664,
+					},
+				},
+			},
+			{
+				InstanceType: types.InstanceTypeT3Large,
+				ProcessorInfo: &types.ProcessorInfo{
+					SupportedArchitectures: []types.ArchitectureType{
+						types.ArchitectureTypeX8664,
+					},
+				},
+			},
 		},
 	}, nil
 }

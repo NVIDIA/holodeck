@@ -1226,7 +1226,12 @@ spec:
 				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
 				return &ec2.DescribeInstanceTypesOutput{
 					InstanceTypes: []types.InstanceTypeInfo{
-						{InstanceType: types.InstanceTypeT3Medium},
+						{InstanceType: types.InstanceTypeT3Medium,
+							ProcessorInfo: &types.ProcessorInfo{
+								SupportedArchitectures: []types.ArchitectureType{
+									types.ArchitectureTypeX8664,
+								},
+							}},
 					},
 				}, nil
 			}
@@ -1471,7 +1476,12 @@ status:
 					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
 					return &ec2.DescribeInstanceTypesOutput{
 						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT3Medium},
+							{InstanceType: types.InstanceTypeT3Medium,
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664,
+									},
+								}},
 						},
 					}, nil
 				}
@@ -1519,7 +1529,12 @@ status:
 					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
 					return &ec2.DescribeInstanceTypesOutput{
 						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT4gMedium},
+							{InstanceType: types.InstanceTypeT4gMedium,
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeArm64,
+									},
+								}},
 						},
 					}, nil
 				}
@@ -1598,7 +1613,12 @@ status:
 					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
 					return &ec2.DescribeInstanceTypesOutput{
 						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT3Medium},
+							{InstanceType: types.InstanceTypeT3Medium,
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664,
+									},
+								}},
 						},
 					}, nil
 				}
@@ -1699,7 +1719,12 @@ status:
 					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
 					return &ec2.DescribeInstanceTypesOutput{
 						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT3Medium},
+							{InstanceType: types.InstanceTypeT3Medium,
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664,
+									},
+								}},
 						},
 					}, nil
 				}
