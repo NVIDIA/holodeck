@@ -216,6 +216,12 @@ func (p *Provisioner) resetConnection() error {
 func (p *Provisioner) provision() error {
 	var err error
 
+	// Close existing client before creating new connection
+	if p.Client != nil {
+		_ = p.Client.Close()
+		p.Client = nil
+	}
+
 	// Create a new ssh connection
 	p.Client, err = connectOrDie(p.KeyPath, p.UserName, p.HostUrl)
 	if err != nil {
@@ -259,6 +265,7 @@ func (p *Provisioner) provision() error {
 
 	_ = writer.Close()
 	wg.Wait()
+	_ = reader.Close()
 
 	select {
 	case copyErr := <-copyErrCh:
