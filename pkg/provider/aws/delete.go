@@ -64,7 +64,10 @@ func (p *Provider) deleteNLBForCluster(cache *ClusterCache) error {
 	ctx, cancel := context.WithTimeout(context.Background(), elbv2APITimeout)
 	defer cancel()
 
-	describeInput := &elasticloadbalancingv2.DescribeLoadBalancersInput{}
+	lbName := fmt.Sprintf("%s-nlb", p.ObjectMeta.Name)
+	describeInput := &elasticloadbalancingv2.DescribeLoadBalancersInput{
+		Names: []string{lbName},
+	}
 	describeOutput, err := p.elbv2.DescribeLoadBalancers(ctx, describeInput)
 	if err != nil {
 		return fmt.Errorf("error describing load balancers: %w", err)

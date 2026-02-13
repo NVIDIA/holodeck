@@ -44,6 +44,11 @@ set -xe
 
 const remoteKindConfig = "/etc/kubernetes/kind.yaml"
 
+var (
+	shebangTmpl     = template.Must(template.New("shebang").Parse(Shebang))
+	commonFuncsTmpl = template.Must(template.New("common-functions").Parse(templates.CommonFunctions))
+)
+
 const (
 	// sshMaxRetries is the number of SSH connection attempts before giving up.
 	sshMaxRetries = 20
@@ -431,14 +436,10 @@ func (p *Provisioner) copyFileToRemoteSFTP(localPath, remotePath string) error {
 }
 
 func addScriptHeader(tpl *bytes.Buffer) error {
-	// Add shebang to the script
-	shebang := template.Must(template.New("shebang").Parse(Shebang))
-	if err := shebang.Execute(tpl, nil); err != nil {
+	if err := shebangTmpl.Execute(tpl, nil); err != nil {
 		return fmt.Errorf("failed to add shebang to the script: %w", err)
 	}
-	// Add common functions to the script
-	commonFunctions := template.Must(template.New("common-functions").Parse(templates.CommonFunctions))
-	if err := commonFunctions.Execute(tpl, nil); err != nil {
+	if err := commonFuncsTmpl.Execute(tpl, nil); err != nil {
 		return fmt.Errorf("failed to add common functions to the script: %w", err)
 	}
 	return nil
