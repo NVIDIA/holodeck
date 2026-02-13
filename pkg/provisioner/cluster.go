@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -440,6 +441,13 @@ func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo)
 		return fmt.Errorf("failed to connect to %s: %w", firstCP.Name, err)
 	}
 	defer provisioner.Client.Close() // nolint: errcheck
+
+	// Validate all node IPs before interpolating into shell commands
+	for _, node := range nodes {
+		if net.ParseIP(node.PrivateIP) == nil {
+			return fmt.Errorf("invalid private IP for node %s: %q", node.Name, node.PrivateIP)
+		}
+	}
 
 	// Build the node configuration script
 	// Note: Use sudo -E to preserve KUBECONFIG environment variable, or use --kubeconfig flag
