@@ -140,8 +140,14 @@ func (m command) run(c *cli.Context, opts *options) error {
 
 	// Create instance manager and generate unique ID
 	manager := instances.NewManager(m.log, opts.cachePath)
-	instanceID := manager.GenerateInstanceID()
-	opts.cacheFile = manager.GetInstanceCacheFile(instanceID)
+	instanceID, err := manager.GenerateInstanceID()
+	if err != nil {
+		return fmt.Errorf("failed to generate instance ID: %w", err)
+	}
+	opts.cacheFile, err = manager.GetInstanceCacheFile(instanceID)
+	if err != nil {
+		return fmt.Errorf("invalid instance ID: %w", err)
+	}
 
 	// Add instance ID to environment metadata
 	if opts.cfg.Labels == nil {

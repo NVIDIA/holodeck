@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -38,6 +39,12 @@ const (
 	// InstanceProvisionedLabelKey is the key used to label AWS instances with their provisioning status
 	InstanceProvisionedLabelKey = "holodeck-instance-provisioned"
 )
+
+// instanceIDPattern matches valid 8-character hex instance IDs
+var instanceIDPattern = regexp.MustCompile(`^[0-9a-f]{8}$`)
+
+// uuidPattern matches valid UUID-format instance IDs (backward compatibility)
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // Instance represents a running Holodeck instance
 type Instance struct {
@@ -83,19 +90,21 @@ func NewManager(log *logger.FunLogger, cachePath string) *Manager {
 }
 
 // GenerateInstanceID creates a unique ID for a new instance
-func (m *Manager) GenerateInstanceID() string {
+func (m *Manager) GenerateInstanceID() (string, error) {
 	b := make([]byte, 4) // 4 bytes = 8 hex characters
-	_, err := rand.Read(b)
-	if err != nil {
-		m.log.Error(err)
-		return ""
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate instance ID: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
-// GetInstanceCacheFile returns the cache file path for an instance
-func (m *Manager) GetInstanceCacheFile(instanceID string) string {
-	return filepath.Join(m.cachePath, instanceID+".yaml")
+// GetInstanceCacheFile returns the cache file path for an instance.
+// It validates that the instance ID matches expected formats to prevent path traversal.
+func (m *Manager) GetInstanceCacheFile(instanceID string) (string, error) {
+	if !instanceIDPattern.MatchString(instanceID) && !uuidPattern.MatchString(instanceID) {
+		return "", fmt.Errorf("invalid instance ID format: %q", instanceID)
+	}
+	return filepath.Join(m.cachePath, instanceID+".yaml"), nil
 }
 
 // getProviderStatus retrieves the status of an instance from its provider
@@ -234,7 +243,10 @@ func (m *Manager) ListInstances() ([]Instance, error) {
 
 // GetInstance returns details for a specific instance
 func (m *Manager) GetInstance(instanceID string) (*Instance, error) {
-	cacheFile := m.GetInstanceCacheFile(instanceID)
+	cacheFile, err := m.GetInstanceCacheFile(instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid instance ID: %w", err)
+	}
 
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
@@ -284,7 +296,10 @@ func (m *Manager) GetInstance(instanceID string) (*Instance, error) {
 
 // DeleteInstance removes an instance
 func (m *Manager) DeleteInstance(instanceID string) error {
-	cacheFile := m.GetInstanceCacheFile(instanceID)
+	cacheFile, err := m.GetInstanceCacheFile(instanceID)
+	if err != nil {
+		return fmt.Errorf("invalid instance ID: %w", err)
+	}
 
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
@@ -315,7 +330,10 @@ func (m *Manager) DeleteInstance(instanceID string) error {
 
 // GetInstanceByFilename returns details for a specific instance by its filename
 func (m *Manager) GetInstanceByFilename(filename string) (*Instance, error) {
-	cacheFile := m.GetInstanceCacheFile(filename)
+	cacheFile, err := m.GetInstanceCacheFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("invalid instance ID: %w", err)
+	}
 
 	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
@@ -330,14 +348,8 @@ func (m *Manager) GetInstanceByFilename(filename string) (*Instance, error) {
 	// Get instance status from provider
 	status := m.getProviderStatus(env, cacheFile)
 
-	// For old cache files, use the filename as the ID if it looks like a UUID
-	instanceID := filename
-	if len(filename) != 36 { // Not a UUID
-		return nil, fmt.Errorf("invalid instance ID format")
-	}
-
 	return &Instance{
-		ID:        instanceID,
+		ID:        filename,
 		Name:      env.Name,
 		Provider:  env.Spec.Provider,
 		CreatedAt: fileInfo.ModTime(),
