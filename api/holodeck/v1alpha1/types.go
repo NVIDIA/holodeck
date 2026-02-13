@@ -185,10 +185,10 @@ type ControlPlaneSpec struct {
 	Count int32 `json:"count"`
 
 	// InstanceType specifies the EC2 instance type for control-plane nodes.
+	// Default is "m5.xlarge" (x86_64). For arm64, use Graviton types
+	// (e.g., "m7g.xlarge", "c7g.xlarge").
 	// +kubebuilder:default="m5.xlarge"
 	// +optional
-	// +optional
-
 	InstanceType string `json:"instanceType,omitempty"`
 
 	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
@@ -236,10 +236,10 @@ type WorkerPoolSpec struct {
 
 	// InstanceType specifies the EC2 instance type for worker nodes.
 	// For GPU workloads, use GPU instance types (g4dn, p4d, etc.).
+	// Default is "g4dn.xlarge" (x86_64). For arm64 GPU workloads,
+	// use "g5g.xlarge" or similar Graviton GPU instances.
 	// +kubebuilder:default="g4dn.xlarge"
 	// +optional
-	// +optional
-
 	InstanceType string `json:"instanceType,omitempty"`
 
 	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
