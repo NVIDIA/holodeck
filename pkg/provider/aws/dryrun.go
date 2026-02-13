@@ -41,5 +41,30 @@ func (p *Provider) DryRun() error {
 	}
 	cancel(nil)
 
+	// Cross-validate architecture compatibility
+	if p.Spec.Image.Architecture != "" {
+		cancel = p.log.Loading("Validating architecture compatibility")
+		archs, err := p.getInstanceTypeArch(p.Spec.Type)
+		if err != nil {
+			cancel(logger.ErrLoadingFailed)
+			return fmt.Errorf("failed to check instance type architecture: %w", err)
+		}
+		archMatch := false
+		for _, a := range archs {
+			if a == p.Spec.Image.Architecture {
+				archMatch = true
+				break
+			}
+		}
+		if !archMatch {
+			cancel(logger.ErrLoadingFailed)
+			return fmt.Errorf(
+				"architecture mismatch: AMI architecture is %s but instance type %s supports %v",
+				p.Spec.Image.Architecture, p.Spec.Type, archs,
+			)
+		}
+		cancel(nil)
+	}
+
 	return nil
 }

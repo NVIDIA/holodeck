@@ -33,6 +33,7 @@ import (
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/ami"
+	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
 // mockSSMClient implements ami.SSMParameterGetter for testing.
@@ -72,6 +73,20 @@ func TestResolveImageForNode(t *testing.T) {
 			image: &v1alpha1.Image{
 				ImageId:      aws.String("ami-explicit-123"),
 				Architecture: "x86_64",
+			},
+			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+				ec2Mock.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      aws.String("ami-explicit-123"),
+								Architecture: types.ArchitectureValuesX8664,
+							},
+						},
+					}, nil
+				}
 			},
 			wantImageID: "ami-explicit-123",
 			wantSSHUser: "", // Must be provided in auth config
@@ -331,6 +346,8 @@ func TestResolveImageForNode(t *testing.T) {
 			require.NotNil(t, result)
 			assert.Equal(t, tt.wantImageID, result.ImageID)
 			assert.Equal(t, tt.wantSSHUser, result.SSHUsername)
+			// Architecture should always be set on successful resolution
+			assert.NotEmpty(t, result.Architecture)
 		})
 	}
 }
@@ -545,4 +562,445 @@ func TestFindLegacyAMI(t *testing.T) {
 			assert.Equal(t, tt.wantImageID, imageID)
 		})
 	}
+}
+
+func TestDescribeImageArch(t *testing.T) {
+	tests := []struct {
+		name           string
+		imageID        string
+		setupMock      func(*MockEC2Client)
+		wantArch       string
+		wantErr        bool
+		wantErrContain string
+	}{
+		{
+			name:    "returns x86_64 architecture",
+			imageID: "ami-x86-123",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      aws.String("ami-x86-123"),
+								Architecture: types.ArchitectureValuesX8664,
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "x86_64",
+			wantErr:  false,
+		},
+		{
+			name:    "returns arm64 architecture",
+			imageID: "ami-arm-456",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:      aws.String("ami-arm-456"),
+								Architecture: types.ArchitectureValuesArm64,
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "arm64",
+			wantErr:  false,
+		},
+		{
+			name:    "error when image not found",
+			imageID: "ami-missing",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{},
+					}, nil
+				}
+			},
+			wantErr:        true,
+			wantErrContain: "not found",
+		},
+		{
+			name:    "error on EC2 API failure",
+			imageID: "ami-fail",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return nil, fmt.Errorf("EC2 API error")
+				}
+			},
+			wantErr:        true,
+			wantErrContain: "failed to describe image",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ec2Mock := NewMockEC2Client()
+			if tt.setupMock != nil {
+				tt.setupMock(ec2Mock)
+			}
+
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   "t3.medium",
+						Region: "us-east-1",
+					},
+				},
+			}
+
+			p := &Provider{
+				Environment: &env,
+				ec2:         ec2Mock,
+			}
+
+			arch, err := p.describeImageArch(tt.imageID)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantErrContain != "" {
+					assert.Contains(t, err.Error(), tt.wantErrContain)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantArch, arch)
+		})
+	}
+}
+
+func TestGetInstanceTypeArch(t *testing.T) {
+	tests := []struct {
+		name           string
+		instanceType   string
+		setupMock      func(*MockEC2Client)
+		wantArchs      []string
+		wantErr        bool
+		wantErrContain string
+	}{
+		{
+			name:         "returns x86_64 for t3.medium",
+			instanceType: "t3.medium",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: types.InstanceTypeT3Medium,
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArchs: []string{"x86_64"},
+			wantErr:   false,
+		},
+		{
+			name:         "returns arm64 for t4g.medium",
+			instanceType: "t4g.medium",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: types.InstanceTypeT4gMedium,
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeArm64,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArchs: []string{"arm64"},
+			wantErr:   false,
+		},
+		{
+			name:         "error when instance type not found",
+			instanceType: "t99.nonexistent",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{},
+					}, nil
+				}
+			},
+			wantErr:        true,
+			wantErrContain: "not found",
+		},
+		{
+			name:         "error on EC2 API failure",
+			instanceType: "t3.medium",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return nil, fmt.Errorf("EC2 API error")
+				}
+			},
+			wantErr:        true,
+			wantErrContain: "failed to describe instance type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ec2Mock := NewMockEC2Client()
+			if tt.setupMock != nil {
+				tt.setupMock(ec2Mock)
+			}
+
+			env := v1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+				Spec: v1alpha1.EnvironmentSpec{
+					Provider: v1alpha1.ProviderAWS,
+					Instance: v1alpha1.Instance{
+						Type:   tt.instanceType,
+						Region: "us-east-1",
+					},
+				},
+			}
+
+			p := &Provider{
+				Environment: &env,
+				ec2:         ec2Mock,
+			}
+
+			archs, err := p.getInstanceTypeArch(tt.instanceType)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantErrContain != "" {
+					assert.Contains(t, err.Error(), tt.wantErrContain)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantArchs, archs)
+		})
+	}
+}
+
+func TestResolveImageForNode_ExplicitImageId_ReturnsArchitecture(t *testing.T) {
+	// Verify that when an explicit ImageId is provided, the architecture
+	// is queried from EC2 and returned in the result.
+	ec2Mock := NewMockEC2Client()
+	ec2Mock.DescribeImagesFunc = func(ctx context.Context,
+		params *ec2.DescribeImagesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+		// Verify the correct AMI is being queried
+		assert.Equal(t, []string{"ami-arm64-custom"}, params.ImageIds)
+		return &ec2.DescribeImagesOutput{
+			Images: []types.Image{
+				{
+					ImageId:      aws.String("ami-arm64-custom"),
+					Architecture: types.ArchitectureValuesArm64,
+				},
+			},
+		}, nil
+	}
+
+	env := v1alpha1.Environment{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+		Spec: v1alpha1.EnvironmentSpec{
+			Provider: v1alpha1.ProviderAWS,
+			Instance: v1alpha1.Instance{
+				Type:   "t4g.medium",
+				Region: "us-east-1",
+			},
+		},
+	}
+
+	p := &Provider{
+		Environment: &env,
+		ec2:         ec2Mock,
+	}
+
+	image := &v1alpha1.Image{
+		ImageId: aws.String("ami-arm64-custom"),
+	}
+	result, err := p.resolveImageForNode("", image, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "ami-arm64-custom", result.ImageID)
+	assert.Equal(t, "arm64", result.Architecture)
+	assert.Equal(t, "", result.SSHUsername) // Must be provided in auth config
+}
+
+func TestDryRun_ArchitectureMismatch(t *testing.T) {
+	// Test that DryRun detects when an arm64 AMI is used with an x86_64 instance type.
+	ec2Mock := NewMockEC2Client()
+
+	// checkInstanceTypes needs to find the instance type
+	ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+		params *ec2.DescribeInstanceTypesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+		// If called with specific InstanceTypes (getInstanceTypeArch), return processor info
+		if len(params.InstanceTypes) > 0 {
+			return &ec2.DescribeInstanceTypesOutput{
+				InstanceTypes: []types.InstanceTypeInfo{
+					{
+						InstanceType: types.InstanceTypeT3Medium,
+						ProcessorInfo: &types.ProcessorInfo{
+							SupportedArchitectures: []types.ArchitectureType{
+								types.ArchitectureTypeX8664,
+							},
+						},
+					},
+				},
+			}, nil
+		}
+		// Paginated scan for checkInstanceTypes
+		return &ec2.DescribeInstanceTypesOutput{
+			InstanceTypes: []types.InstanceTypeInfo{
+				{
+					InstanceType: types.InstanceTypeT3Medium,
+					ProcessorInfo: &types.ProcessorInfo{
+						SupportedArchitectures: []types.ArchitectureType{
+							types.ArchitectureTypeX8664,
+						},
+					},
+				},
+			},
+		}, nil
+	}
+
+	// checkImages -> assertImageIdSupported needs to find the image
+	ec2Mock.DescribeImagesFunc = func(ctx context.Context,
+		params *ec2.DescribeImagesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+		return &ec2.DescribeImagesOutput{
+			Images: []types.Image{
+				{
+					ImageId:      aws.String("ami-arm64-image"),
+					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+					Architecture: types.ArchitectureValuesArm64,
+				},
+			},
+		}, nil
+	}
+
+	log := logger.NewLogger()
+
+	env := v1alpha1.Environment{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+		Spec: v1alpha1.EnvironmentSpec{
+			Provider: v1alpha1.ProviderAWS,
+			Instance: v1alpha1.Instance{
+				Type:   "t3.medium", // x86_64 only
+				Region: "us-east-1",
+				Image: v1alpha1.Image{
+					ImageId:      aws.String("ami-arm64-image"),
+					Architecture: "arm64", // Mismatched!
+				},
+			},
+			Auth: v1alpha1.Auth{
+				KeyName: "test-key",
+			},
+		},
+	}
+
+	p := &Provider{
+		Environment: &env,
+		ec2:         ec2Mock,
+		log:         log,
+	}
+
+	err := p.DryRun()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "architecture mismatch")
+	assert.Contains(t, err.Error(), "arm64")
+	assert.Contains(t, err.Error(), "t3.medium")
+}
+
+func TestDryRun_ArchitectureMatch(t *testing.T) {
+	// Test that DryRun succeeds when architecture matches.
+	ec2Mock := NewMockEC2Client()
+
+	ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+		params *ec2.DescribeInstanceTypesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+		return &ec2.DescribeInstanceTypesOutput{
+			InstanceTypes: []types.InstanceTypeInfo{
+				{
+					InstanceType: types.InstanceTypeT4gMedium,
+					ProcessorInfo: &types.ProcessorInfo{
+						SupportedArchitectures: []types.ArchitectureType{
+							types.ArchitectureTypeArm64,
+						},
+					},
+				},
+			},
+		}, nil
+	}
+
+	ec2Mock.DescribeImagesFunc = func(ctx context.Context,
+		params *ec2.DescribeImagesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+		return &ec2.DescribeImagesOutput{
+			Images: []types.Image{
+				{
+					ImageId:      aws.String("ami-arm64-image"),
+					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+					Architecture: types.ArchitectureValuesArm64,
+				},
+			},
+		}, nil
+	}
+
+	log := logger.NewLogger()
+
+	env := v1alpha1.Environment{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+		Spec: v1alpha1.EnvironmentSpec{
+			Provider: v1alpha1.ProviderAWS,
+			Instance: v1alpha1.Instance{
+				Type:   "t4g.medium", // arm64
+				Region: "us-east-1",
+				Image: v1alpha1.Image{
+					ImageId:      aws.String("ami-arm64-image"),
+					Architecture: "arm64", // Matches!
+				},
+			},
+			Auth: v1alpha1.Auth{
+				KeyName: "test-key",
+			},
+		},
+	}
+
+	p := &Provider{
+		Environment: &env,
+		ec2:         ec2Mock,
+		log:         log,
+	}
+
+	err := p.DryRun()
+	require.NoError(t, err)
 }

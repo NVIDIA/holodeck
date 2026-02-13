@@ -89,6 +89,7 @@ func (p *Provider) resolveOSToAMI() error {
 	}
 
 	p.Spec.Image.ImageId = &resolved.ImageID
+	p.Spec.Image.Architecture = normalizeArchToEC2(arch)
 
 	// Auto-set username if not provided
 	//nolint:staticcheck // Auth is embedded but explicit access is clearer
@@ -102,8 +103,9 @@ func (p *Provider) resolveOSToAMI() error {
 
 // ResolvedImage contains the resolved AMI information for instance creation.
 type ResolvedImage struct {
-	ImageID     string
-	SSHUsername string
+	ImageID      string
+	SSHUsername  string
+	Architecture string // EC2 architecture: "x86_64" or "arm64"
 }
 
 // resolveImageForNode resolves the AMI for a node based on OS or explicit Image.
@@ -112,9 +114,14 @@ type ResolvedImage struct {
 func (p *Provider) resolveImageForNode(os string, image *v1alpha1.Image, arch string) (*ResolvedImage, error) {
 	// If explicit ImageId is provided, use it
 	if image != nil && image.ImageId != nil && *image.ImageId != "" {
+		arch, err := p.describeImageArch(*image.ImageId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to determine architecture for image %s: %w", *image.ImageId, err)
+		}
 		return &ResolvedImage{
-			ImageID:     *image.ImageId,
-			SSHUsername: "", // Username must be provided in auth config
+			ImageID:      *image.ImageId,
+			SSHUsername:  "", // Username must be provided in auth config
+			Architecture: arch,
 		}, nil
 	}
 
@@ -126,6 +133,7 @@ func (p *Provider) resolveImageForNode(os string, image *v1alpha1.Image, arch st
 			arch = "x86_64" // Default
 		}
 	}
+	arch = normalizeArchToEC2(arch)
 
 	// If OS is specified, resolve via AMI resolver
 	if os != "" {
@@ -134,8 +142,9 @@ func (p *Provider) resolveImageForNode(os string, image *v1alpha1.Image, arch st
 			return nil, fmt.Errorf("failed to resolve AMI for OS %s: %w", os, err)
 		}
 		return &ResolvedImage{
-			ImageID:     resolved.ImageID,
-			SSHUsername: resolved.SSHUsername,
+			ImageID:      resolved.ImageID,
+			SSHUsername:  resolved.SSHUsername,
+			Architecture: arch,
 		}, nil
 	}
 
@@ -147,8 +156,9 @@ func (p *Provider) resolveImageForNode(os string, image *v1alpha1.Image, arch st
 			return nil, fmt.Errorf("failed to resolve AMI for OS %s: %w", p.Spec.Instance.OS, err)
 		}
 		return &ResolvedImage{
-			ImageID:     resolved.ImageID,
-			SSHUsername: resolved.SSHUsername,
+			ImageID:      resolved.ImageID,
+			SSHUsername:  resolved.SSHUsername,
+			Architecture: arch,
 		}, nil
 	}
 
@@ -159,8 +169,9 @@ func (p *Provider) resolveImageForNode(os string, image *v1alpha1.Image, arch st
 		return nil, err
 	}
 	return &ResolvedImage{
-		ImageID:     imageID,
-		SSHUsername: "ubuntu",
+		ImageID:      imageID,
+		SSHUsername:  "ubuntu",
+		Architecture: arch,
 	}, nil
 }
 
@@ -238,6 +249,13 @@ func (p *Provider) setLegacyAMI() error {
 		return err
 	}
 	p.Spec.Image.ImageId = &imageID
+
+	// Store the resolved architecture (normalized to EC2 form) for cross-validation in DryRun
+	if p.Spec.Image.Architecture == "" {
+		p.Spec.Image.Architecture = "x86_64" // Legacy default
+	} else {
+		p.Spec.Image.Architecture = normalizeArchToEC2(p.Spec.Image.Architecture)
+	}
 
 	// Set default username for Ubuntu if not provided
 	//nolint:staticcheck // Auth is embedded but explicit access is clearer
@@ -319,4 +337,55 @@ func (p *Provider) checkInstanceTypes() error {
 	}
 
 	return fmt.Errorf("instance type %s is not supported in the current region %s", p.Spec.Type, p.Spec.Region)
+}
+
+// normalizeArchToEC2 converts architecture aliases to EC2 canonical form.
+// EC2 APIs use "x86_64" and "arm64", but users and other systems may use
+// "amd64" (Debian convention) or "aarch64" (kernel convention).
+func normalizeArchToEC2(arch string) string {
+	switch strings.ToLower(arch) {
+	case "amd64", "x86_64":
+		return "x86_64"
+	case "arm64", "aarch64":
+		return "arm64"
+	default:
+		return arch
+	}
+}
+
+// describeImageArch queries EC2 DescribeImages for a specific AMI ID and
+// returns its architecture string (e.g., "x86_64" or "arm64").
+func (p *Provider) describeImageArch(imageID string) (string, error) {
+	resp, err := p.ec2.DescribeImages(context.TODO(), &ec2.DescribeImagesInput{
+		ImageIds: []string{imageID},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe image %s: %w", imageID, err)
+	}
+	if len(resp.Images) == 0 {
+		return "", fmt.Errorf("image %s not found", imageID)
+	}
+	return string(resp.Images[0].Architecture), nil
+}
+
+// getInstanceTypeArch queries EC2 DescribeInstanceTypes for a specific instance
+// type and returns its list of supported architecture strings.
+func (p *Provider) getInstanceTypeArch(instanceType string) ([]string, error) {
+	resp, err := p.ec2.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{
+		InstanceTypes: []types.InstanceType{types.InstanceType(instanceType)},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe instance type %s: %w", instanceType, err)
+	}
+	if len(resp.InstanceTypes) == 0 {
+		return nil, fmt.Errorf("instance type %s not found", instanceType)
+	}
+	if resp.InstanceTypes[0].ProcessorInfo == nil {
+		return nil, fmt.Errorf("no processor info for instance type %s", instanceType)
+	}
+	var archs []string
+	for _, a := range resp.InstanceTypes[0].ProcessorInfo.SupportedArchitectures {
+		archs = append(archs, string(a))
+	}
+	return archs, nil
 }
