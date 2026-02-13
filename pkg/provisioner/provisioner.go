@@ -274,55 +274,56 @@ func (p *Provisioner) provision() error {
 }
 
 func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
-	// Specify the remote file path
 	remoteFilePath := remoteKindConfig
 
-	// Create a session
-	session, err := p.Client.NewSession()
+	// Session 1: create remote directory
+	session1, err := p.Client.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer func() { _ = session.Close() }()
-
-	// create remote directory if it does not exist
-	if err := session.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
+	if err := session1.Run("sudo mkdir -p /etc/kubernetes"); err != nil {
+		_ = session1.Close()
 		return fmt.Errorf("failed to create remote directory /etc/kubernetes: %w", err)
 	}
+	_ = session1.Close()
 
-	// Open a remote file for writing
-	remoteFile, err := session.StdinPipe()
+	// Session 2: write file to remote
+	session2, err := p.Client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+	defer func() { _ = session2.Close() }()
+
+	remoteFile, err := session2.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("failed to open remote file %s: %w", remoteFilePath, err)
 	}
-	if err := session.Start("cat > " + remoteFilePath); err != nil {
+	if err := session2.Start("cat > " + remoteFilePath); err != nil {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
 
-	// open local file for reading
-	// first check if file path is relative or absolute
-	// if relative, then prepend the current working directory
-	if !filepath.IsAbs(env.Spec.Kubernetes.KindConfig) {
+	// Resolve local file path
+	kindConfigPath := env.Spec.Kubernetes.KindConfig
+	if !filepath.IsAbs(kindConfigPath) {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("failed to get current working directory: %w", err)
 		}
-
-		env.Spec.Kubernetes.KindConfig = filepath.Join(cwd, strings.TrimPrefix(env.Spec.Kubernetes.KindConfig, "./"))
+		kindConfigPath = filepath.Join(cwd, strings.TrimPrefix(kindConfigPath, "./"))
 	}
 
-	localFile, err := os.Open(env.Spec.Kubernetes.KindConfig)
+	localFile, err := os.Open(kindConfigPath) //nolint:gosec // path from user-provided config
 	if err != nil {
-		return fmt.Errorf("failed to open local file %s: %w", env.Spec.Kubernetes.KindConfig, err)
+		return fmt.Errorf("failed to open local file %s: %w", kindConfigPath, err)
 	}
+	defer func() { _ = localFile.Close() }()
 
-	// copy local file to remote file
 	if _, err := io.Copy(remoteFile, localFile); err != nil {
-		return fmt.Errorf("failed to copy local file %s to remote file %s: %w", env.Spec.Kubernetes.KindConfig, remoteFilePath, err)
+		return fmt.Errorf("failed to copy local file %s to remote file %s: %w", kindConfigPath, remoteFilePath, err)
 	}
 
-	// Close the writing pipe and wait for the session to finish
 	_ = remoteFile.Close()
-	if err := session.Wait(); err != nil {
+	if err := session2.Wait(); err != nil {
 		return fmt.Errorf("failed to wait for command to complete: %w", err)
 	}
 
