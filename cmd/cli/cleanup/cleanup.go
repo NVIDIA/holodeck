@@ -131,18 +131,9 @@ func (m *command) run(c *cli.Context) error {
 		timeout = defaultCleanupTimeout
 	}
 
-	// Create a context that can be cancelled by SIGINT/SIGTERM
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle interrupt signals gracefully
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigChan
-		m.log.Warning("Received signal %v, cancelling cleanup operations...", sig)
-		cancel()
-	}()
+	// Create a context that is cancelled by SIGINT/SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create the cleaner
 	cleaner, err := cleanup.New(m.log, region)
