@@ -70,7 +70,16 @@ func (p *Provider) setAMI() error {
 func (p *Provider) resolveOSToAMI() error {
 	arch := p.Spec.Image.Architecture
 	if arch == "" {
-		arch = "x86_64" // Default architecture
+		// Infer architecture from instance type (e.g., arm64 for g5g/m7g/c7g)
+		inferred, err := p.inferArchFromInstanceType(p.Spec.Type)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to infer architecture from instance type %s: %w; set spec.image.architecture explicitly to override",
+				p.Spec.Type,
+				err,
+			)
+		}
+		arch = inferred
 	}
 
 	//nolint:staticcheck // Instance is embedded but explicit access is clearer
@@ -244,18 +253,27 @@ func (p *Provider) findLegacyAMI(arch string) (string, error) {
 // setLegacyAMI implements the original Ubuntu 22.04 default behavior for
 // backward compatibility when OS is not specified. This mutates provider state.
 func (p *Provider) setLegacyAMI() error {
-	imageID, err := p.findLegacyAMI("")
+	// Determine architecture before AMI lookup
+	arch := p.Spec.Image.Architecture
+	if arch == "" {
+		// Infer architecture from instance type (e.g., arm64 for g5g/m7g/c7g)
+		inferred, err := p.inferArchFromInstanceType(p.Spec.Type)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to infer architecture from instance type %s: %w; set spec.image.architecture explicitly to override",
+				p.Spec.Type,
+				err,
+			)
+		}
+		arch = inferred
+	}
+
+	imageID, err := p.findLegacyAMI(arch)
 	if err != nil {
 		return err
 	}
 	p.Spec.Image.ImageId = &imageID
-
-	// Store the resolved architecture (normalized to EC2 form) for cross-validation in DryRun
-	if p.Spec.Image.Architecture == "" {
-		p.Spec.Image.Architecture = "x86_64" // Legacy default
-	} else {
-		p.Spec.Image.Architecture = normalizeArchToEC2(p.Spec.Image.Architecture)
-	}
+	p.Spec.Image.Architecture = normalizeArchToEC2(arch)
 
 	// Set default username for Ubuntu if not provided
 	//nolint:staticcheck // Auth is embedded but explicit access is clearer
@@ -351,6 +369,32 @@ func normalizeArchToEC2(arch string) string {
 	default:
 		return arch
 	}
+}
+
+// inferArchFromInstanceType queries EC2 for the supported architectures of
+// the given instance type. If the instance type only supports arm64, returns
+// "arm64"; otherwise returns "x86_64" for backward compatibility.
+// This enables automatic ARM64 AMI selection when users specify an arm64-only
+// instance type (e.g., g5g, m7g, c7g) without explicitly setting Architecture.
+func (p *Provider) inferArchFromInstanceType(instanceType string) (string, error) {
+	archs, err := p.getInstanceTypeArch(instanceType)
+	if err != nil {
+		return "", err
+	}
+	hasX86 := false
+	hasArm := false
+	for _, a := range archs {
+		switch {
+		case strings.HasPrefix(a, "x86_64"):
+			hasX86 = true
+		case strings.HasPrefix(a, "arm64"):
+			hasArm = true
+		}
+	}
+	if hasArm && !hasX86 {
+		return "arm64", nil
+	}
+	return "x86_64", nil
 }
 
 // describeImageArch queries EC2 DescribeImages for a specific AMI ID and

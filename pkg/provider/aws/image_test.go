@@ -1004,3 +1004,236 @@ func TestDryRun_ArchitectureMatch(t *testing.T) {
 	err := p.DryRun()
 	require.NoError(t, err)
 }
+
+func TestInferArchFromInstanceType(t *testing.T) {
+	tests := []struct {
+		name         string
+		instanceType string
+		setupMock    func(*MockEC2Client)
+		wantArch     string
+		wantErr      bool
+	}{
+		{
+			name:         "arm64-only instance type infers arm64",
+			instanceType: "g5g.xlarge",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: "g5g.xlarge",
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeArm64,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "arm64",
+			wantErr:  false,
+		},
+		{
+			name:         "x86_64-only instance type infers x86_64",
+			instanceType: "g4dn.xlarge",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: "g4dn.xlarge",
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "x86_64",
+			wantErr:  false,
+		},
+		{
+			name:         "dual-arch instance type defaults to x86_64",
+			instanceType: "synthetic.dualarch",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: "synthetic.dualarch",
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664,
+										types.ArchitectureTypeArm64,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "x86_64",
+			wantErr:  false,
+		},
+		{
+			name:         "arm64_mac variant infers arm64",
+			instanceType: "mac2-m2.metal",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: "mac2-m2.metal",
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeArm64Mac,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "arm64",
+			wantErr:  false,
+		},
+		{
+			name:         "x86_64_mac variant infers x86_64",
+			instanceType: "mac1.metal",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: "mac1.metal",
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664Mac,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "x86_64",
+			wantErr:  false,
+		},
+		{
+			name:         "API error returns error",
+			instanceType: "unknown.type",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return nil, fmt.Errorf("instance type not found")
+				}
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ec2Mock := NewMockEC2Client()
+			if tt.setupMock != nil {
+				tt.setupMock(ec2Mock)
+			}
+
+			p := &Provider{ec2: ec2Mock}
+			arch, err := p.inferArchFromInstanceType(tt.instanceType)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantArch, arch)
+		})
+	}
+}
+
+func TestResolveOSToAMI_InfersArchFromInstanceType(t *testing.T) {
+	// When Architecture is empty and instance type is arm64-only,
+	// resolveOSToAMI should infer arm64 and resolve an arm64 AMI.
+	ec2Mock := NewMockEC2Client()
+	ssmMock := &mockSSMClient{}
+
+	// Mock: g5g.xlarge is arm64-only
+	ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+		params *ec2.DescribeInstanceTypesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+		return &ec2.DescribeInstanceTypesOutput{
+			InstanceTypes: []types.InstanceTypeInfo{
+				{
+					InstanceType: "g5g.xlarge",
+					ProcessorInfo: &types.ProcessorInfo{
+						SupportedArchitectures: []types.ArchitectureType{
+							types.ArchitectureTypeArm64,
+						},
+					},
+				},
+			},
+		}, nil
+	}
+
+	// Mock: SSM returns arm64 AMI when arm64 is in path
+	ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
+		optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+		if params.Name != nil && strings.Contains(*params.Name, "arm64") {
+			return &ssm.GetParameterOutput{
+				Parameter: &ssmtypes.Parameter{
+					Value: aws.String("ami-arm64-inferred"),
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("expected arm64 in SSM path, got: %s", *params.Name)
+	}
+
+	resolver := ami.NewResolver(ec2Mock, ssmMock, "us-east-1")
+
+	env := v1alpha1.Environment{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-arm64-inference"},
+		Spec: v1alpha1.EnvironmentSpec{
+			Provider: v1alpha1.ProviderAWS,
+			Instance: v1alpha1.Instance{
+				Type:   "g5g.xlarge", // arm64-only instance type
+				Region: "us-east-1",
+				OS:     "ubuntu-22.04",
+			},
+			// Architecture is intentionally NOT set
+		},
+	}
+
+	p := &Provider{
+		Environment: &env,
+		ec2:         ec2Mock,
+		amiResolver: resolver,
+	}
+
+	err := p.resolveOSToAMI()
+	require.NoError(t, err)
+
+	// Architecture should have been inferred as arm64
+	assert.Equal(t, "arm64", p.Spec.Image.Architecture,
+		"Should infer arm64 from g5g.xlarge instance type")
+	// AMI should be the arm64 one
+	require.NotNil(t, p.Spec.Image.ImageId)
+	assert.Equal(t, "ami-arm64-inferred", *p.Spec.Image.ImageId,
+		"Should resolve arm64 AMI when architecture inferred from instance type")
+}

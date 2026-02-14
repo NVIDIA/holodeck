@@ -398,10 +398,21 @@ func (p *Provider) createInstances(
 	image *v1alpha1.Image,
 ) ([]InstanceInfo, error) {
 	// Resolve AMI for this node pool
-	// Determine architecture from image spec
+	// Determine architecture: prefer explicit spec, then infer from instance type
 	var arch string
 	if image != nil && image.Architecture != "" {
 		arch = image.Architecture
+	} else {
+		// Infer architecture from instance type (e.g., arm64 for g5g/m7g/c7g)
+		inferred, err := p.inferArchFromInstanceType(instanceType)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to infer architecture from instance type %s: %w; set spec.image.architecture explicitly to override",
+				instanceType,
+				err,
+			)
+		}
+		arch = inferred
 	}
 	resolved, err := p.resolveImageForNode(os, image, arch)
 	if err != nil {
