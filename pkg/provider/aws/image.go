@@ -71,11 +71,15 @@ func (p *Provider) resolveOSToAMI() error {
 	arch := p.Spec.Image.Architecture
 	if arch == "" {
 		// Infer architecture from instance type (e.g., arm64 for g5g/m7g/c7g)
-		if inferred, err := p.inferArchFromInstanceType(p.Spec.Type); err == nil {
-			arch = inferred
-		} else {
-			arch = "x86_64" // Default if inference fails
+		inferred, err := p.inferArchFromInstanceType(p.Spec.Type)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to infer architecture from instance type %s: %w; set spec.image.architecture explicitly to override",
+				p.Spec.Type,
+				err,
+			)
 		}
+		arch = inferred
 	}
 
 	//nolint:staticcheck // Instance is embedded but explicit access is clearer
@@ -253,11 +257,15 @@ func (p *Provider) setLegacyAMI() error {
 	arch := p.Spec.Image.Architecture
 	if arch == "" {
 		// Infer architecture from instance type (e.g., arm64 for g5g/m7g/c7g)
-		if inferred, err := p.inferArchFromInstanceType(p.Spec.Type); err == nil {
-			arch = inferred
-		} else {
-			arch = "x86_64" // Default if inference fails
+		inferred, err := p.inferArchFromInstanceType(p.Spec.Type)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to infer architecture from instance type %s: %w; set spec.image.architecture explicitly to override",
+				p.Spec.Type,
+				err,
+			)
 		}
+		arch = inferred
 	}
 
 	imageID, err := p.findLegacyAMI(arch)
@@ -376,10 +384,10 @@ func (p *Provider) inferArchFromInstanceType(instanceType string) (string, error
 	hasX86 := false
 	hasArm := false
 	for _, a := range archs {
-		switch a {
-		case "x86_64":
+		switch {
+		case strings.HasPrefix(a, "x86_64"):
 			hasX86 = true
-		case "arm64":
+		case strings.HasPrefix(a, "arm64"):
 			hasArm = true
 		}
 	}

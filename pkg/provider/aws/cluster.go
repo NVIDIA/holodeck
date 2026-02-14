@@ -404,10 +404,15 @@ func (p *Provider) createInstances(
 		arch = image.Architecture
 	} else {
 		// Infer architecture from instance type (e.g., arm64 for g5g/m7g/c7g)
-		if inferred, err := p.inferArchFromInstanceType(instanceType); err == nil {
-			arch = inferred
+		inferred, err := p.inferArchFromInstanceType(instanceType)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to infer architecture from instance type %s: %w; set spec.image.architecture explicitly to override",
+				instanceType,
+				err,
+			)
 		}
-		// If inference fails, leave empty for resolveImageForNode to default
+		arch = inferred
 	}
 	resolved, err := p.resolveImageForNode(os, image, arch)
 	if err != nil {

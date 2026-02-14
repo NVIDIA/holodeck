@@ -1063,7 +1063,7 @@ func TestInferArchFromInstanceType(t *testing.T) {
 		},
 		{
 			name:         "dual-arch instance type defaults to x86_64",
-			instanceType: "m6i.large",
+			instanceType: "synthetic.dualarch",
 			setupMock: func(ec2Mock *MockEC2Client) {
 				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
 					params *ec2.DescribeInstanceTypesInput,
@@ -1071,11 +1071,59 @@ func TestInferArchFromInstanceType(t *testing.T) {
 					return &ec2.DescribeInstanceTypesOutput{
 						InstanceTypes: []types.InstanceTypeInfo{
 							{
-								InstanceType: "m6i.large",
+								InstanceType: "synthetic.dualarch",
 								ProcessorInfo: &types.ProcessorInfo{
 									SupportedArchitectures: []types.ArchitectureType{
 										types.ArchitectureTypeX8664,
 										types.ArchitectureTypeArm64,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "x86_64",
+			wantErr:  false,
+		},
+		{
+			name:         "arm64_mac variant infers arm64",
+			instanceType: "mac2-m2.metal",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: "mac2-m2.metal",
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeArm64Mac,
+									},
+								},
+							},
+						},
+					}, nil
+				}
+			},
+			wantArch: "arm64",
+			wantErr:  false,
+		},
+		{
+			name:         "x86_64_mac variant infers x86_64",
+			instanceType: "mac1.metal",
+			setupMock: func(ec2Mock *MockEC2Client) {
+				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstanceTypesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
+					return &ec2.DescribeInstanceTypesOutput{
+						InstanceTypes: []types.InstanceTypeInfo{
+							{
+								InstanceType: "mac1.metal",
+								ProcessorInfo: &types.ProcessorInfo{
+									SupportedArchitectures: []types.ArchitectureType{
+										types.ArchitectureTypeX8664Mac,
 									},
 								},
 							},
