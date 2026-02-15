@@ -72,6 +72,40 @@ jobs:
         path: ginkgo.json
         retention-days: 15
 
+  # ARM64 GPU E2E test — runs only on merge to main (g5g instances are expensive)
+  e2e-test-arm64:
+    runs-on: linux-amd64-cpu4
+    if: github.ref == 'refs/heads/main'
+    name: E2E Test (arm64)
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Install Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+        check-latest: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make
+
+    - name: Run ARM64 GPU e2e test
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+        LOG_ARTIFACT_DIR: e2e_logs
+      run: |
+        e2e_ssh_key=$(mktemp)
+        echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
+        chmod 600 "$e2e_ssh_key"
+        export E2E_SSH_KEY="$e2e_ssh_key"
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='arm64'"
+
   integration-test:
     runs-on: linux-amd64-cpu4
     if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
