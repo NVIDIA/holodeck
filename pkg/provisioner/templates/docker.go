@@ -149,7 +149,12 @@ holodeck_progress "$COMPONENT" 5 6 "Installing cri-dockerd"
 
 # Install cri-dockerd (idempotent)
 CRI_DOCKERD_VERSION="0.3.17"
-CRI_DOCKERD_ARCH="amd64"
+CRI_DOCKERD_ARCH="$(uname -m)"
+case "${CRI_DOCKERD_ARCH}" in
+    x86_64|amd64)  CRI_DOCKERD_ARCH="amd64" ;;
+    aarch64|arm64) CRI_DOCKERD_ARCH="arm64" ;;
+    *) holodeck_log "ERROR" "$COMPONENT" "Unsupported arch for cri-dockerd: ${CRI_DOCKERD_ARCH}"; exit 1 ;;
+esac
 
 if [[ ! -f /usr/local/bin/cri-dockerd ]]; then
     CRI_DOCKERD_URL="https://github.com/Mirantis/cri-dockerd/releases/download/v${CRI_DOCKERD_VERSION}/cri-dockerd-${CRI_DOCKERD_VERSION}.${CRI_DOCKERD_ARCH}.tgz"
