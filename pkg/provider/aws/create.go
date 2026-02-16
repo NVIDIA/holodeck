@@ -51,6 +51,15 @@ func (p *Provider) Create() error {
 	}
 
 	// Single-node deployment
+
+	// Validate instance type is available in the region before creating any
+	// resources. Without this check, VPC/subnet/IGW/etc. are created and then
+	// RunInstances fails with an opaque EC2 "Unsupported configuration" error,
+	// leaking resources that must be cleaned up manually.
+	if err := p.checkInstanceTypes(); err != nil {
+		return fmt.Errorf("pre-flight check failed: %w", err)
+	}
+
 	cache := new(AWS)
 	var cleanupStack []cleanupFunc
 	var err error
