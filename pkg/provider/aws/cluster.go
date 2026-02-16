@@ -99,6 +99,11 @@ func (p *Provider) CreateCluster() error {
 		return fmt.Errorf("cluster spec not defined, use Create() for single-node")
 	}
 
+	// Validate instance type before creating any resources (same rationale as Create())
+	if err := p.checkInstanceTypes(); err != nil {
+		return fmt.Errorf("pre-flight check failed: %w", err)
+	}
+
 	cache := &ClusterCache{}
 
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Creating multinode cluster resources")

@@ -950,6 +950,52 @@ func TestCreateSecurityGroup_AuthorizeError(t *testing.T) {
 	}
 }
 
+func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := &Provider{
+		ec2: mock,
+		log: mockLogger(),
+		Environment: &v1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-env",
+			},
+			Spec: v1alpha1.EnvironmentSpec{
+				Auth: v1alpha1.Auth{
+					KeyName: "test-key",
+				},
+				Instance: v1alpha1.Instance{
+					Type:   "g5g.xlarge",
+					Region: "us-west-1",
+					Image: v1alpha1.Image{
+						ImageId: aws.String("ami-123"),
+					},
+				},
+			},
+		},
+		Tags: []types.Tag{
+			{Key: aws.String("Name"), Value: aws.String("test")},
+		},
+	}
+
+	err := provider.Create()
+
+	// Must fail before creating any resources
+	if err == nil {
+		t.Fatal("Expected Create() to fail for unsupported instance type")
+	}
+	if !contains(err.Error(), "instance type") {
+		t.Errorf("Expected error to mention 'instance type', got: %v", err)
+	}
+	if !contains(err.Error(), "not supported") {
+		t.Errorf("Expected error to mention 'not supported', got: %v", err)
+	}
+
+	// Verify no VPC was created (fail-fast, no leaked resources)
+	if len(mock.createVpcCalls) != 0 {
+		t.Error("VPC was created despite unsupported instance type — resources leaked")
+	}
+}
+
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
