@@ -59,18 +59,32 @@ holodeck_progress "$COMPONENT" 2 4 "Adding CRI-O repository"
 
 CRIO_VERSION="${DESIRED_VERSION}"
 
+# Default to latest stable CRI-O if no version specified
+if [[ -z "$CRIO_VERSION" ]]; then
+    CRIO_VERSION="v1.33"
+    holodeck_log "INFO" "$COMPONENT" "No version specified, defaulting to ${CRIO_VERSION}"
+fi
+
+# Ensure version starts with 'v' and is in vX.Y format (strip patch if present)
+CRIO_VERSION="${CRIO_VERSION#v}"
+CRIO_VERSION="v$(echo "$CRIO_VERSION" | cut -d. -f1,2)"
+
+# CRI-O migrated from pkgs.k8s.io to download.opensuse.org
+# See: https://github.com/cri-o/packaging#readme
+CRIO_REPO_URL="https://download.opensuse.org/repositories/isv:/cri-o:/stable:/${CRIO_VERSION}"
+
 # Add CRI-O repo (idempotent)
 if [[ ! -f /etc/apt/keyrings/cri-o-apt-keyring.gpg ]]; then
     sudo mkdir -p /etc/apt/keyrings
     holodeck_retry 3 "$COMPONENT" curl -fsSL \
-        "https://pkgs.k8s.io/addons:/cri-o:/stable:/${CRIO_VERSION}/deb/Release.key" | \
+        "${CRIO_REPO_URL}/deb/Release.key" | \
         sudo gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
 else
     holodeck_log "INFO" "$COMPONENT" "CRI-O GPG key already present"
 fi
 
 if [[ ! -f /etc/apt/sources.list.d/cri-o.list ]]; then
-    echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/stable:/${CRIO_VERSION}/deb/ /" | \
+    echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] ${CRIO_REPO_URL}/deb/ /" | \
         sudo tee /etc/apt/sources.list.d/cri-o.list > /dev/null
 else
     holodeck_log "INFO" "$COMPONENT" "CRI-O repository already configured"

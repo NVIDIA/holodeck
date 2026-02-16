@@ -210,6 +210,11 @@ var _ = DescribeTable("AWS Environment E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_latest.yml"),
 		description: "Tests AWS environment with Kubernetes tracking master branch",
 	}, Label("k8s-latest")),
+	Entry("ARM64 GPU Test", testConfig{
+		name:        "ARM64 GPU Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_arm64.yml"),
+		description: "Tests full GPU stack on ARM64 (g5g Graviton) with architecture inferred from instance type",
+	}, Label("arm64")),
 )
 
 // Note: To run tests in parallel, use: ginkgo -p or --procs=N
