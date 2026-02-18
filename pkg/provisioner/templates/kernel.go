@@ -29,11 +29,6 @@ const kernelTemplate = `
 COMPONENT="kernel"
 KERNEL_VERSION="{{ .Spec.Kernel.Version }}"
 
-# Set non-interactive frontend for apt and disable editor prompts
-export DEBIAN_FRONTEND=noninteractive
-export EDITOR=/bin/true
-echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
-
 holodeck_progress "$COMPONENT" 1 4 "Checking current kernel"
 
 # Get current kernel version
@@ -60,33 +55,76 @@ fi
 holodeck_progress "$COMPONENT" 2 4 "Installing kernel packages"
 
 # Update package lists
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+holodeck_retry 3 "$COMPONENT" pkg_update
 
-# Check if kernel packages are available
-if ! apt-cache show "linux-image-${KERNEL_VERSION}" &>/dev/null; then
-    holodeck_error 4 "$COMPONENT" \
-        "Kernel version ${KERNEL_VERSION} not found in repositories" \
-        "Check available kernels with: apt-cache search linux-image"
-fi
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        # Set non-interactive frontend for apt and disable editor prompts
+        export DEBIAN_FRONTEND=noninteractive
+        export EDITOR=/bin/true
+        echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
 
-holodeck_progress "$COMPONENT" 3 4 "Installing kernel ${KERNEL_VERSION}"
+        # Check if kernel packages are available
+        if ! apt-cache show "linux-image-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_error 4 "$COMPONENT" \
+                "Kernel version ${KERNEL_VERSION} not found in repositories" \
+                "Check available kernels with: apt-cache search linux-image"
+        fi
 
-# Clean up old kernel files (optional, preserves space)
-sudo rm -rf /boot/*"${CURRENT_KERNEL}"* 2>/dev/null || true
-sudo rm -rf /lib/modules/*"${CURRENT_KERNEL}"* 2>/dev/null || true
-sudo rm -rf /boot/*.old 2>/dev/null || true
+        holodeck_progress "$COMPONENT" 3 4 "Installing kernel ${KERNEL_VERSION}"
 
-# Install new kernel and related packages
-holodeck_retry 3 "$COMPONENT" sudo apt-get install --allow-downgrades -y \
-    "linux-image-${KERNEL_VERSION}" \
-    "linux-headers-${KERNEL_VERSION}" \
-    "linux-modules-${KERNEL_VERSION}"
+        # Clean up old kernel files (optional, preserves space)
+        sudo rm -rf /boot/*"${CURRENT_KERNEL}"* 2>/dev/null || true
+        sudo rm -rf /lib/modules/*"${CURRENT_KERNEL}"* 2>/dev/null || true
+        sudo rm -rf /boot/*.old 2>/dev/null || true
 
-holodeck_progress "$COMPONENT" 4 4 "Updating bootloader"
+        # Install new kernel and related packages
+        holodeck_retry 3 "$COMPONENT" sudo apt-get install --allow-downgrades -y \
+            "linux-image-${KERNEL_VERSION}" \
+            "linux-headers-${KERNEL_VERSION}" \
+            "linux-modules-${KERNEL_VERSION}"
 
-holodeck_log "INFO" "$COMPONENT" "Updating grub and initramfs"
-sudo update-grub || true
-sudo update-initramfs -u -k "${KERNEL_VERSION}" || true
+        holodeck_progress "$COMPONENT" 4 4 "Updating bootloader"
+
+        holodeck_log "INFO" "$COMPONENT" "Updating grub and initramfs"
+        sudo update-grub || true
+        sudo update-initramfs -u -k "${KERNEL_VERSION}" || true
+        ;;
+
+    amazon|rhel)
+        # Check if kernel packages are available
+        if ! dnf list available "kernel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_error 4 "$COMPONENT" \
+                "Kernel version ${KERNEL_VERSION} not found in repositories" \
+                "Check available kernels with: dnf list available kernel-*"
+        fi
+
+        holodeck_progress "$COMPONENT" 3 4 "Installing kernel ${KERNEL_VERSION}"
+
+        # Clean up old kernel files (optional, preserves space)
+        sudo rm -rf /boot/*"${CURRENT_KERNEL}"* 2>/dev/null || true
+        sudo rm -rf /lib/modules/*"${CURRENT_KERNEL}"* 2>/dev/null || true
+        sudo rm -rf /boot/*.old 2>/dev/null || true
+
+        # Install new kernel and related packages
+        # On RPM, modules are bundled with the kernel package
+        holodeck_retry 3 "$COMPONENT" sudo dnf install --allowerasing -y \
+            "kernel-${KERNEL_VERSION}" \
+            "kernel-devel-${KERNEL_VERSION}"
+
+        holodeck_progress "$COMPONENT" 4 4 "Updating bootloader"
+
+        holodeck_log "INFO" "$COMPONENT" "Updating grub and initramfs"
+        sudo grub2-mkconfig -o /boot/grub2/grub.cfg || \
+            sudo grub2-mkconfig -o /boot/efi/EFI/$(. /etc/os-release && echo "$ID")/grub.cfg || true
+        sudo dracut --force --kver "${KERNEL_VERSION}" || true
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 # Mark as pending reboot
 installed_at="$(date -Iseconds)"

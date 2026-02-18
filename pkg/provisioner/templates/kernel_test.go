@@ -166,6 +166,71 @@ func TestKernelTemplateContent(t *testing.T) {
 	}
 }
 
+func TestKernelTemplate_OSFamilyBranching(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Kernel: v1alpha1.Kernel{
+				Version: "6.1.0",
+			},
+		},
+	}
+
+	buf, err := NewKernelTemplate(env)
+	if err != nil {
+		t.Fatalf("Failed to create kernel template: %v", err)
+	}
+
+	out := buf.String()
+
+	// Must have OS-family case statement
+	if !strings.Contains(out, `case "${HOLODECK_OS_FAMILY}" in`) {
+		t.Error("kernel template should branch on HOLODECK_OS_FAMILY")
+	}
+
+	// Debian branch must have Debian-specific elements
+	debianElements := []string{
+		"DEBIAN_FRONTEND=noninteractive",
+		"debconf-set-selections",
+		"apt-cache show",
+		"linux-image-",
+		"linux-headers-",
+		"linux-modules-",
+		"update-grub",
+		"update-initramfs",
+		"--allow-downgrades",
+	}
+	for _, elem := range debianElements {
+		if !strings.Contains(out, elem) {
+			t.Errorf("kernel template should contain Debian element: %s", elem)
+		}
+	}
+
+	// RPM branch must have RPM-specific elements
+	rpmElements := []string{
+		"dnf list available",
+		"kernel-${KERNEL_VERSION}",
+		"kernel-devel-${KERNEL_VERSION}",
+		"grub2-mkconfig",
+		"dracut --force",
+		"--allowerasing",
+	}
+	for _, elem := range rpmElements {
+		if !strings.Contains(out, elem) {
+			t.Errorf("kernel template should contain RPM element: %s", elem)
+		}
+	}
+
+	// Default case must have holodeck_error
+	if !strings.Contains(out, `holodeck_error 2 "$COMPONENT" "Unsupported OS family`) {
+		t.Error("kernel template should have holodeck_error for unsupported OS family")
+	}
+
+	// pkg_update should be used instead of bare apt-get update
+	if !strings.Contains(out, "pkg_update") {
+		t.Error("kernel template should use pkg_update abstraction")
+	}
+}
+
 func TestKernelTemplateErrorHandling(t *testing.T) {
 	// Test with invalid template
 	invalidTemplate := "{{ .InvalidField }}"
