@@ -59,40 +59,90 @@ fi
 
 holodeck_progress "$COMPONENT" 2 6 "Adding Docker repository"
 
-# Based on https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+# Install required packages (OS-agnostic)
+holodeck_retry 3 "$COMPONENT" pkg_update
 holodeck_retry 3 "$COMPONENT" install_packages_with_retry ca-certificates curl gnupg
 
-# Add Docker's official GPG key (idempotent)
-if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-        sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-else
-    holodeck_log "INFO" "$COMPONENT" "Docker GPG key already present"
-fi
+# Source OS release info for repository configuration
+# shellcheck source=/etc/os-release
+. /etc/os-release
 
-# Add the repository to Apt sources (idempotent)
-if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-fi
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+# Add Docker repository based on OS family
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        # Debian/Ubuntu: Add Docker apt repository
+        if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+            sudo install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+                sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            sudo chmod a+r /etc/apt/keyrings/docker.gpg
+        else
+            holodeck_log "INFO" "$COMPONENT" "Docker GPG key already present"
+        fi
+
+        if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
+            echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+              ${VERSION_CODENAME} stable" | \
+              sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        fi
+        holodeck_retry 3 "$COMPONENT" pkg_update
+        ;;
+
+    amazon|rhel)
+        # Amazon Linux / RHEL-based: Add Docker dnf/yum repository
+        if [[ ! -f /etc/yum.repos.d/docker-ce.repo ]]; then
+            case "${ID}" in
+                amzn)
+                    # Amazon Linux uses Fedora packages (Docker doesn't provide AL packages)
+                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
+                        https://download.docker.com/linux/fedora/docker-ce.repo
+                    # Replace $releasever with mapped Fedora version from common.go
+                    sudo sed -i "s/\$releasever/${HOLODECK_AMZN_FEDORA_VERSION}/g" /etc/yum.repos.d/docker-ce.repo
+                    holodeck_log "INFO" "$COMPONENT" "Using Fedora ${HOLODECK_AMZN_FEDORA_VERSION} repo for Amazon Linux"
+                    ;;
+                fedora)
+                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
+                        https://download.docker.com/linux/fedora/docker-ce.repo
+                    ;;
+                *)
+                    # Rocky, RHEL, CentOS, AlmaLinux
+                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
+                        https://download.docker.com/linux/centos/docker-ce.repo
+                    ;;
+            esac
+            holodeck_retry 3 "$COMPONENT" pkg_update
+        else
+            holodeck_log "INFO" "$COMPONENT" "Docker repository already configured"
+        fi
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 3 6 "Installing Docker"
 
-# Install Docker
+# Install Docker with OS-appropriate version syntax
 if [[ "$DESIRED_VERSION" == "latest" ]] || [[ -z "$DESIRED_VERSION" ]]; then
     holodeck_log "INFO" "$COMPONENT" "Installing latest Docker version"
     holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
         docker-ce docker-ce-cli containerd.io
 else
     holodeck_log "INFO" "$COMPONENT" "Installing Docker version: ${DESIRED_VERSION}"
-    holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-        "docker-ce=$DESIRED_VERSION" "docker-ce-cli=$DESIRED_VERSION" containerd.io
+    case "${HOLODECK_OS_FAMILY}" in
+        debian)
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "docker-ce=$DESIRED_VERSION" "docker-ce-cli=$DESIRED_VERSION" containerd.io
+            ;;
+        amazon|rhel)
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "docker-ce-$DESIRED_VERSION" "docker-ce-cli-$DESIRED_VERSION" containerd.io
+            ;;
+    esac
 fi
 
 holodeck_progress "$COMPONENT" 4 6 "Configuring Docker"
