@@ -250,7 +250,7 @@ fi
 
 holodeck_progress "$COMPONENT" 3 6 "Installing dependencies"
 
-holodeck_retry 3 "$COMPONENT" pkg_update
+holodeck_retry 3 "$COMPONENT" sudo apt-get update
 holodeck_retry 3 "$COMPONENT" install_packages_with_retry ca-certificates curl
 
 # Detect architecture

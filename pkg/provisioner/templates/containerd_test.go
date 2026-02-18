@@ -315,25 +315,3 @@ func TestContainerd_Execute_CommonElements(t *testing.T) {
 		})
 	}
 }
-
-func TestContainerd_V2Template_UsesPkgUpdate(t *testing.T) {
-	env := v1alpha1.Environment{
-		Spec: v1alpha1.EnvironmentSpec{
-			ContainerRuntime: v1alpha1.ContainerRuntime{
-				Version: "2.0.0",
-			},
-		},
-	}
-	c, err := NewContainerd(env)
-	require.NoError(t, err)
-	var buf bytes.Buffer
-	err = c.Execute(&buf, env)
-	require.NoError(t, err)
-	out := buf.String()
-
-	// V2 template should use pkg_update instead of apt-get update
-	assert.NotContains(t, out, "sudo apt-get update",
-		"containerd v2 template should not use bare apt-get update")
-	assert.Contains(t, out, "pkg_update",
-		"containerd v2 template should use pkg_update abstraction")
-}

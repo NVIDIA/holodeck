@@ -1156,3 +1156,11 @@ func TestNewKubeadmConfig_IsUbuntu_DynamicDetection(t *testing.T) {
 		})
 	}
 }
+
+func TestKubernetes_DefaultConstants(t *testing.T) {
+	assert.NotEmpty(t, defaultKubernetesVersion, "defaultKubernetesVersion must be set")
+	assert.NotEmpty(t, defaultKubeletReleaseVersion, "defaultKubeletReleaseVersion must be set")
+	assert.NotEmpty(t, defaultCNIPluginsVersion, "defaultCNIPluginsVersion must be set")
+	assert.NotEmpty(t, defaultCRIVersion, "defaultCRIVersion must be set")
+	assert.NotEmpty(t, defaultCalicoVersion, "defaultCalicoVersion must be set")
+}

@@ -1468,7 +1468,6 @@ var (
 
 // Default Versions
 const (
-	defaultArch                  = "amd64"
 	defaultKubernetesVersion     = "v1.33.3"
 	defaultKubeletReleaseVersion = "v0.18.0"
 	defaultCNIPluginsVersion     = "v1.7.1"
@@ -1688,7 +1687,7 @@ func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
 		PodSubnet:            "192.168.0.0/16",               // Default subnet, modify if needed
 		FeatureGates:         featureGates,                   // Convert slice to string for kubeadm
 		RuntimeConfig:        "resource.k8s.io/v1beta1=true", // Example runtime config
-		IsUbuntu:             isUbuntuOS(env.Spec.Instance.OS), // Detect from OS spec
+		IsUbuntu:             isUbuntuOS(env.Spec.OS),        // Detect from OS spec
 	}
 
 	if env.Spec.Kubernetes.KubernetesVersion == "" {
