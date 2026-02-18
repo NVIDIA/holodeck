@@ -163,7 +163,7 @@ func (c *Cleaner) CheckGitHubJobsCompleted(ctx context.Context, repository, runI
 	req.Header.Set("User-Agent", "holodeck-cleanup/1.0")
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: URL components validated by repoPattern/runIDPattern
 	if err != nil {
 		return false, fmt.Errorf("failed to make request: %w", err)
 	}
