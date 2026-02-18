@@ -73,27 +73,46 @@ CRIO_VERSION="v$(echo "$CRIO_VERSION" | cut -d. -f1,2)"
 # See: https://github.com/cri-o/packaging#readme
 CRIO_REPO_URL="https://download.opensuse.org/repositories/isv:/cri-o:/stable:/${CRIO_VERSION}"
 
-# Add CRI-O repo (idempotent)
-if [[ ! -f /etc/apt/keyrings/cri-o-apt-keyring.gpg ]]; then
-    sudo mkdir -p /etc/apt/keyrings
-    holodeck_retry 3 "$COMPONENT" curl -fsSL \
-        "${CRIO_REPO_URL}/deb/Release.key" | \
-        sudo gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
-else
-    holodeck_log "INFO" "$COMPONENT" "CRI-O GPG key already present"
-fi
+# Add CRI-O repo based on OS family
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        if [[ ! -f /etc/apt/keyrings/cri-o-apt-keyring.gpg ]]; then
+            sudo mkdir -p /etc/apt/keyrings
+            holodeck_retry 3 "$COMPONENT" curl -fsSL \
+                "${CRIO_REPO_URL}/deb/Release.key" | \
+                sudo gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
+        else
+            holodeck_log "INFO" "$COMPONENT" "CRI-O GPG key already present"
+        fi
 
-if [[ ! -f /etc/apt/sources.list.d/cri-o.list ]]; then
-    echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] ${CRIO_REPO_URL}/deb/ /" | \
-        sudo tee /etc/apt/sources.list.d/cri-o.list > /dev/null
-else
-    holodeck_log "INFO" "$COMPONENT" "CRI-O repository already configured"
-fi
+        if [[ ! -f /etc/apt/sources.list.d/cri-o.list ]]; then
+            echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] ${CRIO_REPO_URL}/deb/ /" | \
+                sudo tee /etc/apt/sources.list.d/cri-o.list > /dev/null
+        else
+            holodeck_log "INFO" "$COMPONENT" "CRI-O repository already configured"
+        fi
+        ;;
+
+    amazon|rhel)
+        if [[ ! -f /etc/yum.repos.d/cri-o.repo ]]; then
+            holodeck_retry 3 "$COMPONENT" sudo curl -fsSL -o /etc/yum.repos.d/cri-o.repo \
+                "${CRIO_REPO_URL}/rpm/cri-o.repo"
+        else
+            holodeck_log "INFO" "$COMPONENT" "CRI-O repository already configured"
+        fi
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 3 4 "Installing CRI-O"
 
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
-holodeck_retry 3 "$COMPONENT" sudo apt-get install -y cri-o
+holodeck_retry 3 "$COMPONENT" pkg_update
+holodeck_retry 3 "$COMPONENT" pkg_install cri-o
 
 # Start and enable Service
 sudo systemctl daemon-reload
@@ -155,10 +174,27 @@ fi
 
 holodeck_progress "$COMPONENT" 2 5 "Installing build dependencies"
 
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-    build-essential ca-certificates curl git libseccomp-dev libgpgme-dev \
-    pkg-config libglib2.0-dev
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        holodeck_retry 3 "$COMPONENT" pkg_update
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            build-essential ca-certificates curl git libseccomp-dev libgpgme-dev \
+            pkg-config libglib2.0-dev
+        ;;
+
+    amazon|rhel)
+        holodeck_retry 3 "$COMPONENT" pkg_update
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            ca-certificates curl git libseccomp-devel gpgme-devel \
+            pkg-config glib2-devel gcc make
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 GO_VERSION="${CRIO_GO_VERSION:-1.23.4}"
 GO_ARCH="$(uname -m)"
