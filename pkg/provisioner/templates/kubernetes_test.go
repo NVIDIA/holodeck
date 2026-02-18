@@ -986,3 +986,173 @@ func TestKubernetes_ArchRuntimeDetection_LatestSource(t *testing.T) {
 		})
 	}
 }
+
+func TestKubernetes_KubeadmGitTemplate_OSFamilyBranching(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Kubernetes: v1alpha1.Kubernetes{
+				KubernetesInstaller: "kubeadm",
+				Source:              v1alpha1.K8sSourceGit,
+				Git: &v1alpha1.K8sGitSpec{
+					Ref: "v1.32.0-alpha.1",
+				},
+			},
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Name: "containerd",
+			},
+		},
+	}
+
+	k, err := NewKubernetes(env)
+	assert.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = k.Execute(&buf, env)
+	assert.NoError(t, err)
+
+	out := buf.String()
+
+	// Should have OS-family case statement for build prerequisite packages
+	assert.Contains(t, out, `case "${HOLODECK_OS_FAMILY}" in`,
+		"kubeadm git template should branch on HOLODECK_OS_FAMILY for package names")
+	// Debian branch should have libc6-dev and g++
+	assert.Contains(t, out, "libc6-dev",
+		"kubeadm git template should install libc6-dev for debian")
+	// RPM branch should have glibc-devel and gcc-c++
+	assert.Contains(t, out, "glibc-devel",
+		"kubeadm git template should install glibc-devel for RPM")
+	assert.Contains(t, out, "gcc-c++",
+		"kubeadm git template should install gcc-c++ for RPM")
+}
+
+func TestKubernetes_KubeadmLatestTemplate_OSFamilyBranching(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Kubernetes: v1alpha1.Kubernetes{
+				KubernetesInstaller: "kubeadm",
+				Source:              v1alpha1.K8sSourceLatest,
+				Latest: &v1alpha1.K8sLatestSpec{
+					Track: "master",
+				},
+			},
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Name: "containerd",
+			},
+		},
+	}
+
+	k, err := NewKubernetes(env)
+	assert.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = k.Execute(&buf, env)
+	assert.NoError(t, err)
+
+	out := buf.String()
+
+	// Should have OS-family case statement for build prerequisite packages
+	assert.Contains(t, out, `case "${HOLODECK_OS_FAMILY}" in`,
+		"kubeadm latest template should branch on HOLODECK_OS_FAMILY for package names")
+	// Debian branch
+	assert.Contains(t, out, "libc6-dev",
+		"kubeadm latest template should install libc6-dev for debian")
+	// RPM branch
+	assert.Contains(t, out, "glibc-devel",
+		"kubeadm latest template should install glibc-devel for RPM")
+	assert.Contains(t, out, "gcc-c++",
+		"kubeadm latest template should install gcc-c++ for RPM")
+}
+
+func TestKubernetes_MicroK8s_OSGuard(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Kubernetes: v1alpha1.Kubernetes{
+				KubernetesVersion:   "v1.32.1",
+				KubernetesInstaller: "microk8s",
+			},
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Name: "containerd",
+			},
+		},
+	}
+
+	k, err := NewKubernetes(env)
+	assert.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = k.Execute(&buf, env)
+	assert.NoError(t, err)
+
+	out := buf.String()
+
+	// MicroK8s should check OS family and reject non-Debian
+	assert.Contains(t, out, "HOLODECK_OS_FAMILY",
+		"microk8s template should check HOLODECK_OS_FAMILY")
+	assert.Contains(t, out, "holodeck_error",
+		"microk8s template should error on unsupported OS")
+	// Should not have bare apt-get update without OS guard
+	assert.NotContains(t, out, "sudo apt-get update",
+		"microk8s template should not use bare apt-get update")
+}
+
+func TestNewKubeadmConfig_IsUbuntu_DynamicDetection(t *testing.T) {
+	tests := []struct {
+		name     string
+		os       string
+		expected bool
+	}{
+		{
+			name:     "empty OS defaults to true (backward compatible)",
+			os:       "",
+			expected: true,
+		},
+		{
+			name:     "ubuntu-22.04 is Ubuntu",
+			os:       "ubuntu-22.04",
+			expected: true,
+		},
+		{
+			name:     "ubuntu-24.04 is Ubuntu",
+			os:       "ubuntu-24.04",
+			expected: true,
+		},
+		{
+			name:     "rocky-9 is not Ubuntu",
+			os:       "rocky-9",
+			expected: false,
+		},
+		{
+			name:     "amazon-linux-2023 is not Ubuntu",
+			os:       "amazon-linux-2023",
+			expected: false,
+		},
+		{
+			name:     "debian-12 is not Ubuntu but Debian-family",
+			os:       "debian-12",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Instance: v1alpha1.Instance{
+						OS: tt.os,
+					},
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesVersion: "v1.33.0",
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: "containerd",
+					},
+				},
+			}
+
+			config, err := NewKubeadmConfig(env)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, config.IsUbuntu,
+				"IsUbuntu should be %v for OS=%q", tt.expected, tt.os)
+		})
+	}
+}
