@@ -60,30 +60,56 @@ fi
 
 holodeck_progress "$COMPONENT" 2 4 "Adding NVIDIA repository (${CHANNEL})"
 
-# Add keyring
-if [[ ! -f /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg ]]; then
-    holodeck_retry 3 "$COMPONENT" curl -fsSL \
-        https://nvidia.github.io/libnvidia-container/gpgkey | \
-        sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-fi
+# Add NVIDIA Container Toolkit repository based on OS family
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        # Debian/Ubuntu: Add NVIDIA apt repository with GPG keyring
+        if [[ ! -f /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg ]]; then
+            holodeck_retry 3 "$COMPONENT" curl -fsSL \
+                https://nvidia.github.io/libnvidia-container/gpgkey | \
+                sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        fi
 
-# Add repository (respecting channel)
-REPO_URL="https://nvidia.github.io/libnvidia-container/${CHANNEL}/deb/nvidia-container-toolkit.list"
-if [[ ! -f /etc/apt/sources.list.d/nvidia-container-toolkit.list ]]; then
-    curl -s -L "$REPO_URL" | \
-        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null
-fi
+        REPO_URL="https://nvidia.github.io/libnvidia-container/${CHANNEL}/deb/nvidia-container-toolkit.list"
+        if [[ ! -f /etc/apt/sources.list.d/nvidia-container-toolkit.list ]]; then
+            curl -s -L "$REPO_URL" | \
+                sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+                sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null
+        fi
+        holodeck_retry 3 "$COMPONENT" pkg_update
+        ;;
 
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+    amazon|rhel)
+        # Amazon Linux / RHEL-based: Add NVIDIA dnf/yum repository
+        if [[ ! -f /etc/yum.repos.d/nvidia-container-toolkit.repo ]]; then
+            sudo curl -fsSL -o /etc/yum.repos.d/nvidia-container-toolkit.repo \
+                "https://nvidia.github.io/libnvidia-container/${CHANNEL}/rpm/nvidia-container-toolkit.repo"
+        fi
+        holodeck_retry 3 "$COMPONENT" pkg_update
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 3 4 "Installing NVIDIA Container Toolkit"
 
 if [[ -n "$VERSION" ]]; then
-    holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-        "nvidia-container-toolkit=${VERSION}"
+    case "${HOLODECK_OS_FAMILY}" in
+        debian)
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "nvidia-container-toolkit=${VERSION}"
+            ;;
+        amazon|rhel)
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "nvidia-container-toolkit-${VERSION}"
+            ;;
+    esac
 else
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+    holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
         nvidia-container-toolkit
 fi
 
