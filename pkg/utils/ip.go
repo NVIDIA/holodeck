@@ -86,7 +86,7 @@ func getIPFromHTTPService(ctx context.Context, url string, timeout time.Duration
 	req.Header.Set("User-Agent", "Holodeck")
 
 	// Make the request
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: URLs are hardcoded service endpoints
 	if err != nil {
 		return "", fmt.Errorf("error fetching IP from %s: %w", url, err)
 	}

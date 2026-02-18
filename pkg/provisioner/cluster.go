@@ -457,10 +457,10 @@ func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo)
 	script.WriteString("export KUBECONFIG=/etc/kubernetes/admin.conf\n\n")
 
 	// Wait for all nodes to be registered
-	script.WriteString(fmt.Sprintf("echo 'Waiting for all %d nodes to register...'\n", len(nodes)))
+	fmt.Fprintf(&script, "echo 'Waiting for all %d nodes to register...'\n", len(nodes))
 	script.WriteString("for i in {1..60}; do\n")
 	script.WriteString("  NODE_COUNT=$(sudo -E kubectl get nodes --no-headers 2>/dev/null | wc -l)\n")
-	script.WriteString(fmt.Sprintf("  if [ \"$NODE_COUNT\" -ge %d ]; then break; fi\n", len(nodes)))
+	fmt.Fprintf(&script, "  if [ \"$NODE_COUNT\" -ge %d ]; then break; fi\n", len(nodes))
 	script.WriteString("  sleep 5\n")
 	script.WriteString("done\n\n")
 
@@ -478,15 +478,15 @@ func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo)
 			continue
 		}
 
-		script.WriteString(fmt.Sprintf("echo 'Configuring control-plane node with IP %s...'\n", node.PrivateIP))
+		fmt.Fprintf(&script, "echo 'Configuring control-plane node with IP %s...'\n", node.PrivateIP)
 
 		// Get the actual node name from private IP
-		script.WriteString(fmt.Sprintf("CP_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep '%s' | awk '{print $1}')\n", node.PrivateIP))
+		fmt.Fprintf(&script, "CP_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep '%s' | awk '{print $1}')\n", node.PrivateIP)
 		script.WriteString("if [ -n \"$CP_NODE\" ]; then\n")
 
 		// Apply control-plane labels
 		for key, value := range cpLabels {
-			script.WriteString(fmt.Sprintf("  sudo -E kubectl label node \"$CP_NODE\" %s=%s --overwrite\n", key, value))
+			fmt.Fprintf(&script, "  sudo -E kubectl label node \"$CP_NODE\" %s=%s --overwrite\n", key, value)
 		}
 
 		// Handle taint based on Dedicated setting
@@ -511,10 +511,10 @@ func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo)
 			continue
 		}
 
-		script.WriteString(fmt.Sprintf("echo 'Configuring worker node with IP %s...'\n", node.PrivateIP))
+		fmt.Fprintf(&script, "echo 'Configuring worker node with IP %s...'\n", node.PrivateIP)
 
 		// Get the actual node name from private IP
-		script.WriteString(fmt.Sprintf("WORKER_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep '%s' | awk '{print $1}')\n", node.PrivateIP))
+		fmt.Fprintf(&script, "WORKER_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep '%s' | awk '{print $1}')\n", node.PrivateIP)
 		script.WriteString("if [ -n \"$WORKER_NODE\" ]; then\n")
 
 		// Apply worker role label
@@ -522,7 +522,7 @@ func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo)
 
 		// Apply custom worker labels
 		for key, value := range workerLabels {
-			script.WriteString(fmt.Sprintf("  sudo -E kubectl label node \"$WORKER_NODE\" %s=%s --overwrite\n", key, value))
+			fmt.Fprintf(&script, "  sudo -E kubectl label node \"$WORKER_NODE\" %s=%s --overwrite\n", key, value)
 		}
 
 		script.WriteString("fi\n\n")

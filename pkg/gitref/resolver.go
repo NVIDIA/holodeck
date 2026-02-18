@@ -96,7 +96,7 @@ func (r *GitHubResolver) Resolve(
 	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	resp, err := r.client.Do(req)
+	resp, err := r.client.Do(req) //nolint:gosec // G704: URL built from validated owner/repo/ref
 	if err != nil {
 		return "", "", fmt.Errorf("failed to resolve ref: %w", err)
 	}

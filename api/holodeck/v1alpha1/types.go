@@ -497,7 +497,7 @@ type Auth struct {
 	// Path to the public key file on the local machine
 	PublicKey string `json:"publicKey"`
 	// Path to the private key file on the local machine
-	PrivateKey string `json:"privateKey"`
+	PrivateKey string `json:"privateKey"` //nolint:gosec // G117: stores a file path, not key material
 }
 
 // DriverSource defines where to install the NVIDIA driver from.

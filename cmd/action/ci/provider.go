@@ -75,7 +75,7 @@ func getSSHKeyFile(log *logger.FunLogger, envKey string) error {
 			log.Error(fmt.Errorf("ssh key not provided"))
 			return fmt.Errorf("ssh key not provided")
 		}
-		err := os.WriteFile(sshKeyFile, []byte(envSshKey), 0600)
+		err := os.WriteFile(sshKeyFile, []byte(envSshKey), 0600) //nolint:gosec // G703: sshKeyFile is a hardcoded constant
 		if err != nil {
 			log.Error(fmt.Errorf("error writing ssh key to file: %w", err))
 			return err

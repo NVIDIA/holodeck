@@ -352,6 +352,7 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 	tempRemotePath := "/tmp/kubeadm-config.yaml" // Temporary upload path
 
 	// Ensure local directory exists
+	//nolint:gosec // G703: cachePath built from filepath.Join(HOME, ".cache", "holodeck")
 	if err := os.MkdirAll(cachePath, 0750); err != nil {
 		return fmt.Errorf("failed to create local cache directory: %w", err)
 	}
@@ -370,6 +371,7 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 	}
 
 	// Write kubeadm config to local file
+	//nolint:gosec // G703: path derived from HOME/.cache/holodeck
 	if err := os.WriteFile(localFilePath, []byte(kubeadmConfigContent), 0600); err != nil {
 		return fmt.Errorf("failed to write kubeadm config to local file: %w", err)
 	}
