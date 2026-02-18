@@ -529,3 +529,23 @@ func TestNvDriver_Execute_GitTemplate_OSFamilyBranching(t *testing.T) {
 	assert.NotContains(t, out, "sudo apt-get update",
 		"Git template must not use raw apt-get update")
 }
+
+func TestNvDriver_Execute_NoRedundantRedirects(t *testing.T) {
+	sources := []struct {
+		name string
+		nvd  NvDriver
+	}{
+		{"package", NvDriver{Source: "package", Branch: defaultNVBranch}},
+		{"runfile", NvDriver{Source: "runfile", RunfileURL: "https://download.nvidia.com/driver.run"}},
+		{"git", NvDriver{Source: "git", GitRepo: "https://github.com/NVIDIA/open-gpu-kernel-modules.git", GitRef: "560.35.03", GitCommit: "abc12345"}},
+	}
+	for _, tc := range sources {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := tc.nvd.Execute(&buf, v1alpha1.Environment{})
+			require.NoError(t, err)
+			assert.NotContains(t, buf.String(), "&>/dev/null 2>&1",
+				"Template must not use redundant redirect &>/dev/null 2>&1; use &>/dev/null alone")
+		})
+	}
+}

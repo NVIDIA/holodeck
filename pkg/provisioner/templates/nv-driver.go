@@ -82,7 +82,7 @@ case "${HOLODECK_OS_FAMILY}" in
     debian)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null 2>&1; then
+        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null; then
             holodeck_log "WARN" "$COMPONENT" \
                 "Kernel headers for ${KERNEL_VERSION} not found in repositories"
 
@@ -118,7 +118,7 @@ case "${HOLODECK_OS_FAMILY}" in
     amazon|rhel)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null 2>&1; then
+        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
             holodeck_log "WARN" "$COMPONENT" \
                 "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
             holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
@@ -301,7 +301,7 @@ case "${HOLODECK_OS_FAMILY}" in
     debian)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null 2>&1; then
+        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null; then
             KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
             COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
                 grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
@@ -324,7 +324,7 @@ case "${HOLODECK_OS_FAMILY}" in
     amazon|rhel)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null 2>&1; then
+        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
             holodeck_log "WARN" "$COMPONENT" \
                 "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
             holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
@@ -461,7 +461,7 @@ case "${HOLODECK_OS_FAMILY}" in
     debian)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null 2>&1; then
+        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null; then
             KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
             COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
                 grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
@@ -488,7 +488,7 @@ case "${HOLODECK_OS_FAMILY}" in
     amazon|rhel)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null 2>&1; then
+        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
             holodeck_log "WARN" "$COMPONENT" \
                 "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
             holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
