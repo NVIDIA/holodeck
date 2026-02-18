@@ -734,7 +734,14 @@ fi
 
 holodeck_progress "$COMPONENT" 2 4 "Installing MicroK8s"
 
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+# MicroK8s requires snap, which is only available on Debian/Ubuntu
+if [[ "${HOLODECK_OS_FAMILY}" != "debian" ]]; then
+    holodeck_error 2 "$COMPONENT" \
+        "MicroK8s requires Ubuntu/Debian (snap package manager)" \
+        "Use kubeadm or kind installer for RPM-based distributions"
+fi
+
+holodeck_retry 3 "$COMPONENT" pkg_update
 holodeck_retry 3 "$COMPONENT" sudo snap install microk8s \
     --classic --channel="${MICROK8S_VERSION}"
 
@@ -886,8 +893,18 @@ fi
 
 holodeck_progress "$COMPONENT" 4 11 "Installing build prerequisites"
 
-# Install ALL required build tools
-install_packages_with_retry make rsync gcc g++ libc6-dev jq
+# Install OS-specific build prerequisites
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        install_packages_with_retry make rsync gcc g++ libc6-dev jq
+        ;;
+    amazon|rhel)
+        install_packages_with_retry make rsync gcc gcc-c++ glibc-devel jq
+        ;;
+    *)
+        holodeck_error 2 "$COMPONENT" "Unsupported OS family: ${HOLODECK_OS_FAMILY}" "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 # Verify critical tools are available
 for tool in make rsync gcc; do
@@ -1227,7 +1244,18 @@ fi
 
 holodeck_progress "$COMPONENT" 4 11 "Installing build prerequisites"
 
-install_packages_with_retry make rsync gcc g++ libc6-dev jq
+# Install OS-specific build prerequisites
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        install_packages_with_retry make rsync gcc g++ libc6-dev jq
+        ;;
+    amazon|rhel)
+        install_packages_with_retry make rsync gcc gcc-c++ glibc-devel jq
+        ;;
+    *)
+        holodeck_error 2 "$COMPONENT" "Unsupported OS family: ${HOLODECK_OS_FAMILY}" "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 5 11 "Installing CNI plugins"
 
@@ -1440,7 +1468,6 @@ var (
 
 // Default Versions
 const (
-	defaultArch                  = "amd64"
 	defaultKubernetesVersion     = "v1.33.3"
 	defaultKubeletReleaseVersion = "v0.18.0"
 	defaultCNIPluginsVersion     = "v1.7.1"
@@ -1660,7 +1687,7 @@ func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
 		PodSubnet:            "192.168.0.0/16",               // Default subnet, modify if needed
 		FeatureGates:         featureGates,                   // Convert slice to string for kubeadm
 		RuntimeConfig:        "resource.k8s.io/v1beta1=true", // Example runtime config
-		IsUbuntu:             true,                           // Default to true for Ubuntu-based deployments
+		IsUbuntu:             isUbuntuOS(env.Spec.OS),        // Detect from OS spec
 	}
 
 	if env.Spec.Kubernetes.KubernetesVersion == "" {
@@ -1747,6 +1774,16 @@ func GetCRISocket(runtime string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported container runtime: %s", runtime)
 	}
+}
+
+// isUbuntuOS returns true if the OS spec indicates Ubuntu, or if the OS is
+// empty (backward compatible default). The resolvConf override for
+// systemd-resolved is only needed on Ubuntu.
+func isUbuntuOS(os string) bool {
+	if os == "" {
+		return true // backward compatible: assume Ubuntu when OS is not specified
+	}
+	return strings.HasPrefix(os, "ubuntu")
 }
 
 // isLegacyKubernetesVersion checks if the Kubernetes version is older than v1.32.0
