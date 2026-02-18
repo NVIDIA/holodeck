@@ -348,3 +348,204 @@ func TestNVDriverTemplate_CUDARepoArch(t *testing.T) {
 	require.Contains(t, outStr, "${CUDA_ARCH}/cuda-keyring",
 		"Template must use CUDA_ARCH variable in the wget URL")
 }
+
+// === RPM SUPPORT TESTS ===
+
+func TestNvDriver_Execute_PackageTemplate_OSFamilyBranching(t *testing.T) {
+	nvd := &NvDriver{
+		Source: "package",
+		Branch: defaultNVBranch,
+	}
+
+	var buf bytes.Buffer
+	err := nvd.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// Must contain OS-family branching
+	assert.Contains(t, out, `case "${HOLODECK_OS_FAMILY}" in`,
+		"Package template must branch on HOLODECK_OS_FAMILY")
+	assert.Contains(t, out, "debian)",
+		"Package template must handle debian OS family")
+	assert.Contains(t, out, "amazon|rhel)",
+		"Package template must handle amazon and rhel OS families")
+
+	// Must contain unsupported OS family error
+	assert.Contains(t, out, "Unsupported OS family",
+		"Package template must error on unsupported OS families")
+
+	// Must use pkg_update abstraction instead of raw apt-get update
+	assert.Contains(t, out, "pkg_update",
+		"Package template must use pkg_update abstraction")
+	assert.NotContains(t, out, "sudo apt-get update",
+		"Package template must not use raw apt-get update")
+}
+
+func TestNvDriver_Execute_PackageTemplate_RPMKernelHeaders(t *testing.T) {
+	nvd := &NvDriver{
+		Source: "package",
+		Branch: defaultNVBranch,
+	}
+
+	var buf bytes.Buffer
+	err := nvd.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// RPM uses kernel-devel and kernel-headers instead of linux-headers
+	assert.Contains(t, out, "kernel-devel",
+		"Package template must install kernel-devel for RPM-based systems")
+	assert.Contains(t, out, "kernel-headers",
+		"Package template must install kernel-headers for RPM-based systems")
+
+	// Debian still uses linux-headers
+	assert.Contains(t, out, "linux-headers-${KERNEL_VERSION}",
+		"Package template must still install linux-headers for Debian")
+}
+
+func TestNvDriver_Execute_PackageTemplate_RPMBuildDeps(t *testing.T) {
+	nvd := &NvDriver{
+		Source: "package",
+		Branch: defaultNVBranch,
+	}
+
+	var buf bytes.Buffer
+	err := nvd.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// RPM build deps
+	assert.Contains(t, out, "elfutils-libelf-devel",
+		"Package template must install elfutils-libelf-devel for RPM")
+	assert.Contains(t, out, "mesa-libEGL-devel",
+		"Package template must install mesa-libEGL-devel for RPM")
+	assert.Contains(t, out, "gcc-c++",
+		"Package template must install gcc-c++ for RPM")
+
+	// Debian build deps still present
+	assert.Contains(t, out, "build-essential",
+		"Package template must still install build-essential for Debian")
+	assert.Contains(t, out, "libelf-dev",
+		"Package template must still install libelf-dev for Debian")
+}
+
+func TestNvDriver_Execute_PackageTemplate_RPMCUDARepo(t *testing.T) {
+	nvd := &NvDriver{
+		Source: "package",
+		Branch: defaultNVBranch,
+	}
+
+	var buf bytes.Buffer
+	err := nvd.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// RPM CUDA repo uses .repo file
+	assert.Contains(t, out, ".repo",
+		"Package template must set up .repo file for RPM")
+
+	// Debian CUDA repo still uses .deb keyring
+	assert.Contains(t, out, "cuda-keyring",
+		"Package template must still use cuda-keyring for Debian")
+	assert.Contains(t, out, "dpkg -i",
+		"Package template must still use dpkg for Debian")
+}
+
+func TestNvDriver_Execute_PackageTemplate_SourcesOSRelease(t *testing.T) {
+	nvd := &NvDriver{
+		Source: "package",
+		Branch: defaultNVBranch,
+	}
+
+	var buf bytes.Buffer
+	err := nvd.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// Must source os-release for distro detection
+	assert.Contains(t, out, `. /etc/os-release`,
+		"Package template must source os-release for distro detection")
+}
+
+func TestNvDriver_Execute_RunfileTemplate_OSFamilyBranching(t *testing.T) {
+	nvd := &NvDriver{
+		Source:     "runfile",
+		RunfileURL: "https://download.nvidia.com/driver.run",
+	}
+
+	var buf bytes.Buffer
+	err := nvd.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// Runfile template must have OS-family branching for dependencies
+	assert.Contains(t, out, `case "${HOLODECK_OS_FAMILY}" in`,
+		"Runfile template must branch on HOLODECK_OS_FAMILY")
+	assert.Contains(t, out, "kernel-devel",
+		"Runfile template must install kernel-devel for RPM")
+	assert.Contains(t, out, "elfutils-libelf-devel",
+		"Runfile template must install elfutils-libelf-devel for RPM")
+
+	// Must use pkg_update abstraction
+	assert.Contains(t, out, "pkg_update",
+		"Runfile template must use pkg_update abstraction")
+	assert.NotContains(t, out, "sudo apt-get update",
+		"Runfile template must not use raw apt-get update")
+}
+
+func TestNvDriver_Execute_GitTemplate_OSFamilyBranching(t *testing.T) {
+	nvd := &NvDriver{
+		Source:    "git",
+		GitRepo:   "https://github.com/NVIDIA/open-gpu-kernel-modules.git",
+		GitRef:    "560.35.03",
+		GitCommit: "abc12345",
+	}
+
+	var buf bytes.Buffer
+	err := nvd.Execute(&buf, v1alpha1.Environment{})
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// Git template must have OS-family branching for dependencies
+	assert.Contains(t, out, `case "${HOLODECK_OS_FAMILY}" in`,
+		"Git template must branch on HOLODECK_OS_FAMILY")
+	assert.Contains(t, out, "kernel-devel",
+		"Git template must install kernel-devel for RPM")
+	assert.Contains(t, out, "elfutils-libelf-devel",
+		"Git template must install elfutils-libelf-devel for RPM")
+	assert.Contains(t, out, "gcc-c++",
+		"Git template must install gcc-c++ for RPM")
+
+	// Must use pkg_update abstraction
+	assert.Contains(t, out, "pkg_update",
+		"Git template must use pkg_update abstraction")
+	assert.NotContains(t, out, "sudo apt-get update",
+		"Git template must not use raw apt-get update")
+}
+
+func TestNvDriver_Execute_NoRedundantRedirects(t *testing.T) {
+	sources := []struct {
+		name string
+		nvd  NvDriver
+	}{
+		{"package", NvDriver{Source: "package", Branch: defaultNVBranch}},
+		{"runfile", NvDriver{Source: "runfile", RunfileURL: "https://download.nvidia.com/driver.run"}},
+		{"git", NvDriver{Source: "git", GitRepo: "https://github.com/NVIDIA/open-gpu-kernel-modules.git", GitRef: "560.35.03", GitCommit: "abc12345"}},
+	}
+	for _, tc := range sources {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := tc.nvd.Execute(&buf, v1alpha1.Environment{})
+			require.NoError(t, err)
+			assert.NotContains(t, buf.String(), "&>/dev/null 2>&1",
+				"Template must not use redundant redirect &>/dev/null 2>&1; use &>/dev/null alone")
+		})
+	}
+}

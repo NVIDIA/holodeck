@@ -71,70 +71,144 @@ fi
 
 holodeck_progress "$COMPONENT" 2 5 "Installing dependencies"
 
+# Source OS release info for distro detection
+. /etc/os-release
+
 # Check kernel headers availability BEFORE attempting install
 KERNEL_VERSION=$(uname -r)
 holodeck_log "INFO" "$COMPONENT" "Checking kernel headers for ${KERNEL_VERSION}"
 
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        holodeck_retry 3 "$COMPONENT" pkg_update
 
-if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null 2>&1; then
-    holodeck_log "WARN" "$COMPONENT" \
-        "Kernel headers for ${KERNEL_VERSION} not found in repositories"
+        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null; then
+            holodeck_log "WARN" "$COMPONENT" \
+                "Kernel headers for ${KERNEL_VERSION} not found in repositories"
 
-    # Try to find a compatible kernel header package
-    KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
-    holodeck_log "INFO" "$COMPONENT" \
-        "Searching for compatible headers with base version ${KERNEL_BASE}"
-    COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
-        grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
+            # Try to find a compatible kernel header package
+            KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
+            holodeck_log "INFO" "$COMPONENT" \
+                "Searching for compatible headers with base version ${KERNEL_BASE}"
+            COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
+                grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
 
-    if [[ -n "$COMPATIBLE_HEADERS" ]]; then
-        holodeck_log "WARN" "$COMPONENT" \
-            "Using potentially compatible headers: $COMPATIBLE_HEADERS"
-        holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$COMPATIBLE_HEADERS"
-    else
-        holodeck_error 4 "$COMPONENT" \
-            "No compatible kernel headers found for ${KERNEL_VERSION}" \
-            "Update kernel or use a different AMI with available headers"
-    fi
-else
-    holodeck_retry 3 "$COMPONENT" install_packages_with_retry "linux-headers-${KERNEL_VERSION}"
-fi
+            if [[ -n "$COMPATIBLE_HEADERS" ]]; then
+                holodeck_log "WARN" "$COMPONENT" \
+                    "Using potentially compatible headers: $COMPATIBLE_HEADERS"
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$COMPATIBLE_HEADERS"
+            else
+                holodeck_error 4 "$COMPONENT" \
+                    "No compatible kernel headers found for ${KERNEL_VERSION}" \
+                    "Update kernel or use a different AMI with available headers"
+            fi
+        else
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry "linux-headers-${KERNEL_VERSION}"
+        fi
 
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-    apt-utils build-essential ca-certificates curl kmod file \
-    libelf-dev libglvnd-dev pkg-config make
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            apt-utils build-essential ca-certificates curl kmod file \
+            libelf-dev libglvnd-dev pkg-config make
 
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry gcc-12 g++-12
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry gcc-12 g++-12
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+        ;;
+
+    amazon|rhel)
+        holodeck_retry 3 "$COMPONENT" pkg_update
+
+        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_log "WARN" "$COMPONENT" \
+                "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
+        else
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        fi
+
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            ca-certificates curl kmod file \
+            elfutils-libelf-devel mesa-libEGL-devel pkg-config make \
+            gcc gcc-c++
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 3 5 "Adding CUDA repository"
 
-# Add CUDA repository (idempotent - install if either list or keyring is missing)
-if [[ ! -f /etc/apt/sources.list.d/cuda*.list ]] || \
-   [[ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ]]; then
-    distribution=$(. /etc/os-release; echo "${ID}${VERSION_ID}" | sed -e 's/\.//g')
-    # Determine CUDA repo architecture (NVIDIA uses "sbsa" for arm64 servers)
-    CUDA_ARCH="$(uname -m)"
-    if [[ "$CUDA_ARCH" == "aarch64" ]]; then
-        CUDA_ARCH="sbsa"
-    fi
-    holodeck_retry 3 "$COMPONENT" wget -q \
-        "https://developer.download.nvidia.com/compute/cuda/repos/$distribution/${CUDA_ARCH}/cuda-keyring_1.1-1_all.deb"
-    sudo dpkg -i cuda-keyring_1.1-1_all.deb
-    rm -f cuda-keyring_1.1-1_all.deb
-    holodeck_retry 3 "$COMPONENT" sudo apt-get update
-else
-    holodeck_log "INFO" "$COMPONENT" "CUDA repository already configured"
+# Determine CUDA repo architecture (NVIDIA uses "sbsa" for arm64 servers)
+CUDA_ARCH="$(uname -m)"
+if [[ "$CUDA_ARCH" == "aarch64" ]]; then
+    CUDA_ARCH="sbsa"
 fi
+
+# Add CUDA repository based on OS family
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        # Add CUDA repository (idempotent - install if either list or keyring is missing)
+        if [[ ! -f /etc/apt/sources.list.d/cuda*.list ]] || \
+           [[ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ]]; then
+            distribution=$(echo "${ID}${VERSION_ID}" | sed -e 's/\.//g')
+            holodeck_retry 3 "$COMPONENT" wget -q \
+                "https://developer.download.nvidia.com/compute/cuda/repos/$distribution/${CUDA_ARCH}/cuda-keyring_1.1-1_all.deb"
+            sudo dpkg -i cuda-keyring_1.1-1_all.deb
+            rm -f cuda-keyring_1.1-1_all.deb
+            holodeck_retry 3 "$COMPONENT" pkg_update
+        else
+            holodeck_log "INFO" "$COMPONENT" "CUDA repository already configured"
+        fi
+        ;;
+
+    amazon|rhel)
+        if [[ ! -f /etc/yum.repos.d/cuda*.repo ]]; then
+            case "${ID}" in
+                amzn)
+                    # Amazon Linux 2023 uses RHEL 9 compatible CUDA repo
+                    CUDA_DISTRO="rhel9"
+                    ;;
+                fedora)
+                    CUDA_DISTRO="fedora${VERSION_ID}"
+                    ;;
+                *)
+                    # Rocky, RHEL, CentOS, AlmaLinux
+                    CUDA_DISTRO="rhel${VERSION_ID%%.*}"
+                    ;;
+            esac
+            holodeck_log "INFO" "$COMPONENT" "Adding CUDA repo for ${CUDA_DISTRO}/${CUDA_ARCH}"
+            sudo curl -fsSL -o /etc/yum.repos.d/cuda-${CUDA_DISTRO}.repo \
+                "https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_DISTRO}/${CUDA_ARCH}/cuda-${CUDA_DISTRO}.repo"
+            holodeck_retry 3 "$COMPONENT" pkg_update
+        else
+            holodeck_log "INFO" "$COMPONENT" "CUDA repository already configured"
+        fi
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 4 5 "Installing NVIDIA driver"
 
 # Install driver
 DRIVER_PACKAGE="cuda-drivers"
 if [[ -n "$DESIRED_VERSION" ]]; then
-    DRIVER_PACKAGE="${DRIVER_PACKAGE}=${DESIRED_VERSION}"
+    case "${HOLODECK_OS_FAMILY}" in
+        debian)
+            DRIVER_PACKAGE="${DRIVER_PACKAGE}=${DESIRED_VERSION}"
+            ;;
+        amazon|rhel)
+            DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_VERSION}"
+            ;;
+    esac
 elif [[ -n "$DESIRED_BRANCH" ]]; then
     DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}"
 fi
@@ -217,29 +291,60 @@ fi
 
 holodeck_progress "$COMPONENT" 2 5 "Installing dependencies"
 
+# Source OS release info for distro detection
+. /etc/os-release
+
 KERNEL_VERSION=$(uname -r)
 holodeck_log "INFO" "$COMPONENT" "Checking kernel headers for ${KERNEL_VERSION}"
 
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        holodeck_retry 3 "$COMPONENT" pkg_update
 
-if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null 2>&1; then
-    KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
-    COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
-        grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
-    if [[ -n "$COMPATIBLE_HEADERS" ]]; then
-        holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$COMPATIBLE_HEADERS"
-    else
-        holodeck_error 4 "$COMPONENT" \
-            "No compatible kernel headers found for ${KERNEL_VERSION}" \
-            "Update kernel or use a different AMI with available headers"
-    fi
-else
-    holodeck_retry 3 "$COMPONENT" install_packages_with_retry "linux-headers-${KERNEL_VERSION}"
-fi
+        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null; then
+            KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
+            COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
+                grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
+            if [[ -n "$COMPATIBLE_HEADERS" ]]; then
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$COMPATIBLE_HEADERS"
+            else
+                holodeck_error 4 "$COMPONENT" \
+                    "No compatible kernel headers found for ${KERNEL_VERSION}" \
+                    "Update kernel or use a different AMI with available headers"
+            fi
+        else
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry "linux-headers-${KERNEL_VERSION}"
+        fi
 
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-    build-essential ca-certificates curl kmod file \
-    libelf-dev libglvnd-dev pkg-config make dkms
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            build-essential ca-certificates curl kmod file \
+            libelf-dev libglvnd-dev pkg-config make dkms
+        ;;
+
+    amazon|rhel)
+        holodeck_retry 3 "$COMPONENT" pkg_update
+
+        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_log "WARN" "$COMPONENT" \
+                "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
+        else
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        fi
+
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            ca-certificates curl kmod file \
+            elfutils-libelf-devel mesa-libEGL-devel pkg-config make dkms \
+            gcc gcc-c++
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 3 5 "Downloading runfile"
 
@@ -346,33 +451,64 @@ fi
 
 holodeck_progress "$COMPONENT" 2 6 "Installing build dependencies"
 
+# Source OS release info for distro detection
+. /etc/os-release
+
 KERNEL_VERSION=$(uname -r)
 holodeck_log "INFO" "$COMPONENT" "Checking kernel headers for ${KERNEL_VERSION}"
 
-holodeck_retry 3 "$COMPONENT" sudo apt-get update
+case "${HOLODECK_OS_FAMILY}" in
+    debian)
+        holodeck_retry 3 "$COMPONENT" pkg_update
 
-if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null 2>&1; then
-    KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
-    COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
-        grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
-    if [[ -n "$COMPATIBLE_HEADERS" ]]; then
-        holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$COMPATIBLE_HEADERS"
-    else
-        holodeck_error 4 "$COMPONENT" \
-            "No compatible kernel headers found for ${KERNEL_VERSION}" \
-            "Update kernel or use a different AMI with available headers"
-    fi
-else
-    holodeck_retry 3 "$COMPONENT" install_packages_with_retry "linux-headers-${KERNEL_VERSION}"
-fi
+        if ! apt-cache show "linux-headers-${KERNEL_VERSION}" >/dev/null; then
+            KERNEL_BASE=$(echo "${KERNEL_VERSION}" | cut -d- -f1-2)
+            COMPATIBLE_HEADERS=$(apt-cache search linux-headers | \
+                grep -E "linux-headers-${KERNEL_BASE}" | head -1 | awk '{print $1}')
+            if [[ -n "$COMPATIBLE_HEADERS" ]]; then
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$COMPATIBLE_HEADERS"
+            else
+                holodeck_error 4 "$COMPONENT" \
+                    "No compatible kernel headers found for ${KERNEL_VERSION}" \
+                    "Update kernel or use a different AMI with available headers"
+            fi
+        else
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry "linux-headers-${KERNEL_VERSION}"
+        fi
 
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-    build-essential ca-certificates curl kmod file git \
-    libelf-dev libglvnd-dev pkg-config make dkms
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            build-essential ca-certificates curl kmod file git \
+            libelf-dev libglvnd-dev pkg-config make dkms
 
-holodeck_retry 3 "$COMPONENT" install_packages_with_retry gcc-12 g++-12
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry gcc-12 g++-12
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 12
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 12
+        ;;
+
+    amazon|rhel)
+        holodeck_retry 3 "$COMPONENT" pkg_update
+
+        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_log "WARN" "$COMPONENT" \
+                "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
+        else
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        fi
+
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+            ca-certificates curl kmod file git \
+            elfutils-libelf-devel mesa-libEGL-devel pkg-config make dkms \
+            gcc gcc-c++
+        ;;
+
+    *)
+        holodeck_error 2 "$COMPONENT" \
+            "Unsupported OS family: ${HOLODECK_OS_FAMILY}" \
+            "Supported: debian, amazon, rhel"
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 3 6 "Cloning repository"
 
