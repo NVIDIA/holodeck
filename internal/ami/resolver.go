@@ -147,8 +147,14 @@ func (r *Resolver) resolveViaDescribeImages(
 	osImage *OSImage,
 	arch string,
 ) (string, error) {
-	// Convert architecture for AMI name pattern (Ubuntu uses "amd64" not "x86_64")
-	nameArch := archToAMINameArch(arch)
+	// Convert architecture for AMI name pattern if the OS has a custom mapping
+	// (e.g., Ubuntu uses "amd64" instead of "x86_64" in AMI names)
+	nameArch := arch
+	if osImage.NameArchMap != nil {
+		if mapped, ok := osImage.NameArchMap[arch]; ok {
+			nameArch = mapped
+		}
+	}
 	namePattern := fmt.Sprintf(osImage.NamePattern, nameArch)
 
 	filters := []types.Filter{
@@ -223,17 +229,6 @@ func NormalizeArch(arch string) string {
 // archToSSMArch converts EC2 architecture names to SSM parameter path format.
 // SSM uses "amd64" while EC2 uses "x86_64".
 func archToSSMArch(arch string) string {
-	switch arch {
-	case "x86_64":
-		return "amd64"
-	default:
-		return arch
-	}
-}
-
-// archToAMINameArch converts EC2 architecture names to AMI name pattern format.
-// Some vendors (like Ubuntu) use "amd64" in AMI names instead of "x86_64".
-func archToAMINameArch(arch string) string {
 	switch arch {
 	case "x86_64":
 		return "amd64"

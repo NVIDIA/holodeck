@@ -201,10 +201,49 @@ else
     holodeck_log "INFO" "$COMPONENT" "Tigera operator already installed"
 fi
 
-# Wait for Tigera operator
-holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator"
-holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
-    --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+# Patch Tigera operator to use host networking and reach the API server directly.
+# Without CNI, pods cannot reach the Kubernetes API server via cluster IP
+# (10.96.0.1:443) because kube-proxy iptables rules may not be functional yet.
+# The operator IS the CNI installer, so it must bypass cluster networking entirely.
+# - hostNetwork: true — use the node's network stack
+# - KUBERNETES_SERVICE_HOST=<node-ip> — reach API server via the node's IP
+#   (must match a SAN in the kubeadm TLS cert; localhost is NOT in SANs)
+# - KUBERNETES_SERVICE_PORT=6443 — use the real API server port, not the service port
+# This is harmless for runtimes like Docker where cri-dockerd bridges service IPs.
+NODE_IP=$(hostname -I | awk '{print $1}')
+holodeck_log "INFO" "$COMPONENT" "Patching Tigera operator for host networking (API: ${NODE_IP}:6443)"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" patch deployment \
+    tigera-operator -n tigera-operator --type=strategic -p "{
+    \"spec\": {\"template\": {\"spec\": {
+        \"hostNetwork\": true,
+        \"dnsPolicy\": \"ClusterFirstWithHostNet\"
+    }}}
+}"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" set env \
+    deployment/tigera-operator -n tigera-operator \
+    KUBERNETES_SERVICE_HOST="${NODE_IP}" KUBERNETES_SERVICE_PORT="6443"
+
+# Wait for the patched rollout to complete
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" rollout status \
+    deployment/tigera-operator -n tigera-operator --timeout=300s
+
+# Wait for Tigera operator CRDs to be established before applying custom resources.
+# The operator deployment becomes "available" before it has registered all its CRDs
+# (Installation, APIServer, etc.), causing "no matches for kind" errors.
+holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator CRDs"
+if ! holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=established --timeout=10s crd/installations.operator.tigera.io; then
+    # Diagnostic dump on failure
+    holodeck_log "ERROR" "$COMPONENT" "CRD wait failed - collecting diagnostics"
+    kubectl --kubeconfig "$KUBECONFIG" get pods -n tigera-operator -o wide 2>&1 || true
+    kubectl --kubeconfig "$KUBECONFIG" describe pod -n tigera-operator 2>&1 | tail -40 || true
+    kubectl --kubeconfig "$KUBECONFIG" logs -n tigera-operator -l name=tigera-operator --tail=30 2>&1 || true
+    kubectl --kubeconfig "$KUBECONFIG" get events -n tigera-operator --sort-by='.lastTimestamp' 2>&1 | tail -20 || true
+    kubectl --kubeconfig "$KUBECONFIG" get crd 2>&1 | grep -i tigera || true
+    holodeck_error 6 "$COMPONENT" \
+        "Tigera operator CRDs not registered after retries" \
+        "The operator pod may be crashing. Check diagnostics above."
+fi
 
 # Install Calico custom resources (idempotent)
 if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
@@ -1117,9 +1156,28 @@ if ! kubectl --kubeconfig "$KUBECONFIG" get namespace tigera-operator &>/dev/nul
         "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
 fi
 
+# Patch Tigera operator for host networking (see comment in package template above)
+NODE_IP=$(hostname -I | awk '{print $1}')
+holodeck_log "INFO" "$COMPONENT" "Patching Tigera operator for host networking (API: ${NODE_IP}:6443)"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" patch deployment \
+    tigera-operator -n tigera-operator --type=strategic -p "{
+    \"spec\": {\"template\": {\"spec\": {
+        \"hostNetwork\": true,
+        \"dnsPolicy\": \"ClusterFirstWithHostNet\"
+    }}}
+}"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" set env \
+    deployment/tigera-operator -n tigera-operator \
+    KUBERNETES_SERVICE_HOST="${NODE_IP}" KUBERNETES_SERVICE_PORT="6443"
+
 holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator..."
-holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
-    --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" rollout status \
+    deployment/tigera-operator -n tigera-operator --timeout=300s
+
+# Wait for Tigera operator CRDs before applying custom resources
+holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator CRDs..."
+holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=established --timeout=10s crd/installations.operator.tigera.io
 
 if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
     -n tigera-operator &>/dev/null; then
@@ -1418,8 +1476,26 @@ if ! kubectl --kubeconfig "$KUBECONFIG" get namespace tigera-operator &>/dev/nul
         "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
 fi
 
-holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
-    --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+# Patch Tigera operator for host networking (see comment in package template above)
+NODE_IP=$(hostname -I | awk '{print $1}')
+holodeck_log "INFO" "$COMPONENT" "Patching Tigera operator for host networking (API: ${NODE_IP}:6443)"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" patch deployment \
+    tigera-operator -n tigera-operator --type=strategic -p "{
+    \"spec\": {\"template\": {\"spec\": {
+        \"hostNetwork\": true,
+        \"dnsPolicy\": \"ClusterFirstWithHostNet\"
+    }}}
+}"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" set env \
+    deployment/tigera-operator -n tigera-operator \
+    KUBERNETES_SERVICE_HOST="${NODE_IP}" KUBERNETES_SERVICE_PORT="6443"
+
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" rollout status \
+    deployment/tigera-operator -n tigera-operator --timeout=300s
+
+# Wait for Tigera operator CRDs before applying custom resources
+holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=established --timeout=10s crd/installations.operator.tigera.io
 
 if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
     -n tigera-operator &>/dev/null; then

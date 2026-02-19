@@ -160,6 +160,10 @@ containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
 # Set systemd as the cgroup driver
 sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
 
+# Use the sandbox image version that matches kubeadm expectations.
+# containerd 1.7.x defaults to pause:3.8, but Kubernetes 1.33+ expects pause:3.10.
+sudo sed -i 's|sandbox_image = .*|sandbox_image = "registry.k8s.io/pause:3.10"|g' /etc/containerd/config.toml
+
 # Ensure CNI paths are configured correctly
 sudo sed -i 's|conf_dir = .*|conf_dir = "/etc/cni/net.d"|g' /etc/containerd/config.toml
 sudo sed -i 's|bin_dir = .*|bin_dir = "/opt/cni/bin"|g' /etc/containerd/config.toml

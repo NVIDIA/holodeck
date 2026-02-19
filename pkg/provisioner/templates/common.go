@@ -108,6 +108,14 @@ case "${HOLODECK_OS_FAMILY}" in
         if ! command -v dnf &>/dev/null && command -v yum &>/dev/null; then
             export HOLODECK_PKG_MGR="yum"
         fi
+        # Ensure /usr/local/bin is in sudo's secure_path (RHEL-family excludes it by default).
+        # Without this, 'sudo kubeadm' and similar commands fail with "command not found"
+        # because kubeadm/kubelet/kubectl are installed to /usr/local/bin.
+        if ! sudo grep -qr '/usr/local/bin' /etc/sudoers /etc/sudoers.d 2>/dev/null; then
+            echo 'Defaults    secure_path = /sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin' | \
+                sudo tee /etc/sudoers.d/holodeck-path > /dev/null
+            sudo chmod 0440 /etc/sudoers.d/holodeck-path
+        fi
         ;;
     *)
         export HOLODECK_PKG_MGR="unknown"

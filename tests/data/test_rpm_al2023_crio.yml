@@ -1,0 +1,26 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-rpm-al2023-crio
+  description: "RPM E2E: Amazon Linux 2023 + CRI-O + full GPU stack"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /home/runner/.cache/key
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    os: amazon-linux-2023
+    image:
+      architecture: amd64
+  containerRuntime:
+    install: true
+    name: crio
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm

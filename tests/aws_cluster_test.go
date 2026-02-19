@@ -119,7 +119,11 @@ var _ = DescribeTable("AWS Cluster E2E",
 		})
 
 		state.opts.cfg.Spec.PrivateKey = sshKey
-		state.opts.cfg.Spec.Username = "ubuntu"
+		// Default to ubuntu for tests without OS specification;
+		// when OS is set, the provider resolves the SSH username automatically
+		if state.opts.cfg.Spec.Cluster == nil || state.opts.cfg.Spec.Cluster.ControlPlane.OS == "" {
+			state.opts.cfg.Spec.Username = "ubuntu"
+		}
 		Expect(state.provider.Create()).To(Succeed(), "Failed to create cluster infrastructure")
 
 		By("Verifying cluster status in cache")
@@ -222,4 +226,14 @@ var _ = DescribeTable("AWS Cluster E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_minimal.yaml"),
 		description: "Tests smallest valid multinode cluster configuration",
 	}, Label("cluster", "multinode", "minimal")),
+	Entry("RPM Rocky 9 Cluster", clusterTestConfig{
+		name:        "rpm-rocky9-cluster",
+		filePath:    filepath.Join(packagePath, "data", "test_cluster_rpm_rocky9.yaml"),
+		description: "Tests Rocky 9 RPM cluster with 1 CP + 1 GPU worker",
+	}, Label("cluster", "multinode", "rpm", "post-merge")),
+	Entry("RPM Amazon Linux 2023 Cluster", clusterTestConfig{
+		name:        "rpm-al2023-cluster",
+		filePath:    filepath.Join(packagePath, "data", "test_cluster_rpm_al2023.yaml"),
+		description: "Tests Amazon Linux 2023 cluster with 1 CP + 1 GPU worker",
+	}, Label("cluster", "multinode", "rpm", "post-merge")),
 )
