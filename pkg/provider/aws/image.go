@@ -412,6 +412,29 @@ func (p *Provider) describeImageArch(imageID string) (string, error) {
 	return string(resp.Images[0].Architecture), nil
 }
 
+// describeImageRootDevice queries EC2 DescribeImages for a specific AMI ID and
+// returns its root device name (e.g., "/dev/sda1" or "/dev/xvda").
+// Different AMIs use different root device names — Ubuntu and Rocky use /dev/sda1,
+// while Amazon Linux 2023 uses /dev/xvda. Using the wrong device name causes
+// the volume size to be applied to a secondary disk instead of the root volume.
+func (p *Provider) describeImageRootDevice(imageID string) (string, error) {
+	resp, err := p.ec2.DescribeImages(context.TODO(), &ec2.DescribeImagesInput{
+		ImageIds: []string{imageID},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe image %s: %w", imageID, err)
+	}
+	if len(resp.Images) == 0 {
+		return "", fmt.Errorf("image %s not found", imageID)
+	}
+	rootDevice := aws.ToString(resp.Images[0].RootDeviceName)
+	if rootDevice == "" {
+		// Fall back to /dev/sda1 if the AMI doesn't report a root device name
+		return "/dev/sda1", nil
+	}
+	return rootDevice, nil
+}
+
 // getInstanceTypeArch queries EC2 DescribeInstanceTypes for a specific instance
 // type and returns its list of supported architecture strings.
 func (p *Provider) getInstanceTypeArch(instanceType string) ([]string, error) {

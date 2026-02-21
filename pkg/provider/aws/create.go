@@ -435,6 +435,14 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		volumeSize = *p.Spec.RootVolumeSizeGB
 	}
 
+	// Query the AMI's root device name — different AMIs use different names
+	// (e.g., /dev/sda1 for Ubuntu/Rocky, /dev/xvda for Amazon Linux 2023)
+	rootDevice, err := p.describeImageRootDevice(*p.Spec.Image.ImageId)
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error getting root device name: %w", err)
+	}
+
 	instanceIn := &ec2.RunInstancesInput{
 		ImageId:                           p.Spec.Image.ImageId,
 		InstanceType:                      types.InstanceType(p.Spec.Type),
@@ -443,7 +451,7 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		BlockDeviceMappings: []types.BlockDeviceMapping{
 			{
-				DeviceName: aws.String("/dev/sda1"),
+				DeviceName: aws.String(rootDevice),
 				Ebs: &types.EbsBlockDevice{
 					VolumeSize: &volumeSize,
 					VolumeType: types.VolumeTypeGp2,

@@ -437,6 +437,13 @@ func (p *Provider) createInstances(
 		volumeSize = *rootVolumeSizeGB
 	}
 
+	// Query the AMI's root device name — different AMIs use different names
+	// (e.g., /dev/sda1 for Ubuntu/Rocky, /dev/xvda for Amazon Linux 2023)
+	rootDevice, err := p.describeImageRootDevice(imageID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting root device name: %w", err)
+	}
+
 	// Create instances in parallel
 	var wg sync.WaitGroup
 	instancesChan := make(chan InstanceInfo, count)
@@ -473,7 +480,7 @@ func (p *Provider) createInstances(
 				InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 				BlockDeviceMappings: []types.BlockDeviceMapping{
 					{
-						DeviceName: aws.String("/dev/sda1"),
+						DeviceName: aws.String(rootDevice),
 						Ebs: &types.EbsBlockDevice{
 							VolumeSize: aws.Int32(volumeSize),
 							VolumeType: types.VolumeTypeGp2,
