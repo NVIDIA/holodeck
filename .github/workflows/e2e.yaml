@@ -30,7 +30,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     strategy:
       matrix:
-        label: [default, legacy, dra, kernel]
+        label: [default, legacy, dra, kernel, rpm-rocky, rpm-al2023, rpm-fedora]
     name: E2E Test (${{ matrix.label }})
 
     steps:
@@ -59,11 +59,16 @@ jobs:
         echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
         chmod 600 "$e2e_ssh_key"
         export E2E_SSH_KEY="$e2e_ssh_key"
-        if [ "${{ matrix.label }}" = "default" ]; then \
-          make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}' --json-report ginkgo.json"; \
-        else \
-          make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}'"; \
+        EXTRA_ARGS=""
+        if [ "${{ matrix.label }}" = "default" ]; then
+          EXTRA_ARGS="--json-report ginkgo.json"
         fi
+        # RPM suites run both single-node and cluster tests (~60min total);
+        # increase timeout from the 1h default to avoid cleanup timeouts.
+        case "${{ matrix.label }}" in
+          rpm-*) EXTRA_ARGS="$EXTRA_ARGS --timeout=90m" ;;
+        esac
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}' $EXTRA_ARGS"
 
     - name: Archive Ginkgo logs
       uses: actions/upload-artifact@v7
