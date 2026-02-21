@@ -104,9 +104,14 @@ running kernel version.
 
 - Ubuntu 22.04: Kernels 5.15.x through 6.8.x (check repository availability)
 - Ubuntu 24.04: Kernels 6.8.x and newer
-- Custom kernels: Ensure corresponding headers are available in your package repositories
+- Rocky Linux 9: Kernels 5.14.x (check `kernel-devel` package availability)
+- Amazon Linux 2023: Kernels 6.1.x (check `kernel-devel` package availability)
+- Custom kernels: Ensure corresponding headers are available in your package
+  repositories
 
 **Troubleshooting Kernel Header Issues:**
+
+For Debian/Ubuntu:
 
 1. Check available kernel headers:
 
@@ -120,7 +125,24 @@ running kernel version.
    sudo apt-get install linux-headers-$(uname -r)
    ```
 
-1. If using a custom kernel, consider switching to a standard Ubuntu kernel
+For RPM distributions (Rocky Linux, Amazon Linux):
+
+1. Check available kernel headers:
+
+   ```bash
+   dnf list available kernel-devel | grep $(uname -r)
+   ```
+
+1. Install specific kernel headers manually:
+
+   ```bash
+   sudo dnf install -y kernel-devel-$(uname -r)
+   ```
+
+General:
+
+1. If using a custom kernel, ensure matching headers are available in your
+   distribution's package repositories
 
 For more information, see the [Quick Start Guide](quick-start.md)
 or the [Command Reference](commands/).

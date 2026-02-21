@@ -36,10 +36,12 @@ Run `holodeck os list` to see all available operating systems:
 ### OS Family Support
 
 - **Debian family** (Ubuntu, Debian): Full provisioning support for all components
-- **RHEL family** (Rocky, Fedora, RHEL): Partial support - containerd works,
-  other components being added
-- **Amazon family** (Amazon Linux): Partial support - containerd works,
-  other components being added
+- **RHEL family** (Rocky Linux 9, RHEL, AlmaLinux): Full provisioning support for
+  all components (Docker, containerd, CRI-O, NVIDIA driver, container toolkit,
+  Kubernetes)
+- **Amazon family** (Amazon Linux 2023): Full provisioning support for all
+  components (Docker, containerd, CRI-O, NVIDIA driver, container toolkit,
+  Kubernetes)
 
 ## CLI Commands
 
