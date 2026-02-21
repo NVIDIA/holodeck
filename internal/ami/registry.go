@@ -33,6 +33,7 @@ var registry = map[string]OSImage{
 		NamePattern:     "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-%s-server-*",
 		SSMPath: "/aws/service/canonical/ubuntu/server/24.04/stable/" +
 			"current/%s/hvm/ebs-gp3/ami-id",
+		NameArchMap:   map[string]string{"x86_64": "amd64"},
 		Architectures: []string{"x86_64", "arm64"},
 	},
 	"ubuntu-22.04": {
@@ -46,6 +47,7 @@ var registry = map[string]OSImage{
 		NamePattern:     "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-%s-server-*",
 		SSMPath: "/aws/service/canonical/ubuntu/server/22.04/stable/" +
 			"current/%s/hvm/ebs-gp3/ami-id",
+		NameArchMap:   map[string]string{"x86_64": "amd64"},
 		Architectures: []string{"x86_64", "arm64"},
 	},
 	"amazon-linux-2023": {
@@ -69,7 +71,7 @@ var registry = map[string]OSImage{
 		PackageManager:  PackageManagerDNF,
 		MinRootVolumeGB: 20,
 		OwnerID:         "792107900819",
-		NamePattern:     "Rocky-9-EC2-Base-*.%s-*",
+		NamePattern:     "Rocky-9-EC2-Base-*.%s",
 		SSMPath:         "", // No SSM support for Rocky Linux
 		Architectures:   []string{"x86_64", "arm64"},
 	},
@@ -84,6 +86,7 @@ var registry = map[string]OSImage{
 		NamePattern:     "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-%s-server-*",
 		SSMPath: "/aws/service/canonical/ubuntu/server/20.04/stable/" +
 			"current/%s/hvm/ebs-gp2/ami-id",
+		NameArchMap:   map[string]string{"x86_64": "amd64"},
 		Architectures: []string{"x86_64", "arm64"},
 	},
 }

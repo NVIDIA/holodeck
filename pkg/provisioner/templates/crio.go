@@ -95,8 +95,11 @@ case "${HOLODECK_OS_FAMILY}" in
 
     amazon|rhel)
         if [[ ! -f /etc/yum.repos.d/cri-o.repo ]]; then
+            # Repo file name format: isv:cri-o:stable:vX.Y.repo
+            # See: https://download.opensuse.org/repositories/isv:/cri-o:/stable:/vX.Y/rpm/
+            CRIO_REPO_FILE="isv:cri-o:stable:${CRIO_VERSION}.repo"
             holodeck_retry 3 "$COMPONENT" sudo curl -fsSL -o /etc/yum.repos.d/cri-o.repo \
-                "${CRIO_REPO_URL}/rpm/cri-o.repo"
+                "${CRIO_REPO_URL}/rpm/${CRIO_REPO_FILE}"
         else
             holodeck_log "INFO" "$COMPONENT" "CRI-O repository already configured"
         fi
@@ -112,7 +115,17 @@ esac
 holodeck_progress "$COMPONENT" 3 4 "Installing CRI-O"
 
 holodeck_retry 3 "$COMPONENT" pkg_update
-holodeck_retry 3 "$COMPONENT" pkg_install cri-o
+
+# The opensuse CRI-O package does not pull OCI runtime dependencies on RHEL-family.
+# Install crun (OCI runtime) and containers-common (registry/storage config) explicitly.
+case "${HOLODECK_OS_FAMILY}" in
+    amazon|rhel)
+        holodeck_retry 3 "$COMPONENT" pkg_install cri-o crun containers-common
+        ;;
+    *)
+        holodeck_retry 3 "$COMPONENT" pkg_install cri-o
+        ;;
+esac
 
 # Start and enable Service
 sudo systemctl daemon-reload

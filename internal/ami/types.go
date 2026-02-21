@@ -79,6 +79,11 @@ type OSImage struct {
 	// Use %s as a placeholder for architecture. Empty if SSM is not supported.
 	SSMPath string
 
+	// NameArchMap maps EC2 architecture names to the format used in AMI name
+	// patterns. If nil, EC2 arch names are used directly (x86_64, arm64).
+	// Ubuntu uses "amd64" instead of "x86_64", so it needs: {"x86_64": "amd64"}.
+	NameArchMap map[string]string
+
 	// Architectures lists the supported CPU architectures (x86_64, arm64).
 	Architectures []string
 }

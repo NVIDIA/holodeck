@@ -111,8 +111,12 @@ var _ = DescribeTable("AWS Environment E2E",
 		})
 
 		state.opts.cfg.Spec.PrivateKey = sshKey
-		//nolint:staticcheck // Auth is embedded but explicit access is clearer
-		state.opts.cfg.Spec.Auth.Username = "ubuntu"
+		// Default to ubuntu for tests without OS specification;
+		// when OS is set, the provider resolves the SSH username automatically
+		if state.opts.cfg.Spec.OS == "" {
+			//nolint:staticcheck // Auth is embedded but explicit access is clearer
+			state.opts.cfg.Spec.Auth.Username = "ubuntu"
+		}
 		Expect(state.provider.Create()).To(Succeed(), "Failed to create environment")
 		Expect(state.opts.cfg.Name).NotTo(BeEmpty(), "Environment name should not be empty")
 
@@ -127,7 +131,13 @@ var _ = DescribeTable("AWS Environment E2E",
 			}
 		}
 		Expect(hostUrl).NotTo(BeEmpty(), "Host URL should not be empty")
-		p, err := provisioner.New(state.log, state.opts.cfg.Spec.PrivateKey, state.opts.cfg.Spec.Username, hostUrl)
+		// Use username from cache file (resolved by provider during Create)
+		// rather than the original config which may be empty for OS-based provisioning
+		sshUsername := env.Spec.Username
+		if sshUsername == "" {
+			sshUsername = state.opts.cfg.Spec.Username
+		}
+		p, err := provisioner.New(state.log, state.opts.cfg.Spec.PrivateKey, sshUsername, hostUrl)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create provisioner")
 		defer func() {
 			if p.Client != nil {
@@ -141,8 +151,8 @@ var _ = DescribeTable("AWS Environment E2E",
 				p.Client = nil
 			}
 		}()
-		_, runErr := p.Run(env)
-		Expect(runErr).NotTo(HaveOccurred(), "Failed to provision environment")
+		_, provisionErr := p.Run(env)
+		Expect(provisionErr).NotTo(HaveOccurred(), "Failed to provision environment")
 
 		By("Kubernetes Configuration")
 		k8s := state.opts.cfg.Spec.Kubernetes
@@ -210,11 +220,36 @@ var _ = DescribeTable("AWS Environment E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_latest.yml"),
 		description: "Tests AWS environment with Kubernetes tracking master branch",
 	}, Label("k8s-latest")),
-	Entry("ARM64 GPU Test", testConfig{
-		name:        "ARM64 GPU Test",
-		filePath:    filepath.Join(packagePath, "data", "test_aws_arm64.yml"),
-		description: "Tests full GPU stack on ARM64 (g5g Graviton) with architecture inferred from instance type",
-	}, Label("arm64")),
+	Entry("RPM Default Test (Rocky 9)", testConfig{
+		name:        "RPM Default Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_rpm.yml"),
+		description: "Tests RPM-based distro (Rocky 9) with Docker, full GPU stack, and Kubernetes",
+	}, Label("default", "rpm")),
+	Entry("RPM Rocky 9 Containerd", testConfig{
+		name:        "RPM Rocky 9 Containerd",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_rocky9_containerd.yml"),
+		description: "Tests Rocky 9 with containerd runtime",
+	}, Label("rpm", "post-merge")),
+	Entry("RPM Rocky 9 CRI-O", testConfig{
+		name:        "RPM Rocky 9 CRI-O",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_rocky9_crio.yml"),
+		description: "Tests Rocky 9 with CRI-O runtime",
+	}, Label("rpm", "post-merge")),
+	Entry("RPM Amazon Linux 2023 Docker", testConfig{
+		name:        "RPM AL2023 Docker",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_docker.yml"),
+		description: "Tests Amazon Linux 2023 with Docker runtime",
+	}, Label("rpm", "post-merge")),
+	Entry("RPM Amazon Linux 2023 Containerd", testConfig{
+		name:        "RPM AL2023 Containerd",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_containerd.yml"),
+		description: "Tests Amazon Linux 2023 with containerd runtime",
+	}, Label("rpm", "post-merge")),
+	Entry("RPM Amazon Linux 2023 CRI-O", testConfig{
+		name:        "RPM AL2023 CRI-O",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_crio.yml"),
+		description: "Tests Amazon Linux 2023 with CRI-O runtime",
+	}, Label("rpm", "post-merge")),
 )
 
 // Note: To run tests in parallel, use: ginkgo -p or --procs=N
