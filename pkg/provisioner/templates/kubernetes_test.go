@@ -1157,6 +1157,37 @@ func TestNewKubeadmConfig_IsUbuntu_DynamicDetection(t *testing.T) {
 	}
 }
 
+func TestKubernetes_Execute_SwapDisable_ZramHandling(t *testing.T) {
+	// Fedora 42 (and other modern RHEL-family distros) use zram swap managed
+	// by systemd-zram-generator. Plain `swapoff -a` is insufficient because
+	// systemd can re-enable it. Templates must also mask the zram service.
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Kubernetes: v1alpha1.Kubernetes{
+				KubernetesVersion: "v1.33.0",
+			},
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Name: "containerd",
+			},
+		},
+	}
+	k, err := NewKubernetes(env)
+	assert.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = k.Execute(&buf, env)
+	assert.NoError(t, err)
+
+	out := buf.String()
+
+	assert.Contains(t, out, "swapoff -a",
+		"Template must disable swap")
+	assert.Contains(t, out, "zram",
+		"Template must handle zram swap (Fedora/RHEL-family)")
+	assert.Contains(t, out, "systemctl",
+		"Template must use systemctl to mask zram service")
+}
+
 func TestKubernetes_DefaultConstants(t *testing.T) {
 	assert.NotEmpty(t, defaultKubernetesVersion, "defaultKubernetesVersion must be set")
 	assert.NotEmpty(t, defaultKubeletReleaseVersion, "defaultKubeletReleaseVersion must be set")

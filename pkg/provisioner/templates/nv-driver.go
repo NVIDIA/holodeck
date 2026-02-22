@@ -118,13 +118,34 @@ case "${HOLODECK_OS_FAMILY}" in
     amazon|rhel)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+        # Amazon Linux 2023 uses versioned kernel package names (e.g., kernel6.12-devel)
+        # when the running kernel is newer than the default 6.1 series.
+        KMAJMIN=$(echo "${KERNEL_VERSION}" | grep -oP '^\d+\.\d+')
+        if dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        elif dnf list available "kernel${KMAJMIN}-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_log "INFO" "$COMPONENT" \
+                "Using versioned package kernel${KMAJMIN}-devel for ${KERNEL_VERSION}"
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel${KMAJMIN}-devel-${KERNEL_VERSION}" "kernel${KMAJMIN}-headers-${KERNEL_VERSION}"
+        else
             holodeck_log "WARN" "$COMPONENT" \
                 "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
             holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
-        else
-            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        fi
+
+        # AL2023 AMIs exclude kernel-modules-extra to save space, but NVIDIA
+        # drivers need DRM/GEM modules from this package. Install the version
+        # matching the running kernel (versioned name for 6.12+, standard otherwise).
+        if [[ "${ID}" == "amzn" ]]; then
+            if dnf list available "kernel${KMAJMIN}-modules-extra-${KERNEL_VERSION}" &>/dev/null; then
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                    "kernel${KMAJMIN}-modules-extra-${KERNEL_VERSION}"
+            else
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                    kernel-modules-extra
+            fi
         fi
 
         holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
@@ -183,6 +204,13 @@ case "${HOLODECK_OS_FAMILY}" in
             holodeck_log "INFO" "$COMPONENT" "Adding CUDA repo for ${CUDA_DISTRO}/${CUDA_ARCH}"
             sudo curl -fsSL -o /etc/yum.repos.d/cuda-${CUDA_DISTRO}.repo \
                 "https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_DISTRO}/${CUDA_ARCH}/cuda-${CUDA_DISTRO}.repo"
+
+            # Amazon Linux 2023 uses dnf module filtering which blocks CUDA packages.
+            # Append module_hotfixes=1 to disable this filtering for the CUDA repo.
+            if [[ "${ID}" == "amzn" ]]; then
+                sudo sed -i '/^\[cuda/a module_hotfixes=1' /etc/yum.repos.d/cuda-${CUDA_DISTRO}.repo
+            fi
+
             holodeck_retry 3 "$COMPONENT" pkg_update
         else
             holodeck_log "INFO" "$COMPONENT" "CUDA repository already configured"
@@ -199,24 +227,49 @@ esac
 holodeck_progress "$COMPONENT" 4 5 "Installing NVIDIA driver"
 
 # Install driver
-DRIVER_PACKAGE="cuda-drivers"
-if [[ -n "$DESIRED_VERSION" ]]; then
-    case "${HOLODECK_OS_FAMILY}" in
-        debian)
-            DRIVER_PACKAGE="${DRIVER_PACKAGE}=${DESIRED_VERSION}"
-            ;;
-        amazon|rhel)
-            DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_VERSION}"
-            ;;
-    esac
-elif [[ -n "$DESIRED_BRANCH" ]]; then
-    DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}"
+# Amazon Linux 2023 with newer kernels (6.12+) requires the open kernel modules
+# because the proprietary DKMS modules have compatibility issues with these kernels.
+if [[ "${ID}" == "amzn" ]]; then
+    # Use open kernel modules on AL2023 — the proprietary modules have
+    # compatibility issues with AL2023's newer kernels (6.12+).
+    # Install without branch suffix to get the latest available version,
+    # which has the best kernel compatibility.
+    DRIVER_PACKAGE="nvidia-open"
+else
+    DRIVER_PACKAGE="cuda-drivers"
+    if [[ -n "$DESIRED_VERSION" ]]; then
+        case "${HOLODECK_OS_FAMILY}" in
+            debian)
+                DRIVER_PACKAGE="${DRIVER_PACKAGE}=${DESIRED_VERSION}"
+                ;;
+            amazon|rhel)
+                DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_VERSION}"
+                ;;
+        esac
+    elif [[ -n "$DESIRED_BRANCH" ]]; then
+        DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}"
+    fi
 fi
 
 holodeck_log "INFO" "$COMPONENT" "Installing package: ${DRIVER_PACKAGE}"
 holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$DRIVER_PACKAGE"
 
 holodeck_progress "$COMPONENT" 5 5 "Verifying installation"
+
+# On AL2023 with newer kernels (e.g., 6.12), DKMS may build the module for
+# the default kernel (6.1) but not the running kernel. Rebuild if needed.
+if command -v dkms &>/dev/null; then
+    # dkms status format: "nvidia/575.57.08, 6.12.x, x86_64: installed"
+    NVIDIA_DKMS_VER=$(dkms status nvidia 2>/dev/null | head -1 | sed -n 's|^nvidia[/,] *\([0-9][0-9.]*\).*|\1|p')
+    if [[ -n "$NVIDIA_DKMS_VER" ]]; then
+        if ! dkms status nvidia/"$NVIDIA_DKMS_VER" -k "$(uname -r)" 2>/dev/null | grep -q "installed"; then
+            holodeck_log "INFO" "$COMPONENT" \
+                "DKMS module not built for kernel $(uname -r), rebuilding..."
+            sudo dkms build nvidia/"$NVIDIA_DKMS_VER" -k "$(uname -r)" 2>&1 || true
+            sudo dkms install nvidia/"$NVIDIA_DKMS_VER" -k "$(uname -r)" 2>&1 || true
+        fi
+    fi
+fi
 
 # Load module if not loaded
 if ! lsmod | grep -q "^nvidia "; then
@@ -324,13 +377,34 @@ case "${HOLODECK_OS_FAMILY}" in
     amazon|rhel)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+        # Amazon Linux 2023 uses versioned kernel package names (e.g., kernel6.12-devel)
+        # when the running kernel is newer than the default 6.1 series.
+        KMAJMIN=$(echo "${KERNEL_VERSION}" | grep -oP '^\d+\.\d+')
+        if dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        elif dnf list available "kernel${KMAJMIN}-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_log "INFO" "$COMPONENT" \
+                "Using versioned package kernel${KMAJMIN}-devel for ${KERNEL_VERSION}"
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel${KMAJMIN}-devel-${KERNEL_VERSION}" "kernel${KMAJMIN}-headers-${KERNEL_VERSION}"
+        else
             holodeck_log "WARN" "$COMPONENT" \
                 "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
             holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
-        else
-            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        fi
+
+        # AL2023 AMIs exclude kernel-modules-extra to save space, but NVIDIA
+        # drivers need DRM/GEM modules from this package. Install the version
+        # matching the running kernel (versioned name for 6.12+, standard otherwise).
+        if [[ "${ID}" == "amzn" ]]; then
+            if dnf list available "kernel${KMAJMIN}-modules-extra-${KERNEL_VERSION}" &>/dev/null; then
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                    "kernel${KMAJMIN}-modules-extra-${KERNEL_VERSION}"
+            else
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                    kernel-modules-extra
+            fi
         fi
 
         holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
@@ -488,13 +562,34 @@ case "${HOLODECK_OS_FAMILY}" in
     amazon|rhel)
         holodeck_retry 3 "$COMPONENT" pkg_update
 
-        if ! dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+        # Amazon Linux 2023 uses versioned kernel package names (e.g., kernel6.12-devel)
+        # when the running kernel is newer than the default 6.1 series.
+        KMAJMIN=$(echo "${KERNEL_VERSION}" | grep -oP '^\d+\.\d+')
+        if dnf list available "kernel-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        elif dnf list available "kernel${KMAJMIN}-devel-${KERNEL_VERSION}" &>/dev/null; then
+            holodeck_log "INFO" "$COMPONENT" \
+                "Using versioned package kernel${KMAJMIN}-devel for ${KERNEL_VERSION}"
+            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                "kernel${KMAJMIN}-devel-${KERNEL_VERSION}" "kernel${KMAJMIN}-headers-${KERNEL_VERSION}"
+        else
             holodeck_log "WARN" "$COMPONENT" \
                 "kernel-devel for ${KERNEL_VERSION} not found, trying generic kernel-devel"
             holodeck_retry 3 "$COMPONENT" install_packages_with_retry kernel-devel kernel-headers
-        else
-            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-                "kernel-devel-${KERNEL_VERSION}" kernel-headers
+        fi
+
+        # AL2023 AMIs exclude kernel-modules-extra to save space, but NVIDIA
+        # drivers need DRM/GEM modules from this package. Install the version
+        # matching the running kernel (versioned name for 6.12+, standard otherwise).
+        if [[ "${ID}" == "amzn" ]]; then
+            if dnf list available "kernel${KMAJMIN}-modules-extra-${KERNEL_VERSION}" &>/dev/null; then
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                    "kernel${KMAJMIN}-modules-extra-${KERNEL_VERSION}"
+            else
+                holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                    kernel-modules-extra
+            fi
         fi
 
         holodeck_retry 3 "$COMPONENT" install_packages_with_retry \

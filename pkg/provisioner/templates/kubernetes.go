@@ -61,9 +61,27 @@ fi
 
 holodeck_progress "$COMPONENT" 2 8 "Configuring system prerequisites"
 
+# Install kubeadm prerequisites that may not be present on RHEL/Amazon systems.
+# Ubuntu includes these by default; RPM-based minimal images often omit them.
+# conntrack-tools: kubelet uses conntrack for connection tracking in pod networking
+# socat:           kubelet uses socat for port-forwarding
+case "${HOLODECK_OS_FAMILY}" in
+    amazon|rhel)
+        install_packages_with_retry conntrack-tools socat iptables
+        ;;
+esac
+
 # Disable swap (idempotent)
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+# Fedora and other modern RHEL-family distros use zram swap managed by
+# systemd-zram-generator. swapoff alone is insufficient — systemd can
+# re-enable it. Mask the service so swap stays off across reboots.
+if systemctl list-unit-files systemd-zram-setup@.service &>/dev/null; then
+    sudo systemctl stop dev-zram*.swap 2>/dev/null || true
+    sudo systemctl mask systemd-zram-setup@.service 2>/dev/null || true
+    holodeck_log "INFO" "$COMPONENT" "Masked systemd-zram swap service"
+fi
 
 # Configure persistent loading of modules (idempotent)
 if [[ ! -f /etc/modules-load.d/k8s.conf ]]; then
@@ -98,6 +116,9 @@ if [[ ! -f "$DEST/bridge" ]] || [[ ! -f "$DEST/loopback" ]]; then
     holodeck_retry 3 "$COMPONENT" curl -L \
         "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | \
         sudo tar -C "$DEST" -xz
+    # Remove non-binary files (LICENSE, README) that cause containerd image
+    # verifier to fail with "exec format error" when it scans this directory.
+    sudo rm -f "$DEST/LICENSE" "$DEST/README.md" "$DEST/README"
     sudo chmod -R 755 "$DEST"
 else
     holodeck_log "INFO" "$COMPONENT" "CNI plugins already installed"
@@ -160,21 +181,73 @@ holodeck_progress "$COMPONENT" 5 8 "Initializing Kubernetes cluster"
 
 # Initialize cluster only if not already initialized
 if [[ ! -f /etc/kubernetes/admin.conf ]]; then
+    # Pre-pull images before init. kubeadm init with --ignore-preflight-errors=all
+    # silently skips pull failures, causing static pods to never start.
+    # Pull explicitly so failures are visible and retried.
+    holodeck_log "INFO" "$COMPONENT" "Pre-pulling control plane images"
 {{- if .UseLegacyInit }}
-    # Using legacy kubeadm init for older Kubernetes versions
-    holodeck_log "INFO" "$COMPONENT" "Using legacy kubeadm init"
-    holodeck_retry 3 "$COMPONENT" sudo kubeadm init \
-        --kubernetes-version="${K8S_VERSION}" \
-        --pod-network-cidr=192.168.0.0/16 \
-        --control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443" \
-        --ignore-preflight-errors=all
+    holodeck_retry 3 "$COMPONENT" sudo kubeadm config images pull \
+        --kubernetes-version="${K8S_VERSION}"
 {{- else }}
-    # Using kubeadm config file for newer Kubernetes versions
-    holodeck_log "INFO" "$COMPONENT" "Using kubeadm config file"
-    holodeck_retry 3 "$COMPONENT" sudo kubeadm init \
-        --config /etc/kubernetes/kubeadm-config.yaml \
-        --ignore-preflight-errors=all
+    holodeck_retry 3 "$COMPONENT" sudo kubeadm config images pull \
+        --config /etc/kubernetes/kubeadm-config.yaml
 {{- end }}
+
+    # kubeadm init with retry + reset + diagnostics.
+    # Unlike generic holodeck_retry, this resets cluster state between attempts
+    # and captures diagnostic output on failure to aid debugging.
+    KUBEADM_MAX_ATTEMPTS=3
+    for (( KUBEADM_ATTEMPT=1; KUBEADM_ATTEMPT<=KUBEADM_MAX_ATTEMPTS; KUBEADM_ATTEMPT++ )); do
+        holodeck_log "INFO" "$COMPONENT" \
+            "kubeadm init attempt ${KUBEADM_ATTEMPT}/${KUBEADM_MAX_ATTEMPTS}"
+
+        set +e
+{{- if .UseLegacyInit }}
+        sudo kubeadm init \
+            --kubernetes-version="${K8S_VERSION}" \
+            --pod-network-cidr=192.168.0.0/16 \
+            --control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443" \
+            --ignore-preflight-errors=all
+{{- else }}
+        sudo kubeadm init \
+            --config /etc/kubernetes/kubeadm-config.yaml \
+            --ignore-preflight-errors=all
+{{- end }}
+        KUBEADM_RC=$?
+        set -e
+
+        if [[ $KUBEADM_RC -eq 0 ]]; then
+            break
+        fi
+
+        # Capture diagnostics on failure
+        holodeck_log "WARN" "$COMPONENT" \
+            "kubeadm init failed (attempt ${KUBEADM_ATTEMPT}/${KUBEADM_MAX_ATTEMPTS}), capturing diagnostics"
+        holodeck_log "INFO" "$COMPONENT" "--- kubelet logs (last 30 lines) ---"
+        sudo journalctl -u kubelet --no-pager -n 30 2>&1 || true
+        holodeck_log "INFO" "$COMPONENT" "--- container status via crictl ---"
+        sudo crictl --runtime-endpoint unix:///run/cri-dockerd.sock ps -a 2>&1 || true
+        holodeck_log "INFO" "$COMPONENT" "--- container status via docker ---"
+        sudo docker ps -a 2>&1 || true
+        holodeck_log "INFO" "$COMPONENT" "--- kubeadm-flags.env ---"
+        cat /var/lib/kubelet/kubeadm-flags.env 2>&1 || true
+        holodeck_log "INFO" "$COMPONENT" "--- end diagnostics ---"
+
+        if [[ $KUBEADM_ATTEMPT -lt $KUBEADM_MAX_ATTEMPTS ]]; then
+            holodeck_log "INFO" "$COMPONENT" "Resetting cluster state before retry"
+            sudo kubeadm reset -f --cri-socket "unix:///run/cri-dockerd.sock" 2>&1 || true
+            # Re-enable kubelet after reset
+            sudo systemctl daemon-reload
+            sudo systemctl restart kubelet
+            sleep 10
+        fi
+    done
+
+    if [[ $KUBEADM_RC -ne 0 ]]; then
+        holodeck_error 13 "$COMPONENT" \
+            "kubeadm init failed after ${KUBEADM_MAX_ATTEMPTS} attempts" \
+            "Check diagnostics above for root cause"
+    fi
 else
     holodeck_log "INFO" "$COMPONENT" "Cluster already initialized"
 fi
@@ -906,9 +979,24 @@ holodeck_log "INFO" "$COMPONENT" "Available memory: ${AVAILABLE_MEM_MB}MB"
 
 holodeck_progress "$COMPONENT" 3 11 "Configuring system prerequisites"
 
+# Install kubeadm prerequisites that may not be present on RHEL/Amazon systems.
+case "${HOLODECK_OS_FAMILY}" in
+    amazon|rhel)
+        install_packages_with_retry conntrack-tools socat iptables
+        ;;
+esac
+
 # Disable swap (idempotent)
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+# Fedora and other modern RHEL-family distros use zram swap managed by
+# systemd-zram-generator. swapoff alone is insufficient — systemd can
+# re-enable it. Mask the service so swap stays off across reboots.
+if systemctl list-unit-files systemd-zram-setup@.service &>/dev/null; then
+    sudo systemctl stop dev-zram*.swap 2>/dev/null || true
+    sudo systemctl mask systemd-zram-setup@.service 2>/dev/null || true
+    holodeck_log "INFO" "$COMPONENT" "Masked systemd-zram swap service"
+fi
 
 # Configure persistent loading of modules (idempotent)
 if [[ ! -f /etc/modules-load.d/k8s.conf ]]; then
@@ -962,6 +1050,9 @@ if [[ ! -f "$DEST/bridge" ]] || [[ ! -f "$DEST/loopback" ]]; then
     holodeck_retry 3 "$COMPONENT" curl -L \
         "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | \
         sudo tar -C "$DEST" -xz
+    # Remove non-binary files (LICENSE, README) that cause containerd image
+    # verifier to fail with "exec format error" when it scans this directory.
+    sudo rm -f "$DEST/LICENSE" "$DEST/README.md" "$DEST/README"
     sudo chmod -R 755 "$DEST"
 fi
 
@@ -1278,6 +1369,13 @@ holodeck_log "INFO" "$COMPONENT" "Available disk space: ${AVAILABLE_GB}GB"
 
 holodeck_progress "$COMPONENT" 3 11 "Configuring system prerequisites"
 
+# Install kubeadm prerequisites that may not be present on RHEL/Amazon systems.
+case "${HOLODECK_OS_FAMILY}" in
+    amazon|rhel)
+        install_packages_with_retry conntrack-tools socat iptables
+        ;;
+esac
+
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
@@ -1325,6 +1423,9 @@ if [[ ! -f "$DEST/bridge" ]] || [[ ! -f "$DEST/loopback" ]]; then
     holodeck_retry 3 "$COMPONENT" curl -L \
         "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz" | \
         sudo tar -C "$DEST" -xz
+    # Remove non-binary files (LICENSE, README) that cause containerd image
+    # verifier to fail with "exec format error" when it scans this directory.
+    sudo rm -f "$DEST/LICENSE" "$DEST/README.md" "$DEST/README"
     sudo chmod -R 755 "$DEST"
 fi
 

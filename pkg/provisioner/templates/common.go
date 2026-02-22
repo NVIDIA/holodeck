@@ -351,7 +351,7 @@ pkg_install() {
                 apt-get install -y --no-install-recommends "${packages[@]}"
             ;;
         dnf)
-            sudo dnf install -y "${packages[@]}"
+            sudo dnf install -y --allowerasing "${packages[@]}"
             ;;
         yum)
             sudo yum install -y "${packages[@]}"
@@ -373,7 +373,7 @@ pkg_install_version() {
                 apt-get install -y --no-install-recommends "${package}=${version}"
             ;;
         dnf)
-            sudo dnf install -y "${package}-${version}"
+            sudo dnf install -y --allowerasing "${package}-${version}"
             ;;
         yum)
             sudo yum install -y "${package}-${version}"

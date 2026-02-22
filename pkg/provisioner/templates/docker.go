@@ -28,6 +28,7 @@ const dockerPackageTemplate = `
 COMPONENT="docker"
 SOURCE="package"
 DESIRED_VERSION="{{.Version}}"
+DOCKER_ALREADY_INSTALLED=false
 
 holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
 
@@ -44,8 +45,7 @@ if systemctl is-active --quiet docker 2>/dev/null; then
 
             if holodeck_verify_docker; then
                 holodeck_log "INFO" "$COMPONENT" "Docker verified functional"
-                holodeck_mark_installed "$COMPONENT" "$INSTALLED_VERSION"
-                exit 0
+                DOCKER_ALREADY_INSTALLED=true
             else
                 holodeck_log "WARN" "$COMPONENT" \
                     "Docker installed but not functional, attempting repair"
@@ -56,6 +56,8 @@ if systemctl is-active --quiet docker 2>/dev/null; then
         fi
     fi
 fi
+
+if [[ "${DOCKER_ALREADY_INSTALLED}" != "true" ]]; then
 
 holodeck_progress "$COMPONENT" 2 6 "Adding Docker repository"
 
@@ -89,18 +91,16 @@ case "${HOLODECK_OS_FAMILY}" in
         holodeck_retry 3 "$COMPONENT" pkg_update
         ;;
 
-    amazon|rhel)
-        # Amazon Linux / RHEL-based: Add Docker dnf/yum repository
+    amazon)
+        # Amazon Linux: Use native docker package (Docker CE from Fedora repo has
+        # glibc incompatibility — runc requires glibc 2.38 but AL2023 ships 2.34).
+        holodeck_log "INFO" "$COMPONENT" "Using Amazon Linux native docker package"
+        ;;
+
+    rhel)
+        # RHEL-based: Add Docker CE repository
         if [[ ! -f /etc/yum.repos.d/docker-ce.repo ]]; then
             case "${ID}" in
-                amzn)
-                    # Amazon Linux uses Fedora packages (Docker doesn't provide AL packages)
-                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
-                        https://download.docker.com/linux/fedora/docker-ce.repo
-                    # Replace $releasever with mapped Fedora version from common.go
-                    sudo sed -i "s/\$releasever/${HOLODECK_AMZN_FEDORA_VERSION}/g" /etc/yum.repos.d/docker-ce.repo
-                    holodeck_log "INFO" "$COMPONENT" "Using Fedora ${HOLODECK_AMZN_FEDORA_VERSION} repo for Amazon Linux"
-                    ;;
                 fedora)
                     sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
                         https://download.docker.com/linux/fedora/docker-ce.repo
@@ -126,24 +126,35 @@ esac
 
 holodeck_progress "$COMPONENT" 3 6 "Installing Docker"
 
-# Install Docker with OS-appropriate version syntax
-if [[ "$DESIRED_VERSION" == "latest" ]] || [[ -z "$DESIRED_VERSION" ]]; then
-    holodeck_log "INFO" "$COMPONENT" "Installing latest Docker version"
-    holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-        docker-ce docker-ce-cli containerd.io
-else
-    holodeck_log "INFO" "$COMPONENT" "Installing Docker version: ${DESIRED_VERSION}"
-    case "${HOLODECK_OS_FAMILY}" in
-        debian)
+# Install Docker with OS-appropriate packages
+case "${HOLODECK_OS_FAMILY}" in
+    amazon)
+        # Amazon Linux: Use native docker package (includes compatible runc/containerd).
+        # Docker CE from Fedora repos ships runc built against glibc 2.38 which is
+        # incompatible with AL2023's glibc 2.34.
+        holodeck_log "INFO" "$COMPONENT" "Installing Docker from Amazon Linux repository"
+        holodeck_retry 3 "$COMPONENT" install_packages_with_retry docker
+        ;;
+    *)
+        if [[ "$DESIRED_VERSION" == "latest" ]] || [[ -z "$DESIRED_VERSION" ]]; then
+            holodeck_log "INFO" "$COMPONENT" "Installing latest Docker version"
             holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-                "docker-ce=$DESIRED_VERSION" "docker-ce-cli=$DESIRED_VERSION" containerd.io
-            ;;
-        amazon|rhel)
-            holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
-                "docker-ce-$DESIRED_VERSION" "docker-ce-cli-$DESIRED_VERSION" containerd.io
-            ;;
-    esac
-fi
+                docker-ce docker-ce-cli containerd.io
+        else
+            holodeck_log "INFO" "$COMPONENT" "Installing Docker version: ${DESIRED_VERSION}"
+            case "${HOLODECK_OS_FAMILY}" in
+                debian)
+                    holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                        "docker-ce=$DESIRED_VERSION" "docker-ce-cli=$DESIRED_VERSION" containerd.io
+                    ;;
+                rhel)
+                    holodeck_retry 3 "$COMPONENT" install_packages_with_retry \
+                        "docker-ce-$DESIRED_VERSION" "docker-ce-cli-$DESIRED_VERSION" containerd.io
+                    ;;
+            esac
+        fi
+        ;;
+esac
 
 holodeck_progress "$COMPONENT" 4 6 "Configuring Docker"
 
@@ -191,9 +202,27 @@ while ! sudo docker info &>/dev/null; do
 done
 holodeck_log "INFO" "$COMPONENT" "Docker daemon is ready"
 
+# Verify Docker can actually create and run containers (not just respond to 'docker info').
+# This catches runc/containerd.io compatibility issues early (before CTK or Kubernetes).
+holodeck_log "INFO" "$COMPONENT" "Verifying Docker can create containers..."
+if ! sudo docker run --rm hello-world &>/dev/null; then
+    holodeck_log "ERROR" "$COMPONENT" "Docker cannot create containers (docker run hello-world failed)"
+    holodeck_log "INFO" "$COMPONENT" "Capturing diagnostics..."
+    sudo docker run --rm hello-world 2>&1 || true
+    sudo docker version 2>&1 || true
+    sudo runc --version 2>&1 || true
+    sudo journalctl -u docker --no-pager -n 20 2>&1 || true
+    holodeck_error 11 "$COMPONENT" \
+        "Docker installed but cannot create containers" \
+        "Check runc/containerd.io compatibility with this OS and kernel version"
+fi
+holodeck_log "INFO" "$COMPONENT" "Docker container creation verified"
+
 # Post-installation steps for Linux
 sudo usermod -aG docker "$USER" || true
 # Note: newgrp docker would spawn a new shell, skip for idempotency
+
+fi  # end DOCKER_ALREADY_INSTALLED guard
 
 holodeck_progress "$COMPONENT" 5 6 "Installing cri-dockerd"
 
@@ -291,6 +320,7 @@ SOURCE="git"
 GIT_REPO="{{.GitRepo}}"
 GIT_REF="{{.GitRef}}"
 GIT_COMMIT="{{.GitCommit}}"
+DOCKER_ALREADY_INSTALLED=false
 
 holodeck_progress "$COMPONENT" 1 6 "Checking existing installation"
 
@@ -301,12 +331,14 @@ if command -v dockerd &>/dev/null; then
             if [[ "$INSTALLED_COMMIT" == "$GIT_COMMIT" ]]; then
                 if holodeck_verify_docker; then
                     holodeck_log "INFO" "$COMPONENT" "Already installed from commit: ${GIT_COMMIT}"
-                    exit 0
+                    DOCKER_ALREADY_INSTALLED=true
                 fi
             fi
         fi
     fi
 fi
+
+if [[ "${DOCKER_ALREADY_INSTALLED}" != "true" ]]; then
 
 holodeck_progress "$COMPONENT" 2 6 "Installing build dependencies"
 
@@ -396,6 +428,8 @@ fi
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now docker
+
+fi  # end DOCKER_ALREADY_INSTALLED guard
 
 # Install cri-dockerd for Kubernetes compatibility
 CRI_DOCKERD_VERSION="0.3.17"
