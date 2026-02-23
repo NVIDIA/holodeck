@@ -114,6 +114,12 @@ func TestRegistry_Get(t *testing.T) {
 			wantUser: "rocky",
 		},
 		{
+			name:     "fedora-42 exists",
+			osID:     "fedora-42",
+			wantOK:   true,
+			wantUser: "fedora",
+		},
+		{
 			name:   "unknown OS returns false",
 			osID:   "unknown-os",
 			wantOK: false,
@@ -140,6 +146,7 @@ func TestRegistry_List(t *testing.T) {
 	assert.Contains(t, ids, "ubuntu-20.04")
 	assert.Contains(t, ids, "amazon-linux-2023")
 	assert.Contains(t, ids, "rocky-9")
+	assert.Contains(t, ids, "fedora-42")
 
 	// Verify sorted order
 	for i := 1; i < len(ids); i++ {
@@ -380,6 +387,44 @@ func TestResolver_Resolve_NoImagesFound(t *testing.T) {
 	_, err := resolver.Resolve(context.Background(), "rocky-9", "x86_64")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no images found")
+}
+
+func TestResolver_Resolve_FedoraArchMapping(t *testing.T) {
+	// Fedora AMI names use "aarch64" but EC2 uses "arm64"
+	expectedAMI := "ami-fedora-arm64"
+
+	ec2Client := &mockEC2Client{
+		describeImagesFunc: func(
+			ctx context.Context,
+			params *ec2.DescribeImagesInput,
+			optFns ...func(*ec2.Options),
+		) (*ec2.DescribeImagesOutput, error) {
+			// Verify the name filter uses "aarch64" (mapped from "arm64")
+			for _, f := range params.Filters {
+				if aws.ToString(f.Name) == "name" {
+					assert.Contains(t, f.Values[0], "aarch64",
+						"Fedora arm64 name pattern should use aarch64")
+				}
+			}
+			return &ec2.DescribeImagesOutput{
+				Images: []ec2types.Image{
+					{
+						ImageId:      aws.String(expectedAMI),
+						CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+					},
+				},
+			}, nil
+		},
+	}
+
+	resolver := NewResolver(ec2Client, nil, "us-west-2")
+
+	result, err := resolver.Resolve(context.Background(), "fedora-42", "arm64")
+	require.NoError(t, err)
+	assert.Equal(t, expectedAMI, result.ImageID)
+	assert.Equal(t, "fedora", result.SSHUsername)
+	assert.Equal(t, OSFamilyRHEL, result.OSFamily)
+	assert.Equal(t, PackageManagerDNF, result.PackageManager)
 }
 
 func TestOSImageMetadata(t *testing.T) {

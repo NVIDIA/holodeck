@@ -250,6 +250,16 @@ var _ = DescribeTable("AWS Environment E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_crio.yml"),
 		description: "Tests Amazon Linux 2023 with CRI-O runtime",
 	}, Label("rpm", "post-merge")),
+	Entry("RPM Fedora 42 Containerd", testConfig{
+		name:        "RPM Fedora 42 Containerd",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_fedora42_containerd.yml"),
+		description: "Tests Fedora 42 with containerd runtime",
+	}, Label("rpm", "post-merge")),
+	Entry("RPM Fedora 42 CRI-O", testConfig{
+		name:        "RPM Fedora 42 CRI-O",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_fedora42_crio.yml"),
+		description: "Tests Fedora 42 with CRI-O runtime",
+	}, Label("rpm", "post-merge")),
 )
 
 // Note: To run tests in parallel, use: ginkgo -p or --procs=N
