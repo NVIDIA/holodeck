@@ -1,3 +1,11 @@
+# v1.68.1 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.68.0 (2026-02-20)
+
+* **Feature**: Add support for AssociationDispatchAssumeRole in AWS SSM State Manager.
+
 # v1.67.8 (2026-01-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions
