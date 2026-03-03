@@ -332,19 +332,50 @@ func (p *Provider) describeImages(filter []types.Filter) ([]ImageInfo, error) {
 }
 
 func (p *Provider) checkInstanceTypes() error {
-	var nextToken *string
+	// Collect all instance types that need validation.
+	// For cluster configs, check control-plane and worker instance types;
+	// for single-node configs, check the instance type field.
+	needed := make(map[string]bool)
+	if p.Spec.Cluster != nil {
+		if t := p.Spec.Cluster.ControlPlane.InstanceType; t != "" {
+			needed[t] = false
+		}
+		if p.Spec.Cluster.Workers != nil {
+			if t := p.Spec.Cluster.Workers.InstanceType; t != "" {
+				needed[t] = false
+			}
+		}
+	} else if p.Spec.Type != "" {
+		needed[p.Spec.Type] = false
+	}
 
+	if len(needed) == 0 {
+		return fmt.Errorf("no instance type specified")
+	}
+
+	var nextToken *string
 	for {
-		// Use the DescribeInstanceTypes API to get a list of supported instance types in the current region
 		resp, err := p.ec2.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{NextToken: nextToken})
 		if err != nil {
 			return err
 		}
 
 		for _, it := range resp.InstanceTypes {
-			if it.InstanceType == types.InstanceType(p.Spec.Type) {
-				return nil
+			if _, ok := needed[string(it.InstanceType)]; ok {
+				needed[string(it.InstanceType)] = true
 			}
+		}
+
+		// Check if all needed types have been found
+		allFound := true
+		for _, found := range needed {
+			if !found {
+				allFound = false
+				break
+			}
+		}
+		if allFound {
+			return nil
 		}
 
 		if resp.NextToken != nil {
@@ -354,7 +385,17 @@ func (p *Provider) checkInstanceTypes() error {
 		}
 	}
 
-	return fmt.Errorf("instance type %s is not supported in the current region %s", p.Spec.Type, p.Spec.Region)
+	// Report which instance types were not found
+	region := p.Spec.Region
+	if p.Spec.Cluster != nil {
+		region = p.Spec.Cluster.Region
+	}
+	for instanceType, found := range needed {
+		if !found {
+			return fmt.Errorf("instance type %s is not supported in the current region %s", instanceType, region)
+		}
+	}
+	return nil
 }
 
 // normalizeArchToEC2 converts architecture aliases to EC2 canonical form.

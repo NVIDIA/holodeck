@@ -32,7 +32,7 @@ K8S_VERSION="{{.Version}}"
 CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
 CALICO_VERSION="{{.CalicoVersion}}"
 CRICTL_VERSION="{{.CrictlVersion}}"
-ARCH="{{.Arch}}"
+{{if .Arch}}ARCH="{{.Arch}}"{{else}}ARCH="$(dpkg --print-architecture 2>/dev/null || (uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'))"{{end}}
 KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
 CONTROL_PLANE_ENDPOINT="{{.ControlPlaneEndpoint}}"
 IS_HA="{{.IsHA}}"
@@ -171,12 +171,61 @@ if ! kubectl --kubeconfig "$KUBECONFIG" get namespace tigera-operator &>/dev/nul
     holodeck_log "INFO" "$COMPONENT" "Installing Calico ${CALICO_VERSION}"
     holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" create -f \
         "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
+else
+    holodeck_log "INFO" "$COMPONENT" "Tigera operator already installed"
 fi
 
-# Wait for Tigera operator
-holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator"
-holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
-    --for=condition=available --timeout=300s deployment/tigera-operator -n tigera-operator
+# Patch Tigera operator to use host networking and reach the API server directly.
+# Without CNI, pods cannot reach the Kubernetes API server via cluster IP
+# (10.96.0.1:443) because kube-proxy iptables rules may not be functional yet.
+# The operator IS the CNI installer, so it must bypass cluster networking entirely.
+# - hostNetwork: true — use the node's network stack
+# - KUBERNETES_SERVICE_HOST=<node-ip> — reach API server via the node's IP
+#   (must match a SAN in the kubeadm TLS cert; localhost is NOT in SANs)
+# - KUBERNETES_SERVICE_PORT=6443 — use the real API server port, not the service port
+NODE_IP=$(hostname -I | awk '{print $1}')
+holodeck_log "INFO" "$COMPONENT" "Patching Tigera operator for host networking (API: ${NODE_IP}:6443)"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" patch deployment \
+    tigera-operator -n tigera-operator --type=strategic -p "{
+    \"spec\": {\"template\": {\"spec\": {
+        \"hostNetwork\": true,
+        \"dnsPolicy\": \"ClusterFirstWithHostNet\"
+    }}}
+}"
+holodeck_retry 3 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" set env \
+    deployment/tigera-operator -n tigera-operator \
+    KUBERNETES_SERVICE_HOST="${NODE_IP}" KUBERNETES_SERVICE_PORT="6443"
+
+# Wait for the patched rollout to complete
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" rollout status \
+    deployment/tigera-operator -n tigera-operator --timeout=300s
+
+# Wait for Tigera operator CRDs to be established before applying custom resources.
+# The operator deployment becomes "available" before it has registered all its CRDs
+# (Installation, APIServer, etc.), causing "no matches for kind" errors.
+holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator CRDs"
+if ! holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=established --timeout=10s crd/installations.operator.tigera.io; then
+    # Diagnostic dump on failure
+    holodeck_log "ERROR" "$COMPONENT" "CRD wait failed - collecting diagnostics"
+    kubectl --kubeconfig "$KUBECONFIG" get pods -n tigera-operator -o wide 2>&1 || true
+    kubectl --kubeconfig "$KUBECONFIG" describe pod -n tigera-operator 2>&1 | tail -40 || true
+    kubectl --kubeconfig "$KUBECONFIG" logs -n tigera-operator -l name=tigera-operator --tail=30 2>&1 || true
+    kubectl --kubeconfig "$KUBECONFIG" get events -n tigera-operator --sort-by='.lastTimestamp' 2>&1 | tail -20 || true
+    kubectl --kubeconfig "$KUBECONFIG" get crd 2>&1 | grep -i tigera || true
+    holodeck_error 6 "$COMPONENT" \
+        "Tigera operator CRDs not registered after retries" \
+        "The operator pod may be crashing. Check diagnostics above."
+fi
+
+# Calico v3.30.2+ custom-resources.yaml includes Goldmane and Whisker resources.
+# Wait for their CRDs to be registered before applying, otherwise kubectl apply fails
+# with "no matches for kind" for resources whose CRDs aren't established yet.
+for crd in apiservers.operator.tigera.io goldmanes.operator.tigera.io whiskers.operator.tigera.io; do
+    holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+        --for=condition=established --timeout=10s "crd/${crd}" 2>/dev/null || \
+        holodeck_log "WARN" "$COMPONENT" "CRD ${crd} not found — may not exist in this Calico version"
+done
 
 # Install Calico custom resources (idempotent)
 if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
@@ -190,6 +239,8 @@ fi
 holodeck_log "INFO" "$COMPONENT" "Waiting for Calico"
 holodeck_retry 20 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
     --for=condition=ready --timeout=300s pod -l k8s-app=calico-node -n calico-system
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+    --for=condition=ready --timeout=300s pod -l k8s-app=calico-kube-controllers -n calico-system
 
 holodeck_progress "$COMPONENT" 8 8 "Finalizing cluster configuration"
 
@@ -360,7 +411,7 @@ COMPONENT="kubernetes-prereq"
 K8S_VERSION="{{.Version}}"
 CNI_PLUGINS_VERSION="{{.CniPluginsVersion}}"
 CRICTL_VERSION="{{.CrictlVersion}}"
-ARCH="{{.Arch}}"
+{{if .Arch}}ARCH="{{.Arch}}"{{else}}ARCH="$(dpkg --print-architecture 2>/dev/null || (uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'))"{{end}}
 KUBELET_RELEASE_VERSION="{{.KubeletReleaseVersion}}"
 
 holodeck_progress "$COMPONENT" 1 3 "Checking existing installation"

@@ -318,6 +318,15 @@ if ! holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
         "The operator pod may be crashing. Check diagnostics above."
 fi
 
+# Calico v3.30.2+ custom-resources.yaml includes Goldmane and Whisker resources.
+# Wait for their CRDs to be registered before applying, otherwise kubectl apply fails
+# with "no matches for kind" for resources whose CRDs aren't established yet.
+for crd in apiservers.operator.tigera.io goldmanes.operator.tigera.io whiskers.operator.tigera.io; do
+    holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+        --for=condition=established --timeout=10s "crd/${crd}" 2>/dev/null || \
+        holodeck_log "WARN" "$COMPONENT" "CRD ${crd} not found — may not exist in this Calico version"
+done
+
 # Install Calico custom resources (idempotent)
 if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
     -n tigera-operator &>/dev/null; then
@@ -1269,6 +1278,11 @@ holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" rollout status
 holodeck_log "INFO" "$COMPONENT" "Waiting for Tigera operator CRDs..."
 holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
     --for=condition=established --timeout=10s crd/installations.operator.tigera.io
+for crd in apiservers.operator.tigera.io goldmanes.operator.tigera.io whiskers.operator.tigera.io; do
+    holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+        --for=condition=established --timeout=10s "crd/${crd}" 2>/dev/null || \
+        holodeck_log "WARN" "$COMPONENT" "CRD ${crd} not found — may not exist in this Calico version"
+done
 
 if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
     -n tigera-operator &>/dev/null; then
@@ -1597,6 +1611,11 @@ holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" rollout status
 # Wait for Tigera operator CRDs before applying custom resources
 holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
     --for=condition=established --timeout=10s crd/installations.operator.tigera.io
+for crd in apiservers.operator.tigera.io goldmanes.operator.tigera.io whiskers.operator.tigera.io; do
+    holodeck_retry 30 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" wait \
+        --for=condition=established --timeout=10s "crd/${crd}" 2>/dev/null || \
+        holodeck_log "WARN" "$COMPONENT" "CRD ${crd} not found — may not exist in this Calico version"
+done
 
 if ! kubectl --kubeconfig "$KUBECONFIG" get installations.operator.tigera.io default \
     -n tigera-operator &>/dev/null; then

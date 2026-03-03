@@ -327,7 +327,7 @@ CERTKEY=""
 ` + fmt.Sprintf(`if [ "%t" = "true" ]; then
   CERTKEY=$(sudo kubeadm init phase upload-certs --upload-certs 2>/dev/null | tail -1)
 fi`, cp.isHAEnabled()) + `
-printf '%%s\n%%s\n%%s' "$TOKEN" "$HASH" "$CERTKEY"
+printf '%s\n%s\n%s' "$TOKEN" "$HASH" "$CERTKEY"
 `
 
 	out, err := session.CombinedOutput(script)
@@ -622,7 +622,19 @@ type NodeHealth struct {
 
 // GetClusterHealth checks the health of a multinode cluster by querying the first control-plane
 func (cp *ClusterProvisioner) GetClusterHealth(firstCPPublicIP string) (*ClusterHealth, error) {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.UserName, firstCPPublicIP)
+	// Resolve SSH username: check per-node username from cluster status first,
+	// then fall back to global username. This handles OS-based provisioning
+	// where the provider resolves the SSH username per node.
+	username := cp.UserName
+	if cp.Environment != nil && cp.Environment.Status.Cluster != nil {
+		for _, node := range cp.Environment.Status.Cluster.Nodes {
+			if node.PublicIP == firstCPPublicIP && node.SSHUsername != "" {
+				username = node.SSHUsername
+				break
+			}
+		}
+	}
+	provisioner, err := New(cp.log, cp.KeyPath, username, firstCPPublicIP)
 	if err != nil {
 		return &ClusterHealth{
 			Healthy: false,
