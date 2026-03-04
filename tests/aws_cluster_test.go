@@ -230,10 +230,10 @@ var _ = DescribeTable("AWS Cluster E2E",
 		name:        "rpm-rocky9-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_rpm_rocky9.yaml"),
 		description: "Tests Rocky 9 RPM cluster with 1 CP + 1 GPU worker",
-	}, Label("cluster", "multinode", "rpm", "post-merge")),
+	}, Label("cluster", "multinode", "rpm", "rpm-rocky", "post-merge")),
 	Entry("RPM Amazon Linux 2023 Cluster", clusterTestConfig{
 		name:        "rpm-al2023-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_rpm_al2023.yaml"),
 		description: "Tests Amazon Linux 2023 cluster with 1 CP + 1 GPU worker",
-	}, Label("cluster", "multinode", "rpm", "post-merge")),
+	}, Label("cluster", "multinode", "rpm", "rpm-al2023", "post-merge")),
 )

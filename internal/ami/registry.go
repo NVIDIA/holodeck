@@ -75,6 +75,19 @@ var registry = map[string]OSImage{
 		SSMPath:         "", // No SSM support for Rocky Linux
 		Architectures:   []string{"x86_64", "arm64"},
 	},
+	"fedora-42": {
+		ID:              "fedora-42",
+		Name:            "Fedora 42 Cloud",
+		Family:          OSFamilyRHEL,
+		SSHUsername:     "fedora",
+		PackageManager:  PackageManagerDNF,
+		MinRootVolumeGB: 15,
+		OwnerID:         "125523088429",
+		NamePattern:     "Fedora-Cloud-Base-AmazonEC2.%s-42-*",
+		SSMPath:         "", // No SSM support for Fedora
+		NameArchMap:     map[string]string{"arm64": "aarch64"},
+		Architectures:   []string{"x86_64", "arm64"},
+	},
 	"ubuntu-20.04": {
 		ID:              "ubuntu-20.04",
 		Name:            "Ubuntu 20.04 LTS (Focal Fossa)",

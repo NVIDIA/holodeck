@@ -104,18 +104,17 @@ case "${HOLODECK_OS_FAMILY}" in
         fi
         ;;
 
-    amazon|rhel)
-        # Amazon Linux / RHEL-based: Add Docker dnf/yum repository
+    amazon)
+        # Amazon Linux: Use native containerd package (Docker's Fedora repo ships
+        # binaries built against glibc 2.38, incompatible with AL2023's glibc 2.34).
+        holodeck_log "INFO" "$COMPONENT" "Installing containerd from Amazon Linux repository"
+        holodeck_retry 3 "$COMPONENT" pkg_install containerd
+        ;;
+
+    rhel)
+        # RHEL-based: Add Docker repository for containerd.io
         if [[ ! -f /etc/yum.repos.d/docker-ce.repo ]]; then
             case "${ID}" in
-                amzn)
-                    # Amazon Linux uses Fedora packages (Docker doesn't provide AL packages)
-                    sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
-                        https://download.docker.com/linux/fedora/docker-ce.repo
-                    # Replace $releasever with mapped Fedora version from common.go
-                    sudo sed -i "s/\\\$releasever/${HOLODECK_AMZN_FEDORA_VERSION}/g" /etc/yum.repos.d/docker-ce.repo
-                    holodeck_log "INFO" "$COMPONENT" "Using Fedora ${HOLODECK_AMZN_FEDORA_VERSION} repo for Amazon Linux"
-                    ;;
                 fedora)
                     sudo curl -fsSL -o /etc/yum.repos.d/docker-ce.repo \
                         https://download.docker.com/linux/fedora/docker-ce.repo
@@ -164,9 +163,21 @@ sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/c
 # containerd 1.7.x defaults to pause:3.8, but Kubernetes 1.33+ expects pause:3.10.
 sudo sed -i 's|sandbox_image = .*|sandbox_image = "registry.k8s.io/pause:3.10"|g' /etc/containerd/config.toml
 
-# Ensure CNI paths are configured correctly
-sudo sed -i 's|conf_dir = .*|conf_dir = "/etc/cni/net.d"|g' /etc/containerd/config.toml
-sudo sed -i 's|bin_dir = .*|bin_dir = "/opt/cni/bin"|g' /etc/containerd/config.toml
+# Ensure CNI paths are configured correctly in the CRI plugin only.
+# Note: We must NOT use a blanket bin_dir replacement because containerd 2.x
+# configs include an image-verifier plugin with its own bin_dir setting.
+sudo sed -i '/\[plugins.*cri.*\.cni\]/,/^\[/{s|conf_dir = .*|conf_dir = "/etc/cni/net.d"|; s|bin_dir = .*|bin_dir = "/opt/cni/bin"|}' /etc/containerd/config.toml
+
+# Redirect the image-verifier bindir plugin to an empty directory if present.
+# AL2023 native containerd (2.x) ships with this plugin pointing at /opt/cni/bin,
+# which causes it to execute CNI plugin binaries (e.g. calico) as image verifiers,
+# blocking image pulls with exit code 2. We can't disable it (CRI depends on it),
+# so we redirect it to an empty directory instead.
+if grep -q 'io.containerd.image-verifier.v1.bindir' /etc/containerd/config.toml 2>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Redirecting containerd image-verifier to empty directory"
+    sudo mkdir -p /etc/containerd/image-verifiers
+    sudo sed -i '/io.containerd.image-verifier.v1.bindir/,/max_verifiers/{s|bin_dir = .*|bin_dir = "/etc/containerd/image-verifiers"|}' /etc/containerd/config.toml
+fi
 
 # Restart containerd
 sudo systemctl restart containerd
@@ -316,9 +327,14 @@ containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
 # Update config for systemd cgroup
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
 
-# Ensure CNI paths are configured correctly
-sudo sed -i 's|conf_dir = .*|conf_dir = "/etc/cni/net.d"|g' /etc/containerd/config.toml
-sudo sed -i 's|bin_dir = .*|bin_dir = "/opt/cni/bin"|g' /etc/containerd/config.toml
+# Ensure CNI paths are configured correctly in the CRI plugin only
+sudo sed -i '/\[plugins.*cri.*\.cni\]/,/^\[/{s|conf_dir = .*|conf_dir = "/etc/cni/net.d"|; s|bin_dir = .*|bin_dir = "/opt/cni/bin"|}' /etc/containerd/config.toml
+
+# Disable the image-verifier bindir plugin if present (containerd 2.x feature)
+if grep -q 'io.containerd.image-verifier.v1.bindir' /etc/containerd/config.toml 2>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Disabling containerd image-verifier bindir plugin"
+    sudo sed -i 's/disabled_plugins = \[\]/disabled_plugins = ["io.containerd.image-verifier.v1.bindir"]/' /etc/containerd/config.toml
+fi
 
 # Create containerd service (idempotent)
 if [[ ! -f /etc/systemd/system/containerd.service ]]; then
@@ -480,8 +496,12 @@ fi
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
-sudo sed -i 's|conf_dir = .*|conf_dir = "/etc/cni/net.d"|g' /etc/containerd/config.toml
-sudo sed -i 's|bin_dir = .*|bin_dir = "/opt/cni/bin"|g' /etc/containerd/config.toml
+sudo sed -i '/\[plugins.*cri.*\.cni\]/,/^\[/{s|conf_dir = .*|conf_dir = "/etc/cni/net.d"|; s|bin_dir = .*|bin_dir = "/opt/cni/bin"|}' /etc/containerd/config.toml
+
+# Disable the image-verifier bindir plugin if present (containerd 2.x feature)
+if grep -q 'io.containerd.image-verifier.v1.bindir' /etc/containerd/config.toml 2>/dev/null; then
+    sudo sed -i 's/disabled_plugins = \[\]/disabled_plugins = ["io.containerd.image-verifier.v1.bindir"]/' /etc/containerd/config.toml
+fi
 
 # Create systemd service
 if [[ ! -f /etc/systemd/system/containerd.service ]]; then
@@ -640,8 +660,12 @@ fi
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
-sudo sed -i 's|conf_dir = .*|conf_dir = "/etc/cni/net.d"|g' /etc/containerd/config.toml
-sudo sed -i 's|bin_dir = .*|bin_dir = "/opt/cni/bin"|g' /etc/containerd/config.toml
+sudo sed -i '/\[plugins.*cri.*\.cni\]/,/^\[/{s|conf_dir = .*|conf_dir = "/etc/cni/net.d"|; s|bin_dir = .*|bin_dir = "/opt/cni/bin"|}' /etc/containerd/config.toml
+
+# Disable the image-verifier bindir plugin if present (containerd 2.x feature)
+if grep -q 'io.containerd.image-verifier.v1.bindir' /etc/containerd/config.toml 2>/dev/null; then
+    sudo sed -i 's/disabled_plugins = \[\]/disabled_plugins = ["io.containerd.image-verifier.v1.bindir"]/' /etc/containerd/config.toml
+fi
 
 if [[ ! -f /etc/systemd/system/containerd.service ]]; then
     cat <<EOF | sudo tee /etc/systemd/system/containerd.service

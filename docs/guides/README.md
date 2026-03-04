@@ -20,6 +20,8 @@ This section is for in-depth guides and tutorials related to Holodeck.
     troubleshooting, and best practices.
 - [Multi-Node Clusters](multinode-clusters.md): Deploy Kubernetes clusters with
     multiple control-plane and worker nodes, including HA configuration.
+- [RPM Distribution Guide](rpm-distributions.md): Setup and configuration for
+    Rocky Linux 9 and Amazon Linux 2023, including RPM-specific considerations.
 
 ## Contributing
 

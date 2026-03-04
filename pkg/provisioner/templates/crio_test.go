@@ -164,8 +164,23 @@ func TestCriO_Execute_PackageTemplate_OSFamilyBranching(t *testing.T) {
 		"Package template must branch on HOLODECK_OS_FAMILY")
 	assert.Contains(t, out, "debian)",
 		"Package template must handle debian OS family")
-	assert.Contains(t, out, "amazon|rhel)",
-		"Package template must handle amazon and rhel OS families")
+	assert.Contains(t, out, "amazon)",
+		"Package template must handle amazon OS family separately")
+	assert.Contains(t, out, "rhel)",
+		"Package template must handle rhel OS family")
+
+	// AL2023: opensuse CRI-O package bundles its own runtimes at /usr/libexec/crio/
+	assert.Contains(t, out, "pkg_install cri-o\n",
+		"Amazon Linux must install only cri-o (bundled runtimes)")
+	// AL2023 needs policy.json at /etc/crio/ (where 10-crio.conf expects it)
+	assert.Contains(t, out, "/etc/crio/policy.json",
+		"Amazon Linux must create policy.json for CRI-O")
+	assert.Contains(t, out, "/etc/containers/registries.conf",
+		"Amazon Linux must create registries.conf")
+
+	// RHEL uses crun + containers-common
+	assert.Contains(t, out, "pkg_install cri-o crun containers-common",
+		"RHEL must install crun and containers-common")
 
 	// Must contain unsupported OS family error
 	assert.Contains(t, out, "Unsupported OS family",

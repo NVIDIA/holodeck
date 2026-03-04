@@ -17,6 +17,7 @@ package templates
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -163,19 +164,13 @@ func TestDocker_Execute_PackageSource_OSFamilyBranching(t *testing.T) {
 	assert.Contains(t, out, "download.docker.com/linux/ubuntu",
 		"debian branch must use Docker Ubuntu repo")
 
-	// RPM path: Docker repo setup
-	assert.Contains(t, out, "amazon|rhel)",
-		"template must have amazon|rhel case branch")
+	// Amazon Linux: native docker package (no Docker CE repo — glibc incompatibility)
+	assert.Contains(t, out, "Amazon Linux native docker package",
+		"Amazon Linux must use native docker package")
+
+	// RHEL-based: Docker CE repo setup
 	assert.Contains(t, out, "/etc/yum.repos.d/docker-ce.repo",
-		"RPM branch must set up docker-ce.repo")
-
-	// Amazon Linux: Fedora repo mapping
-	assert.Contains(t, out, "HOLODECK_AMZN_FEDORA_VERSION",
-		"RPM branch must use HOLODECK_AMZN_FEDORA_VERSION for Amazon Linux")
-	assert.Contains(t, out, "download.docker.com/linux/fedora/docker-ce.repo",
-		"Amazon Linux must use Fedora Docker repo")
-
-	// Rocky/RHEL/CentOS: CentOS repo
+		"RHEL branch must set up docker-ce.repo")
 	assert.Contains(t, out, "download.docker.com/linux/centos/docker-ce.repo",
 		"RHEL-family must use CentOS Docker repo")
 
@@ -226,6 +221,44 @@ func TestDocker_Execute_PackageSource_SourcesOsRelease(t *testing.T) {
 	// Must source /etc/os-release for ${ID} variable used in RPM case
 	assert.Contains(t, out, ". /etc/os-release",
 		"template must source /etc/os-release for OS detection variables")
+}
+
+func TestDocker_Execute_CriDockerdAlwaysPresent(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Version: "latest",
+			},
+		},
+	}
+	d, err := NewDocker(env)
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	err = d.Execute(&buf, env)
+	require.NoError(t, err)
+	out := buf.String()
+
+	// The template must NOT use 'exit 0' in the early-installed check.
+	// Using exit 0 skips cri-dockerd installation when Docker is preinstalled
+	// (e.g., Amazon Linux 2023 ships Docker by default).
+	if strings.Contains(out, "holodeck_mark_installed \"$COMPONENT\" \"$INSTALLED_VERSION\"\n                exit 0") {
+		t.Error("template must not exit 0 after marking Docker as installed — " +
+			"this skips cri-dockerd installation on AMIs with preinstalled Docker")
+	}
+
+	// cri-dockerd must be present regardless of early-exit path
+	if !strings.Contains(out, "CRI_DOCKERD_VERSION=") {
+		t.Error("template output missing cri-dockerd version — " +
+			"cri-dockerd installation must not be gated behind Docker installation")
+	}
+	if !strings.Contains(out, "cri-docker.service") {
+		t.Error("template output missing cri-docker.service — " +
+			"cri-dockerd systemd unit must always be configured")
+	}
+	if !strings.Contains(out, "cri-docker.socket") {
+		t.Error("template output missing cri-docker.socket — " +
+			"cri-dockerd socket must always be configured")
+	}
 }
 
 func TestDocker_Execute_GitSource(t *testing.T) {

@@ -117,9 +117,42 @@ holodeck_progress "$COMPONENT" 3 4 "Installing CRI-O"
 holodeck_retry 3 "$COMPONENT" pkg_update
 
 # The opensuse CRI-O package does not pull OCI runtime dependencies on RHEL-family.
-# Install crun (OCI runtime) and containers-common (registry/storage config) explicitly.
+# Install OCI runtime and registry/storage config explicitly.
 case "${HOLODECK_OS_FAMILY}" in
-    amazon|rhel)
+    amazon)
+        # AL2023 doesn't have crun or containers-common in its repos.
+        # The opensuse CRI-O package bundles its own runtimes (runc, crun, conmon)
+        # at /usr/libexec/crio/, so we only need CRI-O itself.
+        holodeck_retry 3 "$COMPONENT" pkg_install cri-o
+
+        # The opensuse CRI-O package's 10-crio.conf references /etc/crio/policy.json
+        # and containers-common (which provides it) is not available on AL2023.
+        if [[ ! -f /etc/crio/policy.json ]]; then
+            sudo mkdir -p /etc/crio
+            cat <<'POLICY' | sudo tee /etc/crio/policy.json > /dev/null
+{
+    "default": [
+        {
+            "type": "insecureAcceptAnything"
+        }
+    ],
+    "transports": {
+        "docker-daemon": {
+            "": [{"type":"insecureAcceptAnything"}]
+        }
+    }
+}
+POLICY
+        fi
+        # CRI-O also needs registries.conf for unqualified image lookups
+        if [[ ! -f /etc/containers/registries.conf ]]; then
+            sudo mkdir -p /etc/containers
+            cat <<'REGISTRIES' | sudo tee /etc/containers/registries.conf > /dev/null
+unqualified-search-registries = ["docker.io"]
+REGISTRIES
+        fi
+        ;;
+    rhel)
         holodeck_retry 3 "$COMPONENT" pkg_install cri-o crun containers-common
         ;;
     *)
@@ -130,7 +163,18 @@ esac
 # Start and enable Service
 sudo systemctl daemon-reload
 sudo systemctl enable crio.service
-sudo systemctl start crio.service
+if ! sudo systemctl start crio.service; then
+    holodeck_log "ERROR" "$COMPONENT" "CRI-O failed to start, capturing diagnostics..."
+    sudo systemctl status crio.service --no-pager -l 2>&1 || true
+    sudo journalctl -u crio --no-pager -n 50 2>&1 || true
+    crio --version 2>&1 || true
+    ls -la /usr/bin/runc /usr/bin/crun /usr/bin/conmon 2>&1 || true
+    cat /etc/crio/crio.conf.d/*.conf 2>&1 || true
+    cat /etc/containers/policy.json 2>&1 || true
+    holodeck_error 11 "$COMPONENT" \
+        "CRI-O service failed to start" \
+        "Check diagnostics above for details"
+fi
 
 holodeck_progress "$COMPONENT" 4 4 "Verifying installation"
 

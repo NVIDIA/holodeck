@@ -1237,3 +1237,112 @@ func TestResolveOSToAMI_InfersArchFromInstanceType(t *testing.T) {
 	assert.Equal(t, "ami-arm64-inferred", *p.Spec.Image.ImageId,
 		"Should resolve arm64 AMI when architecture inferred from instance type")
 }
+
+func TestDescribeImageRootDevice(t *testing.T) {
+	tests := []struct {
+		name       string
+		imageID    string
+		setupMock  func(*MockEC2Client)
+		wantDevice string
+		wantErr    bool
+	}{
+		{
+			name:    "Ubuntu AMI returns /dev/sda1",
+			imageID: "ami-ubuntu-123",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:        aws.String("ami-ubuntu-123"),
+								RootDeviceName: aws.String("/dev/sda1"),
+							},
+						},
+					}, nil
+				}
+			},
+			wantDevice: "/dev/sda1",
+		},
+		{
+			name:    "Amazon Linux 2023 AMI returns /dev/xvda",
+			imageID: "ami-al2023-456",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:        aws.String("ami-al2023-456"),
+								RootDeviceName: aws.String("/dev/xvda"),
+							},
+						},
+					}, nil
+				}
+			},
+			wantDevice: "/dev/xvda",
+		},
+		{
+			name:    "empty root device falls back to /dev/sda1",
+			imageID: "ami-no-root-789",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{
+						Images: []types.Image{
+							{
+								ImageId:        aws.String("ami-no-root-789"),
+								RootDeviceName: nil,
+							},
+						},
+					}, nil
+				}
+			},
+			wantDevice: "/dev/sda1",
+		},
+		{
+			name:    "image not found returns error",
+			imageID: "ami-missing-000",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return &ec2.DescribeImagesOutput{Images: []types.Image{}}, nil
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name:    "DescribeImages API error returns error",
+			imageID: "ami-error-111",
+			setupMock: func(m *MockEC2Client) {
+				m.DescribeImagesFunc = func(ctx context.Context,
+					params *ec2.DescribeImagesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
+					return nil, fmt.Errorf("mock API error")
+				}
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ec2Mock := &MockEC2Client{}
+			tt.setupMock(ec2Mock)
+
+			p := &Provider{ec2: ec2Mock}
+
+			device, err := p.describeImageRootDevice(tt.imageID)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantDevice, device)
+		})
+	}
+}

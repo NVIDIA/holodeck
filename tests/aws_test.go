@@ -224,32 +224,42 @@ var _ = DescribeTable("AWS Environment E2E",
 		name:        "RPM Default Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_rpm.yml"),
 		description: "Tests RPM-based distro (Rocky 9) with Docker, full GPU stack, and Kubernetes",
-	}, Label("default", "rpm")),
+	}, Label("default", "rpm", "rpm-rocky")),
 	Entry("RPM Rocky 9 Containerd", testConfig{
 		name:        "RPM Rocky 9 Containerd",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_rocky9_containerd.yml"),
 		description: "Tests Rocky 9 with containerd runtime",
-	}, Label("rpm", "post-merge")),
+	}, Label("rpm", "rpm-rocky", "post-merge")),
 	Entry("RPM Rocky 9 CRI-O", testConfig{
 		name:        "RPM Rocky 9 CRI-O",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_rocky9_crio.yml"),
 		description: "Tests Rocky 9 with CRI-O runtime",
-	}, Label("rpm", "post-merge")),
+	}, Label("rpm", "rpm-rocky", "post-merge")),
 	Entry("RPM Amazon Linux 2023 Docker", testConfig{
 		name:        "RPM AL2023 Docker",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_docker.yml"),
 		description: "Tests Amazon Linux 2023 with Docker runtime",
-	}, Label("rpm", "post-merge")),
+	}, Label("rpm", "rpm-al2023", "post-merge")),
 	Entry("RPM Amazon Linux 2023 Containerd", testConfig{
 		name:        "RPM AL2023 Containerd",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_containerd.yml"),
 		description: "Tests Amazon Linux 2023 with containerd runtime",
-	}, Label("rpm", "post-merge")),
+	}, Label("rpm", "rpm-al2023", "post-merge")),
 	Entry("RPM Amazon Linux 2023 CRI-O", testConfig{
 		name:        "RPM AL2023 CRI-O",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_crio.yml"),
 		description: "Tests Amazon Linux 2023 with CRI-O runtime",
-	}, Label("rpm", "post-merge")),
+	}, Label("rpm", "rpm-al2023", "post-merge")),
+	Entry("RPM Fedora 42 Containerd", testConfig{
+		name:        "RPM Fedora 42 Containerd",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_fedora42_containerd.yml"),
+		description: "Tests Fedora 42 with containerd runtime",
+	}, Label("rpm", "rpm-fedora", "post-merge")),
+	Entry("RPM Fedora 42 CRI-O", testConfig{
+		name:        "RPM Fedora 42 CRI-O",
+		filePath:    filepath.Join(packagePath, "data", "test_rpm_fedora42_crio.yml"),
+		description: "Tests Fedora 42 with CRI-O runtime",
+	}, Label("rpm", "rpm-fedora", "post-merge")),
 )
 
 // Note: To run tests in parallel, use: ginkgo -p or --procs=N

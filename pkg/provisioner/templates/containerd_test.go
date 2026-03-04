@@ -185,12 +185,15 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	assert.Contains(t, out, "Installing containerd 1.7.26 using package repository")
 	assert.Contains(t, out, "1.7.26")
 	assert.Contains(t, out, "download.docker.com")
-	assert.Contains(t, out, "HOLODECK_AMZN_FEDORA_VERSION")
-	assert.NotContains(t, out, `'s/\$releasever/39/g'`)
+	assert.Contains(t, out, "Amazon Linux repository")
 	assert.Contains(t, out, `SystemdCgroup \= true`)
 	assert.Contains(t, out, "containerd config default")
 	assert.Contains(t, out, `conf_dir = "/etc/cni/net.d"`)
 	assert.Contains(t, out, `bin_dir = "/opt/cni/bin"`)
+	assert.Contains(t, out, "io.containerd.image-verifier.v1.bindir",
+		"must redirect image-verifier bindir plugin to empty directory")
+	assert.Contains(t, out, "/etc/containerd/image-verifiers",
+		"image-verifier must point to empty directory, not /opt/cni/bin")
 	assert.Contains(t, out, "holodeck_verify_containerd")
 	assert.Contains(t, out, "holodeck_mark_installed")
 }
