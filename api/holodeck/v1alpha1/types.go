@@ -37,6 +37,10 @@ type EnvironmentSpec struct {
 	NVIDIAContainerToolkit NVIDIAContainerToolkit `json:"nvidiaContainerToolkit"`
 	// +optional
 	Kubernetes Kubernetes `json:"kubernetes"`
+
+	// CustomTemplates defines user-provided scripts to execute during provisioning.
+	// +optional
+	CustomTemplates []CustomTemplate `json:"customTemplates,omitempty"`
 }
 
 type Instance struct {
@@ -194,4 +198,62 @@ type NVIDIAContainerToolkit struct {
 	// If not set the latest stable version will be used
 	// +optional
 	Version string `json:"version"`
+}
+
+// TemplatePhase determines when a custom template is executed during provisioning.
+// +kubebuilder:validation:Enum=pre-install;post-runtime;post-toolkit;post-kubernetes;post-install
+type TemplatePhase string
+
+const (
+	// TemplatePhasePreInstall runs before any Holodeck components
+	TemplatePhasePreInstall TemplatePhase = "pre-install"
+	// TemplatePhasePostRuntime runs after container runtime installation
+	TemplatePhasePostRuntime TemplatePhase = "post-runtime"
+	// TemplatePhasePostToolkit runs after NVIDIA Container Toolkit installation
+	TemplatePhasePostToolkit TemplatePhase = "post-toolkit"
+	// TemplatePhasePostKubernetes runs after Kubernetes is ready
+	TemplatePhasePostKubernetes TemplatePhase = "post-kubernetes"
+	// TemplatePhasePostInstall runs after all Holodeck components (default)
+	TemplatePhasePostInstall TemplatePhase = "post-install"
+)
+
+// CustomTemplate defines a user-provided script to execute during provisioning.
+type CustomTemplate struct {
+	// Name is a human-readable identifier for the template.
+	// +required
+	Name string `json:"name"`
+
+	// Phase determines when the template is executed.
+	// +kubebuilder:default=post-install
+	// +optional
+	Phase TemplatePhase `json:"phase,omitempty"`
+
+	// Inline contains the script content directly.
+	// +optional
+	Inline string `json:"inline,omitempty"`
+
+	// File is a path to a local script file.
+	// +optional
+	File string `json:"file,omitempty"`
+
+	// URL is a remote HTTPS location to fetch the script from.
+	// +optional
+	URL string `json:"url,omitempty"`
+
+	// Checksum is an optional SHA256 checksum for verification.
+	// Format: "sha256:<hex-digest>"
+	// +optional
+	Checksum string `json:"checksum,omitempty"`
+
+	// Timeout in seconds for script execution (default: 600).
+	// +optional
+	Timeout int `json:"timeout,omitempty"`
+
+	// ContinueOnError allows provisioning to continue if this script fails.
+	// +optional
+	ContinueOnError bool `json:"continueOnError,omitempty"`
+
+	// Env are environment variables to set for the script.
+	// +optional
+	Env map[string]string `json:"env,omitempty"`
 }
