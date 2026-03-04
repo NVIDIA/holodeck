@@ -52,6 +52,10 @@ type AssociateRouteTableInput struct {
 	// The ID of the internet gateway or virtual private gateway.
 	GatewayId *string
 
+	// The ID of a public IPv4 pool. A public IPv4 pool is a pool of IPv4 addresses
+	// that you've brought to Amazon Web Services with BYOIP.
+	PublicIpv4Pool *string
+
 	// The ID of the subnet.
 	SubnetId *string
 
@@ -116,6 +120,9 @@ func (c *Client) addOperationAssociateRouteTableMiddlewares(stack *middleware.St
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -132,6 +139,9 @@ func (c *Client) addOperationAssociateRouteTableMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpAssociateRouteTableValidationMiddleware(stack); err != nil {
@@ -153,6 +163,15 @@ func (c *Client) addOperationAssociateRouteTableMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

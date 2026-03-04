@@ -1,0 +1,33 @@
+# Example: Track containerd main branch at provision time
+#
+# This configuration builds containerd from the latest commit on a tracked
+# branch. Each provisioning resolves the branch to its current HEAD commit.
+#
+# Useful for CI/CD pipelines testing compatibility with upstream development.
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: containerd-latest-test
+  description: "Test environment tracking containerd main branch"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+    source: latest
+    latest:
+      track: main  # Branch to track at provision time
+      # repo: https://github.com/containerd/containerd.git  # optional
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true

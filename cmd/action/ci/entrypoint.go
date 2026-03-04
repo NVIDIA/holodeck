@@ -18,7 +18,6 @@ package ci
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -26,6 +25,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
+	"github.com/NVIDIA/holodeck/pkg/utils"
 )
 
 func entrypoint(log *logger.FunLogger) error {
@@ -38,69 +38,25 @@ func entrypoint(log *logger.FunLogger) error {
 	}
 	configFile = "/github/workspace/" + configFile
 
-	// Get INPUT_AWS_SSH_KEY and write it to a file
-	sshKey := os.Getenv("INPUT_AWS_SSH_KEY")
-	if sshKey == "" {
-		log.Error(fmt.Errorf("ssh key not provided"))
-		os.Exit(1)
-	}
-
-	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
-	// to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-	accessKeyID := os.Getenv("INPUT_AWS_ACCESS_KEY_ID")
-	if accessKeyID == "" {
-		log.Error(fmt.Errorf("aws access key id not provided"))
-		os.Exit(1)
-	}
-
-	secretAccessKey := os.Getenv("INPUT_AWS_SECRET_ACCESS_KEY")
-	if secretAccessKey == "" {
-		log.Error(fmt.Errorf("aws secret access key not provided"))
-		os.Exit(1)
-	}
-
-	os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
-	os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
-
-	// Create cachedir directory
-	if _, err := os.Stat(cachedir); os.IsNotExist(err) {
-		err := os.Mkdir(cachedir, 0755)
-		if err != nil {
-			log.Error(fmt.Errorf("error creating cache directory: %s", err))
-			os.Exit(1)
-		}
-	}
-
-	err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600)
-	if err != nil {
-		log.Error(fmt.Errorf("error writing ssh key to file: %s", err))
-		os.Exit(1)
-	}
-
 	// Read the config file
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
 	if err != nil {
-		return fmt.Errorf("error reading config file: %s", err)
+		return fmt.Errorf("error reading config file: %w", err)
 	}
-
-	// Set auth.PrivateKey
-	cfg.Spec.Auth.PrivateKey = sshKeyFile
-	cfg.Spec.Auth.Username = username
-
 	// If no containerruntime is specified, default to none
 	if cfg.Spec.ContainerRuntime.Name == "" {
 		cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
 	}
 
-	// Set env name
+	// Set default values for the environment
 	setCfgName(&cfg)
 
-	client, err := aws.New(log, cfg, cacheFile)
+	provider, err := newProvider(log, &cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create provider: %w", err)
 	}
 
-	err = client.Create()
+	err = provider.Create()
 	if err != nil {
 		return err
 	}
@@ -108,85 +64,43 @@ func entrypoint(log *logger.FunLogger) error {
 	// Read cache after creating the environment
 	cache, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 	if err != nil {
-		return fmt.Errorf("failed to read cache file: %v", err)
+		return fmt.Errorf("failed to read cache file: %w", err)
 	}
 
+	// Get the host url
 	var hostUrl string
-	for _, p := range cache.Status.Properties {
-		if p.Name == aws.PublicDnsName {
-			hostUrl = p.Value
-			break
+	if cfg.Spec.Provider == v1alpha1.ProviderAWS {
+		if err := getSSHKeyFile(log, "AWS_SSH_KEY"); err != nil {
+			return err
+		}
+		cfg.Spec.PrivateKey = sshKeyFile
+		cfg.Spec.Username = "ubuntu"
+		for _, p := range cache.Status.Properties {
+			if p.Name == aws.PublicDnsName {
+				hostUrl = p.Value
+				break
+			}
 		}
 	}
 
-	p, err := provisioner.New(log, sshKeyFile, username, hostUrl)
+	// Run the provisioner
+	p, err := provisioner.New(log, sshKeyFile, cfg.Spec.Username, hostUrl)
 	if err != nil {
 		return err
 	}
+	defer p.Client.Close() // nolint: errcheck
 
 	log.Info("Provisioning \u2699")
-	if err = p.Run(cfg); err != nil {
-		return fmt.Errorf("failed to run provisioner: %v", err)
+	if _, err = p.Run(cfg); err != nil {
+		return fmt.Errorf("failed to run provisioner: %w", err)
 	}
 
 	if cfg.Spec.Kubernetes.Install {
-		err = getKubeConfig(log, &cfg, hostUrl)
+		err = utils.GetKubeConfig(log, &cfg, hostUrl, kubeconfig)
 		if err != nil {
-			return fmt.Errorf("failed to get kubeconfig: %v", err)
+			return fmt.Errorf("failed to get kubeconfig: %w", err)
 		}
 	}
-
-	return nil
-}
-
-// getKubeConfig downloads the kubeconfig file from the remote host
-func getKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl string) error {
-	remoteFilePath := "/home/ubuntu/.kube/config"
-
-	// Create a new ssh session
-	p, err := provisioner.New(log, cfg.Spec.Auth.PrivateKey, cfg.Spec.Auth.Username, hostUrl)
-	if err != nil {
-		return err
-	}
-
-	session, err := p.Client.NewSession()
-	if err != nil {
-		return fmt.Errorf("error creating session: %v", err)
-	}
-	defer session.Close()
-
-	// Set up a pipe to receive the remote file content
-	remoteFile, err := session.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("error creating remote file pipe: %v", err)
-	}
-
-	// Start the remote command to read the file content
-	err = session.Start(fmt.Sprintf("/usr/bin/cat  %s", remoteFilePath))
-	if err != nil {
-		return fmt.Errorf("error starting remote command: %v", err)
-	}
-
-	// Create a new file on the local system to save the downloaded content
-	localFile, err := os.Create(kubeconfig)
-	if err != nil {
-		return fmt.Errorf("error creating local file: %v", err)
-	}
-	defer localFile.Close()
-
-	// Copy the remote file content to the local file
-	_, err = io.Copy(localFile, remoteFile)
-	if err != nil {
-		return fmt.Errorf("error copying remote file to local: %v", err)
-	}
-
-	// Wait for the remote command to finish
-	err = session.Wait()
-	if err != nil {
-		return fmt.Errorf("error waiting for remote command: %v", err)
-	}
-
-	log.Info(fmt.Sprintf("Kubeconfig saved to %s\n", kubeconfig))
 
 	return nil
 }

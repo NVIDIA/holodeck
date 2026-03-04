@@ -11,7 +11,6 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"time"
 )
 
@@ -27,12 +26,12 @@ import (
 // past 31 days can be viewed.
 //
 // To use this API, you must have the required permissions. For more information,
-// see [Permissions for storing and restoring AMIs using Amazon S3]in the Amazon EC2 User Guide.
+// see [Permissions for storing and restoring AMIs using S3]in the Amazon EC2 User Guide.
 //
-// For more information, see [Store and restore an AMI using Amazon S3] in the Amazon EC2 User Guide.
+// For more information, see [Store and restore an AMI using S3] in the Amazon EC2 User Guide.
 //
-// [Store and restore an AMI using Amazon S3]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ami-store-restore.html
-// [Permissions for storing and restoring AMIs using Amazon S3]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ami-store-restore.html#ami-s3-permissions
+// [Store and restore an AMI using S3]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ami-store-restore.html
+// [Permissions for storing and restoring AMIs using S3]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/work-with-ami-store-restore.html#ami-s3-permissions
 func (c *Client) DescribeStoreImageTasks(ctx context.Context, params *DescribeStoreImageTasksInput, optFns ...func(*Options)) (*DescribeStoreImageTasksOutput, error) {
 	if params == nil {
 		params = &DescribeStoreImageTasksInput{}
@@ -146,6 +145,9 @@ func (c *Client) addOperationDescribeStoreImageTasksMiddlewares(stack *middlewar
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -164,6 +166,9 @@ func (c *Client) addOperationDescribeStoreImageTasksMiddlewares(stack *middlewar
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeStoreImageTasks(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -180,6 +185,15 @@ func (c *Client) addOperationDescribeStoreImageTasksMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -347,29 +361,20 @@ func (w *StoreImageTaskCompleteWaiter) WaitForOutput(ctx context.Context, params
 func storeImageTaskCompleteStateRetryable(ctx context.Context, input *DescribeStoreImageTasksInput, output *DescribeStoreImageTasksOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("StoreImageTaskResults[].StoreTaskState", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
-		expectedValue := "Completed"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(*string)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected *string value, got %T", pathValue)
+		v1 := output.StoreImageTaskResults
+		var v2 []string
+		for _, v := range v1 {
+			v3 := v.StoreTaskState
+			if v3 != nil {
+				v2 = append(v2, *v3)
 			}
-
-			if string(*value) != expectedValue {
+		}
+		expectedValue := "Completed"
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -379,53 +384,54 @@ func storeImageTaskCompleteStateRetryable(ctx context.Context, input *DescribeSt
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("StoreImageTaskResults[].StoreTaskState", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.StoreImageTaskResults
+		var v2 []string
+		for _, v := range v1 {
+			v3 := v.StoreTaskState
+			if v3 != nil {
+				v2 = append(v2, *v3)
+			}
 		}
-
 		expectedValue := "Failed"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v2 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(*string)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected *string value, got %T", pathValue)
-			}
-
-			if string(*value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("StoreImageTaskResults[].StoreTaskState", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.StoreImageTaskResults
+		var v2 []string
+		for _, v := range v1 {
+			v3 := v.StoreTaskState
+			if v3 != nil {
+				v2 = append(v2, *v3)
+			}
 		}
-
 		expectedValue := "InProgress"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v2 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(*string)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected *string value, got %T", pathValue)
-			}
-
-			if string(*value) == expectedValue {
-				return true, nil
-			}
+		if match {
+			return true, nil
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

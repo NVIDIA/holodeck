@@ -1,0 +1,34 @@
+# RPM E2E: Rocky 9 cluster (1 CP + 1 GPU worker)
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-cluster-rpm-rocky9
+  description: "RPM E2E: Rocky 9 cluster with containerd"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: ~/.ssh/cnt-ci.pem
+  cluster:
+    region: us-west-1
+    controlPlane:
+      count: 1
+      instanceType: g4dn.xlarge
+      os: rocky-9
+      dedicated: false
+      rootVolumeSizeGB: 100
+    workers:
+      count: 1
+      instanceType: g4dn.xlarge
+      os: rocky-9
+      rootVolumeSizeGB: 100
+  nvidiaDriver:
+    install: true
+  nvidiaContainerToolkit:
+    install: true
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm

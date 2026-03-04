@@ -1,0 +1,17 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-aws-e2e-test-kernel
+  description: "end-to-end test infrastructure with kernel features"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /home/runner/.cache/key
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    image:
+      architecture: amd64
+  kernel:
+    version: 6.8.0-1020-aws

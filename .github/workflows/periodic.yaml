@@ -1,0 +1,52 @@
+name: Periodic actions
+
+# This workflow performs periodic cleanup of AWS resources
+# It uses the holodeck cleanup command to remove VPCs tagged with Project=holodeck and Environment=cicd
+
+on:
+  schedule:
+    - cron: '0 0,12 * * *' # Runs daily at 12AM and 12PM
+
+jobs:
+  cleanup:
+    runs-on: linux-amd64-cpu4
+    strategy:
+      matrix:
+        aws-region: [us-west-1, us-east-1]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ matrix.aws-region }}
+
+      - name: Identify resources for deletion
+        id: identify-resources
+        run: |
+          # Find VPCs with tags Project=holodeck and Environment=cicd
+          vpcs=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:Project,Values=holodeck" "Name=tag:Environment,Values=cicd" \
+            --query "Vpcs[].VpcId" \
+            --output text | tr -d '\r' | tr '\n' ' ')
+          echo "Found VPCs: $vpcs"
+          echo "AWS_VPC_IDS=$vpcs" >> $GITHUB_OUTPUT
+
+      - name: Clean up VPCs
+        if: steps.identify-resources.outputs.AWS_VPC_IDS != ''
+        uses: NVIDIA/holodeck@v0.2.18
+        with:
+          action: cleanup
+          vpc_ids: ${{ steps.identify-resources.outputs.AWS_VPC_IDS }}
+          aws_region: ${{ matrix.aws-region }}
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          force_cleanup: 'true'
+
+      - name: Post cleanup
+        run: |
+          echo "Cleanup completed for region ${{ matrix.aws-region }}"

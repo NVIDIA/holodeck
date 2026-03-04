@@ -22,18 +22,41 @@ runs:
   post-entrypoint: 'holodeck'
 
 inputs:
+  action:
+    description: 'Action to perform: create or cleanup'
+    required: false
+    default: 'create'
+  vpc_ids:
+    description: 'Space-separated VPC IDs to clean up (cleanup mode only)'
+    required: false
+  aws_region:
+    description: 'AWS region for cleanup operations'
+    required: false
+  force_cleanup:
+    description: 'Force cleanup without checking GitHub job status'
+    required: false
+    default: 'false'
   aws_access_key_id:
     description: 'AWS Access Key ID'
-    required: true
+    required: false
   aws_secret_access_key:
     description: 'AWS Secret Access Key'
-    required: true
+    required: false
   aws_ssh_key:
     description: 'AWS SSH Key'
     required: false
+  vsphere_ssh_key:
+    description: 'vSphere SSH Key'
+    required: false
+  vsphere_username:
+    description: 'vSphere Username'
+    required: false
+  vsphere_password:
+    description: 'vSphere Password'
+    required: false
   holodeck_config:
     description: 'Holodeck configuration file'
-    required: true
+    required: false
 
 branding:
   icon: 'cloud'

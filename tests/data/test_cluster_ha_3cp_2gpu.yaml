@@ -1,0 +1,42 @@
+# Test Case 3: HA cluster with 3 control-plane + 2 GPU workers
+# Tests HA etcd quorum with dedicated control-plane nodes
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-cluster-ha
+  description: "E2E test: HA cluster (3 CP + 2 GPU workers)"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: ~/.ssh/cnt-ci.pem
+
+  cluster:
+    region: us-west-1
+
+    controlPlane:
+      count: 3                   # HA requires odd number >= 3
+      instanceType: m5.xlarge    # CPU-only for control-plane
+      dedicated: true            # Dedicated control-plane nodes
+      rootVolumeSizeGB: 100
+
+    workers:
+      count: 2
+      instanceType: g4dn.xlarge  # GPU workers
+      rootVolumeSizeGB: 100
+
+    highAvailability:
+      enabled: true
+      etcdTopology: stacked      # etcd runs on control-plane nodes
+      loadBalancerType: nlb      # Network Load Balancer for API server
+
+  nvidiaDriver:
+    install: true
+  nvidiaContainerToolkit:
+    install: true
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm

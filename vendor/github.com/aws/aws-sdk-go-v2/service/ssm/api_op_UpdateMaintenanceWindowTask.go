@@ -158,10 +158,10 @@ type UpdateMaintenanceWindowTaskInput struct {
 	// However, for an improved security posture, we strongly recommend creating a
 	// custom policy and custom service role for running your maintenance window tasks.
 	// The policy can be crafted to provide only the permissions needed for your
-	// particular maintenance window tasks. For more information, see [Setting up maintenance windows]in the in the
+	// particular maintenance window tasks. For more information, see [Setting up Maintenance Windows]in the in the
 	// Amazon Web Services Systems Manager User Guide.
 	//
-	// [Setting up maintenance windows]: https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-maintenance-permissions.html
+	// [Setting up Maintenance Windows]: https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-maintenance-permissions.html
 	ServiceRoleArn *string
 
 	// The targets (either managed nodes or tags) to modify. Managed nodes are
@@ -244,9 +244,19 @@ type UpdateMaintenanceWindowTaskOutput struct {
 	// The updated priority value.
 	Priority int32
 
-	// The Amazon Resource Name (ARN) of the Identity and Access Management (IAM)
-	// service role to use to publish Amazon Simple Notification Service (Amazon SNS)
-	// notifications for maintenance window Run Command tasks.
+	// The Amazon Resource Name (ARN) of the IAM service role for Amazon Web Services
+	// Systems Manager to assume when running a maintenance window task. If you do not
+	// specify a service role ARN, Systems Manager uses a service-linked role in your
+	// account. If no appropriate service-linked role for Systems Manager exists in
+	// your account, it is created when you run RegisterTaskWithMaintenanceWindow .
+	//
+	// However, for an improved security posture, we strongly recommend creating a
+	// custom policy and custom service role for running your maintenance window tasks.
+	// The policy can be crafted to provide only the permissions needed for your
+	// particular maintenance window tasks. For more information, see [Setting up Maintenance Windows]in the in the
+	// Amazon Web Services Systems Manager User Guide.
+	//
+	// [Setting up Maintenance Windows]: https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-maintenance-permissions.html
 	ServiceRoleArn *string
 
 	// The updated target values.
@@ -321,6 +331,9 @@ func (c *Client) addOperationUpdateMaintenanceWindowTaskMiddlewares(stack *middl
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -337,6 +350,9 @@ func (c *Client) addOperationUpdateMaintenanceWindowTaskMiddlewares(stack *middl
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateMaintenanceWindowTaskValidationMiddleware(stack); err != nil {
@@ -358,6 +374,15 @@ func (c *Client) addOperationUpdateMaintenanceWindowTaskMiddlewares(stack *middl
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

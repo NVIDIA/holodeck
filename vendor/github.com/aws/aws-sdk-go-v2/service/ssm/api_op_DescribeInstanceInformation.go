@@ -21,9 +21,9 @@ import (
 // all your managed nodes. If you specify a node ID that isn't valid or a node that
 // you don't own, you receive an error.
 //
-// The IamRole field returned for this API operation is the Identity and Access
-// Management (IAM) role assigned to on-premises managed nodes. This operation does
-// not return the IAM role for EC2 instances.
+// The IamRole field returned for this API operation is the role assigned to an
+// Amazon EC2 instance configured with a Systems Manager Quick Setup host
+// management configuration or the role assigned to an on-premises managed node.
 func (c *Client) DescribeInstanceInformation(ctx context.Context, params *DescribeInstanceInformationInput, optFns ...func(*Options)) (*DescribeInstanceInformationOutput, error) {
 	if params == nil {
 		params = &DescribeInstanceInformationInput{}
@@ -125,6 +125,9 @@ func (c *Client) addOperationDescribeInstanceInformationMiddlewares(stack *middl
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -141,6 +144,9 @@ func (c *Client) addOperationDescribeInstanceInformationMiddlewares(stack *middl
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeInstanceInformationValidationMiddleware(stack); err != nil {
@@ -162,6 +168,15 @@ func (c *Client) addOperationDescribeInstanceInformationMiddlewares(stack *middl
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

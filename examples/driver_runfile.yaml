@@ -1,0 +1,35 @@
+# Example: Install NVIDIA driver from a .run file
+#
+# This configuration downloads and installs the driver from an NVIDIA
+# runfile installer. Useful for pre-release drivers or specific builds
+# not available in package repositories.
+#
+# The runfile is installed with --silent --dkms for unattended operation.
+# An optional SHA256 checksum can be provided for integrity verification.
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: driver-runfile-test
+  description: "Test environment with driver from runfile installer"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+    source: runfile
+    runfile:
+      url: https://us.download.nvidia.com/tesla/560.35.03/NVIDIA-Linux-x86_64-560.35.03.run
+      # checksum: "sha256:..."  # optional SHA256 verification

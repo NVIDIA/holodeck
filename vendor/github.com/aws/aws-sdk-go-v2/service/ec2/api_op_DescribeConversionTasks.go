@@ -11,7 +11,6 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"time"
 )
 
@@ -105,6 +104,9 @@ func (c *Client) addOperationDescribeConversionTasksMiddlewares(stack *middlewar
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -123,6 +125,9 @@ func (c *Client) addOperationDescribeConversionTasksMiddlewares(stack *middlewar
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeConversionTasks(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -139,6 +144,15 @@ func (c *Client) addOperationDescribeConversionTasksMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -306,29 +320,18 @@ func (w *ConversionTaskCancelledWaiter) WaitForOutput(ctx context.Context, param
 func conversionTaskCancelledStateRetryable(ctx context.Context, input *DescribeConversionTasksInput, output *DescribeConversionTasksOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("ConversionTasks[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.ConversionTasks
+		var v2 []types.ConversionTaskState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "cancelled"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.ConversionTaskState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.ConversionTaskState value, got %T", pathValue)
-			}
-
-			if string(value) != expectedValue {
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -337,6 +340,9 @@ func conversionTaskCancelledStateRetryable(ctx context.Context, input *DescribeC
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -502,29 +508,18 @@ func (w *ConversionTaskCompletedWaiter) WaitForOutput(ctx context.Context, param
 func conversionTaskCompletedStateRetryable(ctx context.Context, input *DescribeConversionTasksInput, output *DescribeConversionTasksOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("ConversionTasks[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.ConversionTasks
+		var v2 []types.ConversionTaskState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "completed"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.ConversionTaskState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.ConversionTaskState value, got %T", pathValue)
-			}
-
-			if string(value) != expectedValue {
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -534,53 +529,50 @@ func conversionTaskCompletedStateRetryable(ctx context.Context, input *DescribeC
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("ConversionTasks[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.ConversionTasks
+		var v2 []types.ConversionTaskState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "cancelled"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v2 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.ConversionTaskState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.ConversionTaskState value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("ConversionTasks[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.ConversionTasks
+		var v2 []types.ConversionTaskState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "cancelling"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v2 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.ConversionTaskState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.ConversionTaskState value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -746,29 +738,18 @@ func (w *ConversionTaskDeletedWaiter) WaitForOutput(ctx context.Context, params 
 func conversionTaskDeletedStateRetryable(ctx context.Context, input *DescribeConversionTasksInput, output *DescribeConversionTasksOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("ConversionTasks[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.ConversionTasks
+		var v2 []types.ConversionTaskState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "deleted"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.ConversionTaskState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.ConversionTaskState value, got %T", pathValue)
-			}
-
-			if string(value) != expectedValue {
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -777,6 +758,9 @@ func conversionTaskDeletedStateRetryable(ctx context.Context, input *DescribeCon
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

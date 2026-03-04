@@ -1,0 +1,39 @@
+# Example: Install NVIDIA Container Toolkit from a specific git reference
+#
+# This configuration installs CTK from a git tag, commit, or branch.
+# Holodeck first tries to pull pre-built packages from GHCR, and falls
+# back to building from source if unavailable.
+#
+# Supported ref formats:
+#   - Tags: v1.17.3, refs/tags/v1.17.3
+#   - Branches: main, refs/heads/release-1.17
+#   - Commits: abc123def456
+#   - Pull requests: refs/pull/123/head
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: ctk-git-test
+  description: "Test environment with CTK from git reference"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+    source: git
+    git:
+      ref: v1.17.3  # Tag, commit SHA, or branch name
+      # repo: https://github.com/NVIDIA/nvidia-container-toolkit.git  # optional
+    enableCDI: true
+  nvidiaDriver:
+    install: true

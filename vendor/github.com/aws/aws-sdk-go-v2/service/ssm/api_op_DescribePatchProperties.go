@@ -23,6 +23,8 @@ import (
 //
 // AMAZON_LINUX_2 Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
 //
+// AMAZON_LINUX_2023 Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
+//
 // CENTOS Valid properties: PRODUCT | CLASSIFICATION | SEVERITY
 //
 // DEBIAN Valid properties: PRODUCT | PRIORITY
@@ -140,6 +142,9 @@ func (c *Client) addOperationDescribePatchPropertiesMiddlewares(stack *middlewar
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -156,6 +161,9 @@ func (c *Client) addOperationDescribePatchPropertiesMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribePatchPropertiesValidationMiddleware(stack); err != nil {
@@ -177,6 +185,15 @@ func (c *Client) addOperationDescribePatchPropertiesMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

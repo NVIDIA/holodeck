@@ -1,0 +1,33 @@
+# Example: Install NVIDIA Container Toolkit tracking a branch
+#
+# This configuration installs CTK from the latest commit on a tracked branch.
+# Each provisioning will resolve the branch to its current HEAD commit.
+# Useful for CI/CD pipelines that need to test against upstream development.
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: ctk-latest-test
+  description: "Test environment tracking CTK main branch"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+    source: latest
+    latest:
+      track: main  # Branch to track at provision time
+      # repo: https://github.com/NVIDIA/nvidia-container-toolkit.git  # optional
+    enableCDI: true
+  nvidiaDriver:
+    install: true

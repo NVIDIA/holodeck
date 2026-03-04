@@ -42,6 +42,21 @@ type CreateAssociationBatchInput struct {
 	// This member is required.
 	Entries []types.CreateAssociationBatchRequestEntry
 
+	// A role used by association to take actions on your behalf. State Manager will
+	// assume this role and call required APIs when dispatching configurations to
+	// nodes. If not specified, [service-linked role for Systems Manager]will be used by default.
+	//
+	// It is recommended that you define a custom IAM role so that you have full
+	// control of the permissions that State Manager has when taking actions on your
+	// behalf.
+	//
+	// Service-linked role support in State Manager is being phased out. Associations
+	// relying on service-linked role may require updates in the future to continue
+	// functioning properly.
+	//
+	// [service-linked role for Systems Manager]: https://docs.aws.amazon.com/systems-manager/latest/userguide/using-service-linked-roles.html
+	AssociationDispatchAssumeRole *string
+
 	noSmithyDocumentSerde
 }
 
@@ -102,6 +117,9 @@ func (c *Client) addOperationCreateAssociationBatchMiddlewares(stack *middleware
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -118,6 +136,9 @@ func (c *Client) addOperationCreateAssociationBatchMiddlewares(stack *middleware
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateAssociationBatchValidationMiddleware(stack); err != nil {
@@ -139,6 +160,15 @@ func (c *Client) addOperationCreateAssociationBatchMiddlewares(stack *middleware
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

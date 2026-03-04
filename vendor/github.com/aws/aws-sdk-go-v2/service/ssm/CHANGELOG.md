@@ -1,3 +1,326 @@
+# v1.68.2 (2026-03-03)
+
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.68.1 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.68.0 (2026-02-20)
+
+* **Feature**: Add support for AssociationDispatchAssumeRole in AWS SSM State Manager.
+
+# v1.67.8 (2026-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.67.7 (2025-12-09)
+
+* No change notes available for this release.
+
+# v1.67.6 (2025-12-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.67.5 (2025-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.24.0. Notably this version of the library reduces the allocation footprint of the middleware system. We observe a ~10% reduction in allocations per SDK call with this change.
+
+# v1.67.4 (2025-11-25)
+
+* **Bug Fix**: Add error check for endpoint param binding during auth scheme resolution to fix panic reported in #3234
+
+# v1.67.3 (2025-11-19.2)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.67.2 (2025-11-12)
+
+* **Bug Fix**: Further reduce allocation overhead when the metrics system isn't in-use.
+* **Bug Fix**: Reduce allocation overhead when the client doesn't have any HTTP interceptors configured.
+* **Bug Fix**: Remove blank trace spans towards the beginning of the request that added no additional information. This conveys a slight reduction in overall allocations.
+
+# v1.67.1 (2025-11-11)
+
+* **Bug Fix**: Return validation error if input region is not a valid host label.
+
+# v1.67.0 (2025-11-06)
+
+* **Feature**: Provides NoLongerSupportedException error message
+
+# v1.66.4 (2025-11-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.23.2 which should convey some passive reduction of overall allocations, especially when not using the metrics system.
+
+# v1.66.3 (2025-10-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.66.2 (2025-10-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.66.1 (2025-10-22)
+
+* No change notes available for this release.
+
+# v1.66.0 (2025-10-16)
+
+* **Feature**: Update endpoint ruleset parameters casing
+* **Dependency Update**: Bump minimum Go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.65.1 (2025-09-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.65.0 (2025-09-23)
+
+* **Feature**: Added Dualstack support to GetDeployablePatchSnapshotForInstance
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.64.4 (2025-09-10)
+
+* No change notes available for this release.
+
+# v1.64.3 (2025-09-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.64.2 (2025-08-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.64.1 (2025-08-27)
+
+* **Dependency Update**: Update to smithy-go v1.23.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.64.0 (2025-08-26)
+
+* **Feature**: Remove incorrect endpoint tests
+
+# v1.63.2 (2025-08-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.63.1 (2025-08-20)
+
+* **Bug Fix**: Remove unused deserialization code.
+
+# v1.63.0 (2025-08-11)
+
+* **Feature**: Add support for configuring per-service Options via callback on global config.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.62.0 (2025-08-04)
+
+* **Feature**: Support configurable auth scheme preferences in service clients via AWS_AUTH_SCHEME_PREFERENCE in the environment, auth_scheme_preference in the config file, and through in-code settings on LoadDefaultConfig and client constructor methods.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.61.1 (2025-07-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.61.0 (2025-07-28)
+
+* **Feature**: Add support for HTTP interceptors.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.60.2 (2025-07-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.60.1 (2025-07-18)
+
+* **Documentation**: July 2025 doc-only updates for Systems Manager.
+
+# v1.60.0 (2025-06-30)
+
+* **Feature**: Introduces AccessType, a new filter value for the DescribeSessions API.
+
+# v1.59.3 (2025-06-17)
+
+* **Dependency Update**: Update to smithy-go v1.22.4.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.59.2 (2025-06-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.59.1 (2025-06-06)
+
+* No change notes available for this release.
+
+# v1.59.0 (2025-04-29)
+
+* **Feature**: This release adds support for just-In-time node access in AWS Systems Manager. Just-in-time node access enables customers to move towards zero standing privileges by requiring operators to request access and obtain approval before remotely connecting to nodes managed by the SSM Agent.
+
+# v1.58.2 (2025-04-10)
+
+* No change notes available for this release.
+
+# v1.58.1 (2025-04-03)
+
+* No change notes available for this release.
+
+# v1.58.0 (2025-03-24)
+
+* **Feature**: This release adds the AvailableSecurityUpdatesComplianceStatus field to patch baseline operations, as well as the AvailableSecurityUpdateCount and InstancesWithAvailableSecurityUpdates to patch state operations. Applies to Windows Server managed nodes only.
+
+# v1.57.2 (2025-03-04.2)
+
+* **Bug Fix**: Add assurance test for operation order.
+
+# v1.57.1 (2025-02-28)
+
+* **Documentation**: Systems Manager doc-only updates for Feb. 2025.
+
+# v1.57.0 (2025-02-27)
+
+* **Feature**: Track credential providers via User-Agent Feature ids
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.13 (2025-02-18)
+
+* **Bug Fix**: Bump go version to 1.22
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.12 (2025-02-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.11 (2025-02-04)
+
+* No change notes available for this release.
+
+# v1.56.10 (2025-01-31)
+
+* **Dependency Update**: Switch to code-generated waiter matchers, removing the dependency on go-jmespath.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.9 (2025-01-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.8 (2025-01-24)
+
+* **Documentation**: Systems Manager doc-only update for January, 2025.
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.22.2.
+
+# v1.56.7 (2025-01-17)
+
+* **Bug Fix**: Fix bug where credentials weren't refreshed during retry loop.
+
+# v1.56.6 (2025-01-15)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.5 (2025-01-14)
+
+* **Bug Fix**: Fix issue where waiters were not failing on unmatched errors as they should. This may have breaking behavioral changes for users in fringe cases. See [this announcement](https://github.com/aws/aws-sdk-go-v2/discussions/2954) for more information.
+
+# v1.56.4 (2025-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.3 (2025-01-08)
+
+* No change notes available for this release.
+
+# v1.56.2 (2024-12-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.1 (2024-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.0 (2024-11-21)
+
+* **Feature**: Added support for providing high-level overviews of managed nodes and previewing the potential impact of a runbook execution.
+
+# v1.55.6 (2024-11-18)
+
+* **Dependency Update**: Update to smithy-go v1.22.1.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.5 (2024-11-07)
+
+* **Bug Fix**: Adds case-insensitive handling of error message fields in service responses
+
+# v1.55.4 (2024-11-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.3 (2024-10-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.2 (2024-10-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.1 (2024-10-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.0 (2024-10-04)
+
+* **Feature**: Add support for HTTP client metrics.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.4 (2024-10-03)
+
+* No change notes available for this release.
+
+# v1.54.3 (2024-09-27)
+
+* No change notes available for this release.
+
+# v1.54.2 (2024-09-25)
+
+* No change notes available for this release.
+
+# v1.54.1 (2024-09-23)
+
+* No change notes available for this release.
+
+# v1.54.0 (2024-09-20)
+
+* **Feature**: Add tracing and metrics support to service clients.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.53.0 (2024-09-17)
+
+* **Feature**: Support for additional levels of cross-account, cross-Region organizational units in Automation. Various documentation updates.
+* **Bug Fix**: **BREAKFIX**: Only generate AccountIDEndpointMode config for services that use it. This is a compiler break, but removes no actual functionality, as no services currently use the account ID in endpoint resolution.
+
+# v1.52.8 (2024-09-04)
+
+* No change notes available for this release.
+
+# v1.52.7 (2024-09-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.52.6 (2024-08-22)
+
+* No change notes available for this release.
+
+# v1.52.5 (2024-08-15)
+
+* **Dependency Update**: Bump minimum Go version to 1.21.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.52.4 (2024-08-09)
+
+* **Documentation**: Systems Manager doc-only updates for August 2024.
+
 # v1.52.3 (2024-07-10.2)
 
 * **Dependency Update**: Updated to the latest SDK module versions

@@ -39,7 +39,7 @@ type ProvisionPublicIpv4PoolCidrInput struct {
 	IpamPoolId *string
 
 	// The netmask length of the CIDR you would like to allocate to the public IPv4
-	// pool.
+	// pool. The least specific netmask length you can define is 24.
 	//
 	// This member is required.
 	NetmaskLength *int32
@@ -123,6 +123,9 @@ func (c *Client) addOperationProvisionPublicIpv4PoolCidrMiddlewares(stack *middl
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -139,6 +142,9 @@ func (c *Client) addOperationProvisionPublicIpv4PoolCidrMiddlewares(stack *middl
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpProvisionPublicIpv4PoolCidrValidationMiddleware(stack); err != nil {
@@ -160,6 +166,15 @@ func (c *Client) addOperationProvisionPublicIpv4PoolCidrMiddlewares(stack *middl
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -17,98 +17,54 @@
 package aws
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
-func (a *Client) checkInstanceTypes() error {
-	var nextToken *string
-
-	for {
-		// Use the DescribeInstanceTypes API to get a list of supported instance types in the current region
-		resp, err := a.ec2.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{NextToken: nextToken})
-		if err != nil {
-			return err
-		}
-
-		for _, it := range resp.InstanceTypes {
-			if it.InstanceType == types.InstanceType(a.Spec.Instance.Type) {
-				return nil
-			}
-		}
-
-		if resp.NextToken != nil {
-			nextToken = resp.NextToken
-		} else {
-			break
-		}
-	}
-
-	return fmt.Errorf("instance type %s is not supported in the current region %s", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
-}
-
-func (a *Client) checkImages() error {
-	var nextToken *string
-
-	for {
-		// Use the DescribeImages API to get a list of supported images in the current region
-		resp, err := a.ec2.DescribeImages(context.TODO(), &ec2.DescribeImagesInput{
-			NextToken: nextToken,
-		},
-		)
-		if err != nil {
-			return err
-		}
-
-		for _, image := range resp.Images {
-			if *image.ImageId == *a.Spec.Instance.Image.ImageId {
-				return nil
-			}
-		}
-
-		if resp.NextToken != nil {
-			nextToken = resp.NextToken
-		} else {
-			break
-		}
-	}
-
-	return fmt.Errorf("image %s is not supported in the current region %s", *a.Spec.Instance.Image.ImageId, a.Spec.Instance.Region)
-}
-
-func (a *Client) DryRun() error {
+func (p *Provider) DryRun() error {
 	// Check if the desired instance type is supported in the region
-	a.log.Wg.Add(1)
-	go a.log.Loading("Checking if instance type %s is supported in region %s", string(a.Spec.Instance.Type), a.Spec.Instance.Region)
-	err := a.checkInstanceTypes()
+	cancel := p.log.Loading("Checking if instance type %s is supported in region %s", p.Spec.Type, p.Spec.Region)
+	err := p.checkInstanceTypes()
 	if err != nil {
-		a.fail()
+		cancel(logger.ErrLoadingFailed)
 		return err
 	}
-	a.done()
+	cancel(nil)
 
 	// Check if the desired image is supported in the region
-	a.log.Wg.Add(1)
-	go a.log.Loading("Checking if image %s is supported in region %s", *a.Spec.Instance.Image.ImageId, a.Spec.Instance.Region)
-	err = a.checkImages()
+	cancel = p.log.Loading("Checking image")
+	err = p.checkImages()
 	if err != nil {
-		a.fail()
-		return fmt.Errorf("failed to get images: %v", err)
+		cancel(logger.ErrLoadingFailed)
+		return fmt.Errorf("failed to get images: %w", err)
 	}
-	a.done()
+	cancel(nil)
+
+	// Cross-validate architecture compatibility
+	if p.Spec.Image.Architecture != "" {
+		cancel = p.log.Loading("Validating architecture compatibility")
+		archs, err := p.getInstanceTypeArch(p.Spec.Type)
+		if err != nil {
+			cancel(logger.ErrLoadingFailed)
+			return fmt.Errorf("failed to check instance type architecture: %w", err)
+		}
+		archMatch := false
+		for _, a := range archs {
+			if a == p.Spec.Image.Architecture {
+				archMatch = true
+				break
+			}
+		}
+		if !archMatch {
+			cancel(logger.ErrLoadingFailed)
+			return fmt.Errorf(
+				"architecture mismatch: AMI architecture is %s but instance type %s supports %v",
+				p.Spec.Image.Architecture, p.Spec.Type, archs,
+			)
+		}
+		cancel(nil)
+	}
 
 	return nil
-}
-
-func (a *Client) done() {
-	a.log.Done <- struct{}{}
-	a.log.Wg.Wait()
-}
-
-func (a *Client) fail() {
-	a.log.Fail <- struct{}{}
-	a.log.Wg.Wait()
 }

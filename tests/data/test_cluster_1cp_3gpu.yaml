@@ -1,0 +1,37 @@
+# Test Case 2: 1 Control-plane + 3 GPU workers
+# Dedicated control-plane (no workloads) + 3 GPU workers
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: test-cluster-1cp-3gpu
+  description: "E2E test: 1 dedicated CP + 3 GPU workers"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: ~/.ssh/cnt-ci.pem
+
+  cluster:
+    region: us-west-1
+
+    controlPlane:
+      count: 1
+      instanceType: m5.xlarge    # CPU-only for control-plane
+      dedicated: true            # No workloads on control-plane
+      rootVolumeSizeGB: 100
+
+    workers:
+      count: 3
+      instanceType: g4dn.xlarge  # GPU workers
+      rootVolumeSizeGB: 100
+
+  nvidiaDriver:
+    install: true
+  nvidiaContainerToolkit:
+    install: true
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm

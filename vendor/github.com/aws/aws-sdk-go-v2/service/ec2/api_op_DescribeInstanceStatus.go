@@ -13,7 +13,6 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"time"
 )
 
@@ -35,6 +34,11 @@ import (
 //     them through their termination. For more information, see [Instance lifecycle]in the Amazon EC2
 //     User Guide.
 //
+// The Amazon EC2 API follows an eventual consistency model. This means that the
+// result of an API command you run that creates or modifies resources might not be
+// immediately available to all subsequent commands you run. For guidance on how to
+// manage eventual consistency, see [Eventual consistency in the Amazon EC2 API]in the Amazon EC2 Developer Guide.
+//
 // The order of the elements in the response, including those within nested
 // structures, might vary. Applications should not assume the elements appear in a
 // particular order.
@@ -42,6 +46,7 @@ import (
 // [Troubleshoot instances with failed status checks]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/TroubleshootingInstances.html
 // [Instance lifecycle]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-lifecycle.html
 // [Status checks for your instances]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/monitoring-system-instance-status-check.html
+// [Eventual consistency in the Amazon EC2 API]: https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
 // [Scheduled events for your instances]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/monitoring-instances-status-check_sched.html
 func (c *Client) DescribeInstanceStatus(ctx context.Context, params *DescribeInstanceStatusInput, optFns ...func(*Options)) (*DescribeInstanceStatusOutput, error) {
 	if params == nil {
@@ -60,7 +65,7 @@ func (c *Client) DescribeInstanceStatus(ctx context.Context, params *DescribeIns
 
 type DescribeInstanceStatusInput struct {
 
-	// Checks whether you have the required permissions for the action, without
+	// Checks whether you have the required permissions for the operation, without
 	// actually making the request, and provides an error response. If you have the
 	// required permissions, the error response is DryRunOperation . Otherwise, it is
 	// UnauthorizedOperation .
@@ -69,6 +74,8 @@ type DescribeInstanceStatusInput struct {
 	// The filters.
 	//
 	//   - availability-zone - The Availability Zone of the instance.
+	//
+	//   - availability-zone-id - The ID of the Availability Zone of the instance.
 	//
 	//   - event.code - The code for the scheduled event ( instance-reboot |
 	//   system-reboot | system-maintenance | instance-retirement | instance-stop ).
@@ -102,11 +109,20 @@ type DescribeInstanceStatusInput struct {
 	//   - instance-status.status - The status of the instance ( ok | impaired |
 	//   initializing | insufficient-data | not-applicable ).
 	//
+	//   - operator.managed - A Boolean that indicates whether this is a managed
+	//   instance.
+	//
+	//   - operator.principal - The principal that manages the instance. Only valid for
+	//   managed instances, where managed is true .
+	//
 	//   - system-status.reachability - Filters on system status where the name is
 	//   reachability ( passed | failed | initializing | insufficient-data ).
 	//
 	//   - system-status.status - The system status of the instance ( ok | impaired |
 	//   initializing | insufficient-data | not-applicable ).
+	//
+	//   - attached-ebs-status.status - The status of the attached EBS volume for the
+	//   instance ( ok | impaired | initializing | insufficient-data | not-applicable ).
 	Filters []types.Filter
 
 	// When true , includes the health status for all instances. When false , includes
@@ -197,6 +213,9 @@ func (c *Client) addOperationDescribeInstanceStatusMiddlewares(stack *middleware
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -215,6 +234,9 @@ func (c *Client) addOperationDescribeInstanceStatusMiddlewares(stack *middleware
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeInstanceStatus(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -231,6 +253,15 @@ func (c *Client) addOperationDescribeInstanceStatusMiddlewares(stack *middleware
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -396,29 +427,23 @@ func (w *InstanceStatusOkWaiter) WaitForOutput(ctx context.Context, params *Desc
 func instanceStatusOkStateRetryable(ctx context.Context, input *DescribeInstanceStatusInput, output *DescribeInstanceStatusOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("InstanceStatuses[].InstanceStatus.Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
-		expectedValue := "ok"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.SummaryStatus)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.SummaryStatus value, got %T", pathValue)
+		v1 := output.InstanceStatuses
+		var v2 []types.SummaryStatus
+		for _, v := range v1 {
+			v3 := v.InstanceStatus
+			var v4 types.SummaryStatus
+			if v3 != nil {
+				v5 := v3.Status
+				v4 = v5
 			}
-
-			if string(value) != expectedValue {
+			v2 = append(v2, v4)
+		}
+		expectedValue := "ok"
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -439,6 +464,9 @@ func instanceStatusOkStateRetryable(ctx context.Context, input *DescribeInstance
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -602,29 +630,23 @@ func (w *SystemStatusOkWaiter) WaitForOutput(ctx context.Context, params *Descri
 func systemStatusOkStateRetryable(ctx context.Context, input *DescribeInstanceStatusInput, output *DescribeInstanceStatusOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("InstanceStatuses[].SystemStatus.Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
-		expectedValue := "ok"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.SummaryStatus)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.SummaryStatus value, got %T", pathValue)
+		v1 := output.InstanceStatuses
+		var v2 []types.SummaryStatus
+		for _, v := range v1 {
+			v3 := v.SystemStatus
+			var v4 types.SummaryStatus
+			if v3 != nil {
+				v5 := v3.Status
+				v4 = v5
 			}
-
-			if string(value) != expectedValue {
+			v2 = append(v2, v4)
+		}
+		expectedValue := "ok"
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -633,6 +655,9 @@ func systemStatusOkStateRetryable(ctx context.Context, input *DescribeInstanceSt
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

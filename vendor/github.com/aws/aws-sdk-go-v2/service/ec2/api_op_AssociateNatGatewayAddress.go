@@ -28,8 +28,8 @@ import (
 // User Guide.
 //
 // [Elastic IP address quotas]: https://docs.aws.amazon.com/vpc/latest/userguide/amazon-vpc-limits.html#vpc-limits-eips
-// [Work with NAT gateways]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html#nat-gateway-working-with
-// [Allocate an Elastic IP address]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-eips.html#allocate-eip
+// [Work with NAT gateways]: https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-working-with.html
+// [Allocate an Elastic IP address]: https://docs.aws.amazon.com/vpc/latest/userguide/WorkWithEIPs.html
 func (c *Client) AssociateNatGatewayAddress(ctx context.Context, params *AssociateNatGatewayAddressInput, optFns ...func(*Options)) (*AssociateNatGatewayAddressOutput, error) {
 	if params == nil {
 		params = &AssociateNatGatewayAddressInput{}
@@ -56,6 +56,26 @@ type AssociateNatGatewayAddressInput struct {
 	//
 	// This member is required.
 	NatGatewayId *string
+
+	// For regional NAT gateways only: The Availability Zone where you want to
+	// associate an Elastic IP address (EIP). The regional NAT gateway uses a separate
+	// EIP in each AZ to handle outbound NAT traffic from that AZ.
+	//
+	// A regional NAT gateway is a single NAT Gateway that works across multiple
+	// availability zones (AZs) in your VPC, providing redundancy, scalability and
+	// availability across all the AZs in a Region.
+	AvailabilityZone *string
+
+	// For regional NAT gateways only: The ID of the Availability Zone where you want
+	// to associate an Elastic IP address (EIP). The regional NAT gateway uses a
+	// separate EIP in each AZ to handle outbound NAT traffic from that AZ. Use this
+	// instead of AvailabilityZone for consistent identification of AZs across Amazon
+	// Web Services Regions.
+	//
+	// A regional NAT gateway is a single NAT Gateway that works across multiple
+	// availability zones (AZs) in your VPC, providing redundancy, scalability and
+	// availability across all the AZs in a Region.
+	AvailabilityZoneId *string
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -126,6 +146,9 @@ func (c *Client) addOperationAssociateNatGatewayAddressMiddlewares(stack *middle
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -142,6 +165,9 @@ func (c *Client) addOperationAssociateNatGatewayAddressMiddlewares(stack *middle
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpAssociateNatGatewayAddressValidationMiddleware(stack); err != nil {
@@ -163,6 +189,15 @@ func (c *Client) addOperationAssociateNatGatewayAddressMiddlewares(stack *middle
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

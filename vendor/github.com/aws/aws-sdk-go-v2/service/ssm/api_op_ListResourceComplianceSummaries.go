@@ -104,6 +104,9 @@ func (c *Client) addOperationListResourceComplianceSummariesMiddlewares(stack *m
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -122,6 +125,9 @@ func (c *Client) addOperationListResourceComplianceSummariesMiddlewares(stack *m
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opListResourceComplianceSummaries(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -138,6 +144,15 @@ func (c *Client) addOperationListResourceComplianceSummariesMiddlewares(stack *m
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

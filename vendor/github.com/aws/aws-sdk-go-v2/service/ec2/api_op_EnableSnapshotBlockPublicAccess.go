@@ -18,9 +18,14 @@ import (
 // shared are either treated as private or they remain publicly shared, depending
 // on the State that you specify.
 //
-// If block public access is enabled in block-all-sharing mode, and you change the
-// mode to block-new-sharing , all snapshots that were previously publicly shared
-// are no longer treated as private and they become publicly accessible again.
+// Enabling block public access for snapshots in block all sharing mode does not
+// change the permissions for snapshots that are already publicly shared. Instead,
+// it prevents these snapshots from be publicly visible and publicly accessible.
+// Therefore, the attributes for these snapshots still indicate that they are
+// publicly shared, even though they are not publicly available.
+//
+// If you later disable block public access or change the mode to block new
+// sharing, these snapshots will become publicly available again.
 //
 // For more information, see [Block public access for snapshots] in the Amazon EBS User Guide.
 //
@@ -49,12 +54,6 @@ type EnableSnapshotBlockPublicAccessInput struct {
 	//   Users in the account will no longer be able to request new public sharing.
 	//   Additionally, snapshots that are already publicly shared are treated as private
 	//   and they are no longer publicly available.
-	//
-	// If you enable block public access for snapshots in block-all-sharing mode, it
-	//   does not change the permissions for snapshots that are already publicly shared.
-	//   Instead, it prevents these snapshots from be publicly visible and publicly
-	//   accessible. Therefore, the attributes for these snapshots still indicate that
-	//   they are publicly shared, even though they are not publicly available.
 	//
 	//   - block-new-sharing - Prevents only new public sharing of snapshots in the
 	//   Region. Users in the account will no longer be able to request new public
@@ -130,6 +129,9 @@ func (c *Client) addOperationEnableSnapshotBlockPublicAccessMiddlewares(stack *m
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -146,6 +148,9 @@ func (c *Client) addOperationEnableSnapshotBlockPublicAccessMiddlewares(stack *m
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpEnableSnapshotBlockPublicAccessValidationMiddleware(stack); err != nil {
@@ -167,6 +172,15 @@ func (c *Client) addOperationEnableSnapshotBlockPublicAccessMiddlewares(stack *m
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

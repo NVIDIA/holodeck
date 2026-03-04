@@ -1,0 +1,40 @@
+# Simple multinode Kubernetes cluster
+# 1 control-plane + 2 GPU workers
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: simple-cluster
+  description: "Simple multinode cluster with GPU workers"
+spec:
+  provider: aws
+  auth:
+    keyName: <your-aws-key-name>
+    privateKey: <path-to-your-private-key>
+
+  # Cluster configuration (replaces single-node 'instance')
+  cluster:
+    region: us-west-2
+
+    # Control plane configuration
+    controlPlane:
+      count: 1
+      instanceType: m5.xlarge
+      # Allow workloads on control-plane (default: false)
+      dedicated: false
+
+    # Worker node pool
+    workers:
+      count: 2
+      instanceType: g4dn.xlarge  # GPU instance for workers
+
+  # Software stack (applied to all nodes)
+  nvidiaDriver:
+    install: true
+  nvidiaContainerToolkit:
+    install: true
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm

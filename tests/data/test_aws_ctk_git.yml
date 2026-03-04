@@ -1,0 +1,29 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-aws-ctk-git-e2e
+  description: "E2E test for CTK installation from git source"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: ~/.ssh/cnt-ci.pem
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    image:
+      architecture: amd64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+    source: git
+    git:
+      ref: d62d82625b067fce822df6b1b0b3293e89c9682c
+    enableCDI: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm

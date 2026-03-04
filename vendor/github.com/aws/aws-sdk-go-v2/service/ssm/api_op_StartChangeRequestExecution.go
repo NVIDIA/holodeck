@@ -12,9 +12,15 @@ import (
 	"time"
 )
 
+// Amazon Web Services Systems Manager Change Manager is no longer open to new
+// customers. Existing customers can continue to use the service as normal. For
+// more information, see [Amazon Web Services Systems Manager Change Manager availability change].
+//
 // Creates a change request for Change Manager. The Automation runbooks specified
 // in the change request run only after all required approvals for the change
 // request have been received.
+//
+// [Amazon Web Services Systems Manager Change Manager availability change]: https://docs.aws.amazon.com/systems-manager/latest/userguide/change-manager-availability-change.html
 func (c *Client) StartChangeRequestExecution(ctx context.Context, params *StartChangeRequestExecutionInput, optFns ...func(*Options)) (*StartChangeRequestExecutionOutput, error) {
 	if params == nil {
 		params = &StartChangeRequestExecutionInput{}
@@ -100,6 +106,12 @@ type StartChangeRequestExecutionInput struct {
 	//   - Key=Environment,Value=Production
 	//
 	//   - Key=Region,Value=us-east-2
+	//
+	// The Array Members maximum value is reported as 1000. This number includes
+	// capacity reserved for internal operations. When calling the
+	// StartChangeRequestExecution action, you can specify a maximum of 5 tags. You
+	// can, however, use the AddTagsToResourceaction to add up to a total of 50 tags to an existing
+	// change request configuration.
 	Tags []types.Tag
 
 	noSmithyDocumentSerde
@@ -160,6 +172,9 @@ func (c *Client) addOperationStartChangeRequestExecutionMiddlewares(stack *middl
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -176,6 +191,9 @@ func (c *Client) addOperationStartChangeRequestExecutionMiddlewares(stack *middl
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpStartChangeRequestExecutionValidationMiddleware(stack); err != nil {
@@ -197,6 +215,15 @@ func (c *Client) addOperationStartChangeRequestExecutionMiddlewares(stack *middl
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

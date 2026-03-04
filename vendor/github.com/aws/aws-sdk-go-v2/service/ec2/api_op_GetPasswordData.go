@@ -10,7 +10,6 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"strconv"
 	"time"
 )
@@ -57,7 +56,7 @@ type GetPasswordDataInput struct {
 	// This member is required.
 	InstanceId *string
 
-	// Checks whether you have the required permissions for the action, without
+	// Checks whether you have the required permissions for the operation, without
 	// actually making the request, and provides an error response. If you have the
 	// required permissions, the error response is DryRunOperation . Otherwise, it is
 	// UnauthorizedOperation .
@@ -127,6 +126,9 @@ func (c *Client) addOperationGetPasswordDataMiddlewares(stack *middleware.Stack,
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -143,6 +145,9 @@ func (c *Client) addOperationGetPasswordDataMiddlewares(stack *middleware.Stack,
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetPasswordDataValidationMiddleware(stack); err != nil {
@@ -164,6 +169,15 @@ func (c *Client) addOperationGetPasswordDataMiddlewares(stack *middleware.Stack,
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -331,26 +345,27 @@ func (w *PasswordDataAvailableWaiter) WaitForOutput(ctx context.Context, params 
 func passwordDataAvailableStateRetryable(ctx context.Context, input *GetPasswordDataInput, output *GetPasswordDataOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("length(PasswordData) > `0`", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.PasswordData
+		var _v1 string
+		if v1 != nil {
+			_v1 = *v1
 		}
-
+		v2 := len(_v1)
+		v3 := 0
+		v4 := int64(v2) > int64(v3)
 		expectedValue := "true"
 		bv, err := strconv.ParseBool(expectedValue)
 		if err != nil {
 			return false, fmt.Errorf("error parsing boolean from string %w", err)
 		}
-		value, ok := pathValue.(bool)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected bool value got %T", pathValue)
-		}
-
-		if value == bv {
+		if v4 == bv {
 			return false, nil
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

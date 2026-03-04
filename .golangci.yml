@@ -1,0 +1,16 @@
+version: "2"
+linters:
+  enable:
+    - contextcheck
+    - gocritic
+    - gosec
+    - misspell
+    - unconvert
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/NVIDIA/holodeck

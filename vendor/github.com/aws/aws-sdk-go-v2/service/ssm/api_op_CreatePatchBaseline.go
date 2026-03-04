@@ -43,9 +43,9 @@ type CreatePatchBaselineInput struct {
 	// A list of explicitly approved patches for the baseline.
 	//
 	// For information about accepted formats for lists of approved patches and
-	// rejected patches, see [About package name formats for approved and rejected patch lists]in the Amazon Web Services Systems Manager User Guide.
+	// rejected patches, see [Package name formats for approved and rejected patch lists]in the Amazon Web Services Systems Manager User Guide.
 	//
-	// [About package name formats for approved and rejected patch lists]: https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-approved-rejected-package-name-formats.html
+	// [Package name formats for approved and rejected patch lists]: https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-approved-rejected-package-name-formats.html
 	ApprovedPatches []string
 
 	// Defines the compliance level for approved patches. When an approved patch is
@@ -58,6 +58,20 @@ type CreatePatchBaselineInput struct {
 	// Applies to Linux managed nodes only.
 	ApprovedPatchesEnableNonSecurity *bool
 
+	// Indicates the status you want to assign to security patches that are available
+	// but not approved because they don't meet the installation criteria specified in
+	// the patch baseline.
+	//
+	// Example scenario: Security patches that you might want installed can be skipped
+	// if you have specified a long period to wait after a patch is released before
+	// installation. If an update to the patch is released during your specified
+	// waiting period, the waiting period for installing the patch starts over. If the
+	// waiting period is too long, multiple versions of the patch could be released but
+	// never installed.
+	//
+	// Supported for Windows Server managed nodes only.
+	AvailableSecurityUpdatesComplianceStatus types.PatchComplianceStatus
+
 	// User-provided idempotency token.
 	ClientToken *string
 
@@ -65,6 +79,10 @@ type CreatePatchBaselineInput struct {
 	Description *string
 
 	// A set of global filters used to include patches in the baseline.
+	//
+	// The GlobalFilters parameter can be configured only by using the CLI or an
+	// Amazon Web Services SDK. It can't be configured from the Patch Manager console,
+	// and its value isn't displayed in the console.
 	GlobalFilters *types.PatchFilterGroup
 
 	// Defines the operating system the patch baseline applies to. The default value
@@ -74,24 +92,40 @@ type CreatePatchBaselineInput struct {
 	// A list of explicitly rejected patches for the baseline.
 	//
 	// For information about accepted formats for lists of approved patches and
-	// rejected patches, see [About package name formats for approved and rejected patch lists]in the Amazon Web Services Systems Manager User Guide.
+	// rejected patches, see [Package name formats for approved and rejected patch lists]in the Amazon Web Services Systems Manager User Guide.
 	//
-	// [About package name formats for approved and rejected patch lists]: https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-approved-rejected-package-name-formats.html
+	// [Package name formats for approved and rejected patch lists]: https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-approved-rejected-package-name-formats.html
 	RejectedPatches []string
 
 	// The action for Patch Manager to take on patches included in the RejectedPackages
 	// list.
 	//
-	//   - ALLOW_AS_DEPENDENCY : A package in the Rejected patches list is installed
-	//   only if it is a dependency of another package. It is considered compliant with
-	//   the patch baseline, and its status is reported as InstalledOther . This is the
-	//   default action if no option is specified.
+	// ALLOW_AS_DEPENDENCY  Linux and macOS: A package in the rejected patches list is
+	// installed only if it is a dependency of another package. It is considered
+	// compliant with the patch baseline, and its status is reported as INSTALLED_OTHER
+	// . This is the default action if no option is specified.
 	//
-	//   - BLOCK: Packages in the Rejected patches list, and packages that include
-	//   them as dependencies, aren't installed by Patch Manager under any circumstances.
-	//   If a package was installed before it was added to the Rejected patches list, or
-	//   is installed outside of Patch Manager afterward, it's considered noncompliant
-	//   with the patch baseline and its status is reported as InstalledRejected.
+	// Windows Server: Windows Server doesn't support the concept of package
+	// dependencies. If a package in the rejected patches list and already installed on
+	// the node, its status is reported as INSTALLED_OTHER . Any package not already
+	// installed on the node is skipped. This is the default action if no option is
+	// specified.
+	//
+	// BLOCK  All OSs: Packages in the rejected patches list, and packages that
+	// include them as dependencies, aren't installed by Patch Manager under any
+	// circumstances.
+	//
+	// State value assignment for patch compliance:
+	//
+	//   - If a package was installed before it was added to the rejected patches
+	//   list, or is installed outside of Patch Manager afterward, it's considered
+	//   noncompliant with the patch baseline and its status is reported as
+	//   INSTALLED_REJECTED .
+	//
+	//   - If an update attempts to install a dependency package that is now rejected
+	//   by the baseline, when previous versions of the package were not rejected, the
+	//   package being updated is reported as MISSING for SCAN operations and as FAILED
+	//   for INSTALL operations.
 	RejectedPatchesAction types.PatchAction
 
 	// Information about the patches to use to update the managed nodes, including
@@ -169,6 +203,9 @@ func (c *Client) addOperationCreatePatchBaselineMiddlewares(stack *middleware.St
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -185,6 +222,9 @@ func (c *Client) addOperationCreatePatchBaselineMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addIdempotencyToken_opCreatePatchBaselineMiddleware(stack, options); err != nil {
@@ -209,6 +249,15 @@ func (c *Client) addOperationCreatePatchBaselineMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -13,7 +13,6 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"strconv"
 	"time"
 )
@@ -30,12 +29,26 @@ import (
 // deregistered AMI are terminated, specifying the ID of the image will eventually
 // return an error indicating that the AMI ID cannot be found.
 //
+// When Allowed AMIs is set to enabled , only allowed images are returned in the
+// results, with the imageAllowed field set to true for each image. In audit-mode ,
+// the imageAllowed field is set to true for images that meet the account's
+// Allowed AMIs criteria, and false for images that don't meet the criteria. For
+// more information, see [Allowed AMIs].
+//
+// The Amazon EC2 API follows an eventual consistency model. This means that the
+// result of an API command you run that creates or modifies resources might not be
+// immediately available to all subsequent commands you run. For guidance on how to
+// manage eventual consistency, see [Eventual consistency in the Amazon EC2 API]in the Amazon EC2 Developer Guide.
+//
 // We strongly recommend using only paginated requests. Unpaginated requests are
 // susceptible to throttling and timeouts.
 //
 // The order of the elements in the response, including those within nested
 // structures, might vary. Applications should not assume the elements appear in a
 // particular order.
+//
+// [Allowed AMIs]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-allowed-amis.html
+// [Eventual consistency in the Amazon EC2 API]: https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
 func (c *Client) DescribeImages(ctx context.Context, params *DescribeImagesInput, optFns ...func(*Options)) (*DescribeImagesOutput, error) {
 	if params == nil {
 		params = &DescribeImagesInput{}
@@ -107,7 +120,13 @@ type DescribeImagesInput struct {
 	//   - ena-support - A Boolean that indicates whether enhanced networking with ENA
 	//   is enabled.
 	//
+	//   - free-tier-eligible - A Boolean that indicates whether this image can be used
+	//   under the Amazon Web Services Free Tier ( true | false ).
+	//
 	//   - hypervisor - The hypervisor type ( ovm | xen ).
+	//
+	//   - image-allowed - A Boolean that indicates whether the image meets the
+	//   criteria specified for Allowed AMIs.
 	//
 	//   - image-id - The ID of the image.
 	//
@@ -121,10 +140,10 @@ type DescribeImagesInput struct {
 	//
 	//   - name - The name of the AMI (provided during image creation).
 	//
-	//   - owner-alias - The owner alias ( amazon | aws-marketplace ). The valid
-	//   aliases are defined in an Amazon-maintained list. This is not the Amazon Web
-	//   Services account alias that can be set using the IAM console. We recommend that
-	//   you use the Owner request parameter instead of this filter.
+	//   - owner-alias - The owner alias ( amazon | aws-backup-vault | aws-marketplace
+	//   ). The valid aliases are defined in an Amazon-maintained list. This is not the
+	//   Amazon Web Services account alias that can be set using the IAM console. We
+	//   recommend that you use the Owner request parameter instead of this filter.
 	//
 	//   - owner-id - The Amazon Web Services account ID of the owner. We recommend
 	//   that you use the Owner request parameter instead of this filter.
@@ -143,6 +162,10 @@ type DescribeImagesInput struct {
 	//   - root-device-type - The type of the root device volume ( ebs | instance-store
 	//   ).
 	//
+	//   - source-image-id - The ID of the source AMI from which the AMI was created.
+	//
+	//   - source-image-region - The Region of the source AMI.
+	//
 	//   - source-instance-id - The ID of the instance that the AMI was created from if
 	//   the AMI was created using CreateImage. This filter is applicable only if the AMI
 	//   was created using [CreateImage].
@@ -156,7 +179,7 @@ type DescribeImagesInput struct {
 	//   - sriov-net-support - A value of simple indicates that enhanced networking
 	//   with the Intel 82599 VF interface is enabled.
 	//
-	//   - tag : - The key/value combination of a tag assigned to the resource. Use the
+	//   - tag: - The key/value combination of a tag assigned to the resource. Use the
 	//   tag key in the filter name and the tag value as the filter value. For example,
 	//   to find all resources that have a tag with the key Owner and the value TeamA ,
 	//   specify tag:Owner for the filter name and TeamA for the filter value.
@@ -199,9 +222,9 @@ type DescribeImagesInput struct {
 	NextToken *string
 
 	// Scopes the results to images with the specified owners. You can specify a
-	// combination of Amazon Web Services account IDs, self , amazon , and
-	// aws-marketplace . If you omit this parameter, the results include all images for
-	// which you have launch permissions, regardless of ownership.
+	// combination of Amazon Web Services account IDs, self , amazon , aws-backup-vault
+	// , and aws-marketplace . If you omit this parameter, the results include all
+	// images for which you have launch permissions, regardless of ownership.
 	Owners []string
 
 	noSmithyDocumentSerde
@@ -265,6 +288,9 @@ func (c *Client) addOperationDescribeImagesMiddlewares(stack *middleware.Stack, 
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -283,6 +309,9 @@ func (c *Client) addOperationDescribeImagesMiddlewares(stack *middleware.Stack, 
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeImages(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -299,6 +328,15 @@ func (c *Client) addOperationDescribeImagesMiddlewares(stack *middleware.Stack, 
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -464,29 +502,18 @@ func (w *ImageAvailableWaiter) WaitForOutput(ctx context.Context, params *Descri
 func imageAvailableStateRetryable(ctx context.Context, input *DescribeImagesInput, output *DescribeImagesOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Images[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Images
+		var v2 []types.ImageState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "available"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.ImageState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.ImageState value, got %T", pathValue)
-			}
-
-			if string(value) != expectedValue {
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -496,29 +523,29 @@ func imageAvailableStateRetryable(ctx context.Context, input *DescribeImagesInpu
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Images[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Images
+		var v2 []types.ImageState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "failed"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v2 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.ImageState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.ImageState value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -681,22 +708,16 @@ func (w *ImageExistsWaiter) WaitForOutput(ctx context.Context, params *DescribeI
 func imageExistsStateRetryable(ctx context.Context, input *DescribeImagesInput, output *DescribeImagesOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("length(Images[]) > `0`", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Images
+		v2 := len(v1)
+		v3 := 0
+		v4 := int64(v2) > int64(v3)
 		expectedValue := "true"
 		bv, err := strconv.ParseBool(expectedValue)
 		if err != nil {
 			return false, fmt.Errorf("error parsing boolean from string %w", err)
 		}
-		value, ok := pathValue.(bool)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected bool value got %T", pathValue)
-		}
-
-		if value == bv {
+		if v4 == bv {
 			return false, nil
 		}
 	}
@@ -713,6 +734,9 @@ func imageExistsStateRetryable(ctx context.Context, input *DescribeImagesInput, 
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

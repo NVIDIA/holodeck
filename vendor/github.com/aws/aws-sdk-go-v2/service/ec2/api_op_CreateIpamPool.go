@@ -104,13 +104,17 @@ type CreateIpamPoolInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
-	// In IPAM, the locale is the Amazon Web Services Region or, for IPAM IPv4 pools
-	// in the public scope, the network border group for an Amazon Web Services Local
-	// Zone where you want to make an IPAM pool available for allocations ([supported Local Zones] ). If you
-	// do not choose a locale, resources in Regions others than the IPAM's home region
-	// cannot use CIDRs from this pool.
+	// The locale for the pool should be one of the following:
 	//
-	// Possible values: Any Amazon Web Services Region, such as us-east-1.
+	//   - An Amazon Web Services Region where you want this IPAM pool to be available
+	//   for allocations.
+	//
+	//   - The network border group for an Amazon Web Services Local Zone where you
+	//   want this IPAM pool to be available for allocations ([supported Local Zones] ). This option is only
+	//   available for IPAM IPv4 pools in the public scope.
+	//
+	// Possible values: Any Amazon Web Services Region or supported Amazon Web
+	// Services Local Zone. Default is none and means any locale.
 	//
 	// [supported Local Zones]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-byoip.html#byoip-zone-avail
 	Locale *string
@@ -126,8 +130,8 @@ type CreateIpamPoolInput struct {
 	// [Quotas for your IPAM]: https://docs.aws.amazon.com/vpc/latest/ipam/quotas-ipam.html
 	PublicIpSource types.IpamPoolPublicIpSource
 
-	// Determines if the pool is publicly advertisable. This option is not available
-	// for pools with AddressFamily set to ipv4 .
+	// Determines if the pool is publicly advertisable. The request can only contain
+	// PubliclyAdvertisable if AddressFamily is ipv6 and PublicIpSource is byoip .
 	PubliclyAdvertisable *bool
 
 	// The ID of the source IPAM pool. Use this option to create a pool within an
@@ -201,6 +205,9 @@ func (c *Client) addOperationCreateIpamPoolMiddlewares(stack *middleware.Stack, 
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -217,6 +224,9 @@ func (c *Client) addOperationCreateIpamPoolMiddlewares(stack *middleware.Stack, 
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addIdempotencyToken_opCreateIpamPoolMiddleware(stack, options); err != nil {
@@ -241,6 +251,15 @@ func (c *Client) addOperationCreateIpamPoolMiddlewares(stack *middleware.Stack, 
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

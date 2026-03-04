@@ -1,116 +1,119 @@
 # Holodeck
 
-> * Tech preview, under heavy development *
+[![Latest Release](https://img.shields.io/github/v/release/NVIDIA/holodeck?label=latest%20release)](https://github.com/NVIDIA/holodeck/releases/latest)
 
-A tool for creating and managing GPU ready Cloud test environments.
+[![CI Pipeline](https://github.com/NVIDIA/holodeck/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/NVIDIA/holodeck/actions/workflows/ci.yaml)
 
-## Installation
+A tool for creating and managing GPU-ready Cloud test environments.
+
+---
+
+## 📖 Documentation
+
+- [Quick Start](docs/quick-start.md)
+- [Prerequisites](docs/prerequisites.md)
+- [Commands Reference](docs/commands/)
+- [Contributing Guide](docs/contributing/)
+- [Examples](docs/examples/)
+- [Latest Release](https://github.com/NVIDIA/holodeck/releases/latest)
+
+---
+
+## 🚀 Quick Start
+
+See [docs/quick-start.md](docs/quick-start.md) for a full walkthrough.
 
 ```bash
 make build
-mv ./bin/holodeck /usr/local/bin/holodeck
+sudo mv ./bin/holodeck /usr/local/bin/holodeck
+holodeck --help
 ```
 
-### Prerequisites
+---
 
-If utilizing the AWS provider, a valid AWS credentials must be available in the environment.
+## 🛠️ Prerequisites
 
-```yaml
-apiVersion: holodeck.nvidia.com/v1alpha1
-kind: Environment
-metadata:
-  name: holodeck
-  description: "Devel infra environment"
-spec:
-  provider: aws
-```
+- Go 1.20+
+- (For AWS) Valid AWS credentials in your environment
+- (For SSH) Reachable host and valid SSH key
 
-If utilizing the SSH provider, a valid SSH key must and reachable host must be available in the environment file.
+See [docs/prerequisites.md](docs/prerequisites.md) for details.
 
-```yaml
-apiVersion: holodeck.nvidia.com/v1alpha1
-kind: Environment
-metadata:
-  name: holodeck
-  description: "Devel infra environment"
-spec:
-  provider: aws
-  auth:
-    keyName: user
-    privateKey: "/Users/user/.ssh/user.pem"
-  instance:
-    hostUrl: "<some-reachable-host-ip>"
-```
+---
 
-##  Usage
+## ⚠️ Important: Kernel Compatibility
+
+When installing NVIDIA drivers, Holodeck requires kernel headers matching your running kernel
+version. If exact headers are unavailable, Holodeck will attempt to find compatible ones,
+though this may cause driver compilation issues.
+
+For kernel compatibility details and troubleshooting, see
+[Kernel Compatibility](docs/prerequisites.md#kernel-compatibility) in the prerequisites documentation.
+
+---
+
+## 📝 How to Contribute
+
+See [docs/contributing/](docs/contributing/) for full details.
+
+### Main Makefile Targets
+
+- `make build` – Build the holodeck binary
+- `make test` – Run all tests
+- `make lint` – Run linters
+- `make clean` – Remove build artifacts
+
+---
+
+## 🧑‍💻 Usage
+
+See [docs/commands/](docs/commands/) for detailed command documentation and examples.
 
 ```bash
 holodeck --help
 ```
 
-### The Environment CRD
-
-```yaml
-apiVersion: holodeck.nvidia.com/v1alpha1
-kind: Environment
-metadata:
-  name: holodeck
-  description: "Devel infra environment"
-spec:
-  provider: aws # or ssh currently supported
-  auth:
-    keyName: user
-    privateKey: "/Users/user/.ssh/user.pem"
-  instance: # if provider is ssh you need to define here the hostUrl
-    type: g4dn.xlarge
-    region: eu-north-1
-    ingressIpRanges:
-      - 192.168.1.0/26
-    image:
-      architecture: amd64
-      imageId: ami-0fe8bec493a81c7da # Ubuntu 22.04 image
-  containerRuntime:
-    install: true
-    name: containerd
-    version: 1.6.24
-  kubernetes:
-    install: true
-    installer: kubeadm # supported installers: kubeadm, kind, microk8s
-    version: v1.28.5
-```
-
-The dependencies are resolved automatically, from top to bottom. Following the
-pattern:
-
-> Kubernetes -> Container Runtime -> Container Toolkit -> NVDriver
-
-If Kubernetes is requested, and no container runtime is requested, a default
-container runtime will be added to the environment..
-
-If Container Toolkit is requested, and no container runtime is requested, a
-default container runtime will be added to the environment.
-
-### Create an environment
+### Example: Create an environment
 
 ```bash
-$ holodeck create -f ./examples/v1alpha1_environment.yaml
-...
+holodeck create -f ./examples/v1alpha1_environment.yaml
 ```
 
-### Delete an environment
+### Example: List environments
 
 ```bash
-$ holodeck delete -f ./examples/v1alpha1_environment.yaml
-...
+holodeck list
 ```
 
-### Dry Run
+### Example: Delete an environment
 
 ```bash
-$ holodeck dryrun -f ./examples/v1alpha1_environment.yaml
-Dryrun environment holodeck 🔍
-✔       Checking if instance type g4dn.xlarge is supported in region eu-north-1
-✔       Checking if image ami-0fe8bec493a81c7da is supported in region eu-north-1
-✔      Resolving dependencies 📦
-Dryrun succeeded 🎉
+holodeck delete <instance-id>
 ```
+
+### Example: Clean up AWS VPC resources
+
+```bash
+holodeck cleanup vpc-12345678
+```
+
+### Example: Check status
+
+```bash
+holodeck status <instance-id>
+```
+
+### Example: Dry Run
+
+```bash
+holodeck dryrun -f ./examples/v1alpha1_environment.yaml
+```
+
+## 📂 More
+
+- [Examples](docs/examples/)
+- [Guides](docs/guides/)
+
+---
+
+For more information, see the [documentation](docs/README.md) directory.

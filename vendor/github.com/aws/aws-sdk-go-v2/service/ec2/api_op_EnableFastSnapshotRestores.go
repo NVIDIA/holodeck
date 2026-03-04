@@ -15,8 +15,7 @@ import (
 // Availability Zones.
 //
 // You get the full benefit of fast snapshot restores after they enter the enabled
-// state. To get the current state of fast snapshot restores, use DescribeFastSnapshotRestores. To disable
-// fast snapshot restores, use DisableFastSnapshotRestores.
+// state.
 //
 // For more information, see [Amazon EBS fast snapshot restore] in the Amazon EBS User Guide.
 //
@@ -38,17 +37,24 @@ func (c *Client) EnableFastSnapshotRestores(ctx context.Context, params *EnableF
 
 type EnableFastSnapshotRestoresInput struct {
 
-	// One or more Availability Zones. For example, us-east-2a .
-	//
-	// This member is required.
-	AvailabilityZones []string
-
 	// The IDs of one or more snapshots. For example, snap-1234567890abcdef0 . You can
 	// specify a snapshot that was shared with you from another Amazon Web Services
 	// account.
 	//
 	// This member is required.
 	SourceSnapshotIds []string
+
+	// One or more Availability Zone IDs. For example, use2-az1 .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
+	AvailabilityZoneIds []string
+
+	// One or more Availability Zones. For example, us-east-2a .
+	//
+	// Either AvailabilityZone or AvailabilityZoneId must be specified in the request,
+	// but not both.
+	AvailabilityZones []string
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -118,6 +124,9 @@ func (c *Client) addOperationEnableFastSnapshotRestoresMiddlewares(stack *middle
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -134,6 +143,9 @@ func (c *Client) addOperationEnableFastSnapshotRestoresMiddlewares(stack *middle
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpEnableFastSnapshotRestoresValidationMiddleware(stack); err != nil {
@@ -155,6 +167,15 @@ func (c *Client) addOperationEnableFastSnapshotRestoresMiddlewares(stack *middle
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

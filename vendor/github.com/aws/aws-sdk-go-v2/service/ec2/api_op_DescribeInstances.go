@@ -13,7 +13,6 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"strconv"
 	"time"
 )
@@ -27,6 +26,10 @@ import (
 // which can affect performance. We recommend that you use pagination to ensure
 // that the operation returns quickly and successfully.
 //
+// The response includes SQL license exemption status information for instances
+// registered with the SQL LE service, providing visibility into license exemption
+// configuration and status.
+//
 // If you specify an instance ID that is not valid, an error is returned. If you
 // specify an instance that you do not own, it is not included in the output.
 //
@@ -39,12 +42,19 @@ import (
 // describe instances and specify only instance IDs that are in an unaffected zone,
 // the call works normally.
 //
+// The Amazon EC2 API follows an eventual consistency model. This means that the
+// result of an API command you run that creates or modifies resources might not be
+// immediately available to all subsequent commands you run. For guidance on how to
+// manage eventual consistency, see [Eventual consistency in the Amazon EC2 API]in the Amazon EC2 Developer Guide.
+//
 // We strongly recommend using only paginated requests. Unpaginated requests are
 // susceptible to throttling and timeouts.
 //
 // The order of the elements in the response, including those within nested
 // structures, might vary. Applications should not assume the elements appear in a
 // particular order.
+//
+// [Eventual consistency in the Amazon EC2 API]: https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
 func (c *Client) DescribeInstances(ctx context.Context, params *DescribeInstancesInput, optFns ...func(*Options)) (*DescribeInstancesOutput, error) {
 	if params == nil {
 		params = &DescribeInstancesInput{}
@@ -62,7 +72,7 @@ func (c *Client) DescribeInstances(ctx context.Context, params *DescribeInstance
 
 type DescribeInstancesInput struct {
 
-	// Checks whether you have the required permissions for the action, without
+	// Checks whether you have the required permissions for the operation, without
 	// actually making the request, and provides an error response. If you have the
 	// required permissions, the error response is DryRunOperation . Otherwise, it is
 	// UnauthorizedOperation .
@@ -76,6 +86,8 @@ type DescribeInstancesInput struct {
 	//   - architecture - The instance architecture ( i386 | x86_64 | arm64 ).
 	//
 	//   - availability-zone - The Availability Zone of the instance.
+	//
+	//   - availability-zone-id - The ID of the Availability Zone of the instance.
 	//
 	//   - block-device-mapping.attach-time - The attach time for an EBS volume mapped
 	//   to the instance, for example, 2022-09-15T17:15:20.000Z .
@@ -140,9 +152,6 @@ type DescribeInstancesInput struct {
 	//
 	//   - iam-instance-profile.id - The instance profile associated with the instance.
 	//   Specified as an ID.
-	//
-	//   - iam-instance-profile.name - The instance profile associated with the
-	//   instance. Specified as an name.
 	//
 	//   - image-id - The ID of the image used to launch the instance.
 	//
@@ -314,6 +323,13 @@ type DescribeInstancesInput struct {
 	//
 	//   - network-interface.network-interface-id - The ID of the network interface.
 	//
+	//   - network-interface.operator.managed - A Boolean that indicates whether the
+	//   instance has a managed network interface.
+	//
+	//   - network-interface.operator.principal - The principal that manages the
+	//   network interface. Only valid for instances with managed network interfaces,
+	//   where managed is true .
+	//
 	//   - network-interface.outpost-arn - The ARN of the Outpost.
 	//
 	//   - network-interface.owner-id - The ID of the owner of the network interface.
@@ -348,6 +364,15 @@ type DescribeInstancesInput struct {
 	//
 	//   - network-interface.vpc-id - The ID of the VPC for the network interface.
 	//
+	//   - network-performance-options.bandwidth-weighting - Where the performance
+	//   boost is applied, if applicable. Valid values: default , vpc-1 , ebs-1 .
+	//
+	//   - operator.managed - A Boolean that indicates whether this is a managed
+	//   instance.
+	//
+	//   - operator.principal - The principal that manages the instance. Only valid for
+	//   managed instances, where managed is true .
+	//
 	//   - outpost-arn - The Amazon Resource Name (ARN) of the Outpost.
 	//
 	//   - owner-id - The Amazon Web Services account ID of the instance owner.
@@ -360,13 +385,13 @@ type DescribeInstancesInput struct {
 	//
 	//   - platform-details - The platform ( Linux/UNIX | Red Hat BYOL Linux | Red Hat
 	//   Enterprise Linux | Red Hat Enterprise Linux with HA | Red Hat Enterprise
-	//   Linux with SQL Server Standard and HA | Red Hat Enterprise Linux with SQL
-	//   Server Enterprise and HA | Red Hat Enterprise Linux with SQL Server Standard |
-	//   Red Hat Enterprise Linux with SQL Server Web | Red Hat Enterprise Linux with
-	//   SQL Server Enterprise | SQL Server Enterprise | SQL Server Standard | SQL
-	//   Server Web | SUSE Linux | Ubuntu Pro | Windows | Windows BYOL | Windows with
-	//   SQL Server Enterprise | Windows with SQL Server Standard | Windows with SQL
-	//   Server Web ).
+	//   Linux with High Availability | Red Hat Enterprise Linux with SQL Server
+	//   Standard and HA | Red Hat Enterprise Linux with SQL Server Enterprise and HA |
+	//   Red Hat Enterprise Linux with SQL Server Standard | Red Hat Enterprise Linux
+	//   with SQL Server Web | Red Hat Enterprise Linux with SQL Server Enterprise |
+	//   SQL Server Enterprise | SQL Server Standard | SQL Server Web | SUSE Linux |
+	//   Ubuntu Pro | Windows | Windows BYOL | Windows with SQL Server Enterprise |
+	//   Windows with SQL Server Standard | Windows with SQL Server Web ).
 	//
 	//   - private-dns-name - The private IPv4 DNS name of the instance.
 	//
@@ -538,6 +563,9 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -556,6 +584,9 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeInstances(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -572,6 +603,15 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -737,22 +777,16 @@ func (w *InstanceExistsWaiter) WaitForOutput(ctx context.Context, params *Descri
 func instanceExistsStateRetryable(ctx context.Context, input *DescribeInstancesInput, output *DescribeInstancesOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("length(Reservations[]) > `0`", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
-		}
-
+		v1 := output.Reservations
+		v2 := len(v1)
+		v3 := 0
+		v4 := int64(v2) > int64(v3)
 		expectedValue := "true"
 		bv, err := strconv.ParseBool(expectedValue)
 		if err != nil {
 			return false, fmt.Errorf("error parsing boolean from string %w", err)
 		}
-		value, ok := pathValue.(bool)
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected bool value got %T", pathValue)
-		}
-
-		if value == bv {
+		if v4 == bv {
 			return false, nil
 		}
 	}
@@ -769,6 +803,9 @@ func instanceExistsStateRetryable(ctx context.Context, input *DescribeInstancesI
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -932,29 +969,32 @@ func (w *InstanceRunningWaiter) WaitForOutput(ctx context.Context, params *Descr
 func instanceRunningStateRetryable(ctx context.Context, input *DescribeInstancesInput, output *DescribeInstancesOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
-		expectedValue := "running"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
 		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
 			}
-
-			if string(value) != expectedValue {
+			v5 = append(v5, v7)
+		}
+		expectedValue := "running"
+		match := len(v5) > 0
+		for _, v := range v5 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -964,74 +1004,107 @@ func instanceRunningStateRetryable(ctx context.Context, input *DescribeInstances
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
+		}
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
+			}
+			v5 = append(v5, v7)
+		}
 		expectedValue := "shutting-down"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v5 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
+		}
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
+			}
+			v5 = append(v5, v7)
+		}
 		expectedValue := "terminated"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v5 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
+		}
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
+			}
+			v5 = append(v5, v7)
+		}
 		expectedValue := "stopping"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v5 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
@@ -1047,6 +1120,9 @@ func instanceRunningStateRetryable(ctx context.Context, input *DescribeInstances
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -1210,29 +1286,32 @@ func (w *InstanceStoppedWaiter) WaitForOutput(ctx context.Context, params *Descr
 func instanceStoppedStateRetryable(ctx context.Context, input *DescribeInstancesInput, output *DescribeInstancesOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
-		expectedValue := "stopped"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
 		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
 			}
-
-			if string(value) != expectedValue {
+			v5 = append(v5, v7)
+		}
+		expectedValue := "stopped"
+		match := len(v5) > 0
+		for _, v := range v5 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -1242,53 +1321,78 @@ func instanceStoppedStateRetryable(ctx context.Context, input *DescribeInstances
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
+		}
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
+			}
+			v5 = append(v5, v7)
+		}
 		expectedValue := "pending"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v5 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
+		}
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
+			}
+			v5 = append(v5, v7)
+		}
 		expectedValue := "terminated"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v5 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -1452,29 +1556,32 @@ func (w *InstanceTerminatedWaiter) WaitForOutput(ctx context.Context, params *De
 func instanceTerminatedStateRetryable(ctx context.Context, input *DescribeInstancesInput, output *DescribeInstancesOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
-		expectedValue := "terminated"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
 		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
 			}
-
-			if string(value) != expectedValue {
+			v5 = append(v5, v7)
+		}
+		expectedValue := "terminated"
+		match := len(v5) > 0
+		for _, v := range v5 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -1484,53 +1591,78 @@ func instanceTerminatedStateRetryable(ctx context.Context, input *DescribeInstan
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
+		}
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
+			}
+			v5 = append(v5, v7)
+		}
 		expectedValue := "pending"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v5 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Reservations[].Instances[].State.Name", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Reservations
+		var v2 [][]types.Instance
+		for _, v := range v1 {
+			v3 := v.Instances
+			v2 = append(v2, v3)
 		}
-
+		var v4 []types.Instance
+		for _, v := range v2 {
+			v4 = append(v4, v...)
+		}
+		var v5 []types.InstanceStateName
+		for _, v := range v4 {
+			v6 := v.State
+			var v7 types.InstanceStateName
+			if v6 != nil {
+				v8 := v6.Name
+				v7 = v8
+			}
+			v5 = append(v5, v7)
+		}
 		expectedValue := "stopping"
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
+		var match bool
+		for _, v := range v5 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
 		}
 
-		for _, v := range listOfValues {
-			value, ok := v.(types.InstanceStateName)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.InstanceStateName value, got %T", pathValue)
-			}
-
-			if string(value) == expectedValue {
-				return false, fmt.Errorf("waiter state transitioned to Failure")
-			}
+		if match {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

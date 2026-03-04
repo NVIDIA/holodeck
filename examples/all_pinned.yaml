@@ -1,0 +1,43 @@
+# Example: All components pinned to specific versions
+#
+# This configuration pins every component to an exact version for
+# maximum reproducibility. Recommended as a CI/CD baseline.
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: all-pinned
+  description: "Reproducible environment with all versions pinned"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  nvidiaDriver:
+    install: true
+    source: package
+    package:
+      version: "560.35.03"
+  containerRuntime:
+    install: true
+    name: containerd
+    source: package
+    package:
+      version: "1.7.23"
+  nvidiaContainerToolkit:
+    install: true
+    source: package
+    package:
+      version: "1.17.3-1"
+    enableCDI: true
+  kubernetes:
+    install: true
+    installer: kubeadm
+    source: release
+    release:
+      version: v1.31.1

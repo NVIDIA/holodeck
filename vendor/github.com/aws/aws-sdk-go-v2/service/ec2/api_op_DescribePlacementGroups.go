@@ -11,8 +11,14 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Describes the specified placement groups or all of your placement groups. For
-// more information, see [Placement groups]in the Amazon EC2 User Guide.
+// Describes the specified placement groups or all of your placement groups.
+//
+// To describe a specific placement group that is shared with your account, you
+// must specify the ID of the placement group using the GroupId parameter.
+// Specifying the name of a shared placement group using the GroupNames parameter
+// will result in an error.
+//
+// For more information, see [Placement groups] in the Amazon EC2 User Guide.
 //
 // [Placement groups]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/placement-groups.html
 func (c *Client) DescribePlacementGroups(ctx context.Context, params *DescribePlacementGroupsInput, optFns ...func(*Options)) (*DescribePlacementGroupsOutput, error) {
@@ -32,7 +38,7 @@ func (c *Client) DescribePlacementGroups(ctx context.Context, params *DescribePl
 
 type DescribePlacementGroupsInput struct {
 
-	// Checks whether you have the required permissions for the action, without
+	// Checks whether you have the required permissions for the operation, without
 	// actually making the request, and provides an error response. If you have the
 	// required permissions, the error response is DryRunOperation . Otherwise, it is
 	// UnauthorizedOperation .
@@ -66,7 +72,12 @@ type DescribePlacementGroupsInput struct {
 
 	// The names of the placement groups.
 	//
-	// Default: Describes all your placement groups, or only those otherwise specified.
+	// Constraints:
+	//
+	//   - You can specify a name only if the placement group is owned by your account.
+	//
+	//   - If a placement group is shared with your account, specifying the name
+	//   results in an error. You must use the GroupId parameter instead.
 	GroupNames []string
 
 	noSmithyDocumentSerde
@@ -126,6 +137,9 @@ func (c *Client) addOperationDescribePlacementGroupsMiddlewares(stack *middlewar
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -144,6 +158,9 @@ func (c *Client) addOperationDescribePlacementGroupsMiddlewares(stack *middlewar
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribePlacementGroups(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -160,6 +177,15 @@ func (c *Client) addOperationDescribePlacementGroupsMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -15,6 +15,11 @@ import (
 // names.
 //
 // To get information about a single parameter, you can use the GetParameter operation instead.
+//
+// Parameter names can't contain spaces. The service removes any spaces specified
+// for the beginning or end of a parameter name. If the specified name for a
+// parameter contains spaces between characters, the request fails with a
+// ValidationException error.
 func (c *Client) GetParameters(ctx context.Context, params *GetParametersInput, optFns ...func(*Options)) (*GetParametersOutput, error) {
 	if params == nil {
 		params = &GetParametersInput{}
@@ -115,6 +120,9 @@ func (c *Client) addOperationGetParametersMiddlewares(stack *middleware.Stack, o
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -131,6 +139,9 @@ func (c *Client) addOperationGetParametersMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetParametersValidationMiddleware(stack); err != nil {
@@ -152,6 +163,15 @@ func (c *Client) addOperationGetParametersMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -1,0 +1,34 @@
+# Example: Build containerd from source at a specific git reference
+#
+# This configuration builds containerd from source by cloning the
+# repository at a specific tag, commit, or branch.
+#
+# Useful for testing unreleased containerd features or specific commits.
+# Build requires Go toolchain (installed automatically).
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: containerd-git-test
+  description: "Test environment with containerd built from source"
+spec:
+  provider: aws
+  auth:
+    keyName: HOLODECK_AWS_ACCESS_KEY_ID
+    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      architecture: X86_64
+  containerRuntime:
+    install: true
+    name: containerd
+    source: git
+    git:
+      ref: v1.7.23  # Tag, commit SHA, or branch name
+      # repo: https://github.com/containerd/containerd.git  # optional
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true

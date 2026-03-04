@@ -54,6 +54,25 @@ type ModifyIpamInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
+	// Enable this option to use your own GUA ranges as private IPv6 addresses. This
+	// option is disabled by default.
+	EnablePrivateGua *bool
+
+	// A metered account is an Amazon Web Services account that is charged for active
+	// IP addresses managed in IPAM. For more information, see [Enable cost distribution]in the Amazon VPC IPAM
+	// User Guide.
+	//
+	// Possible values:
+	//
+	//   - ipam-owner (default): The Amazon Web Services account which owns the IPAM is
+	//   charged for all active IP addresses managed in IPAM.
+	//
+	//   - resource-owner : The Amazon Web Services account that owns the IP address is
+	//   charged for the active IP address.
+	//
+	// [Enable cost distribution]: https://docs.aws.amazon.com/vpc/latest/ipam/ipam-enable-cost-distro.html
+	MeteredAccount types.IpamMeteredAccount
+
 	// The operating Regions to remove.
 	RemoveOperatingRegions []types.RemoveIpamOperatingRegion
 
@@ -121,6 +140,9 @@ func (c *Client) addOperationModifyIpamMiddlewares(stack *middleware.Stack, opti
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -137,6 +159,9 @@ func (c *Client) addOperationModifyIpamMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpModifyIpamValidationMiddleware(stack); err != nil {
@@ -158,6 +183,15 @@ func (c *Client) addOperationModifyIpamMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -37,7 +37,7 @@ func (c *Client) ModifyInstanceMetadataDefaults(ctx context.Context, params *Mod
 
 type ModifyInstanceMetadataDefaultsInput struct {
 
-	// Checks whether you have the required permissions for the action, without
+	// Checks whether you have the required permissions for the operation, without
 	// actually making the request, and provides an error response. If you have the
 	// required permissions, the error response is DryRunOperation . Otherwise, it is
 	// UnauthorizedOperation .
@@ -62,10 +62,18 @@ type ModifyInstanceMetadataDefaultsInput struct {
 	//   must use IMDSv2.
 	HttpTokens types.MetadataDefaultHttpTokensState
 
-	// Enables or disables access to an instance's tags from the instance metadata.
-	// For more information, see [Work with instance tags using the instance metadata]in the Amazon EC2 User Guide.
+	// Specifies whether to enforce the requirement of IMDSv2 on an instance at the
+	// time of launch. When enforcement is enabled, the instance can't launch unless
+	// IMDSv2 ( HttpTokens ) is set to required . For more information, see [Enforce IMDSv2 at the account level] in the
+	// Amazon EC2 User Guide.
 	//
-	// [Work with instance tags using the instance metadata]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#work-with-tags-in-IMDS
+	// [Enforce IMDSv2 at the account level]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-IMDS-new-instances.html#enforce-imdsv2-at-the-account-level
+	HttpTokensEnforced types.DefaultHttpTokensEnforcedState
+
+	// Enables or disables access to an instance's tags from the instance metadata.
+	// For more information, see [View tags for your EC2 instances using instance metadata]in the Amazon EC2 User Guide.
+	//
+	// [View tags for your EC2 instances using instance metadata]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/work-with-tags-in-IMDS.html
 	InstanceMetadataTags types.DefaultInstanceMetadataTagsState
 
 	noSmithyDocumentSerde
@@ -126,6 +134,9 @@ func (c *Client) addOperationModifyInstanceMetadataDefaultsMiddlewares(stack *mi
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -144,6 +155,9 @@ func (c *Client) addOperationModifyInstanceMetadataDefaultsMiddlewares(stack *mi
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opModifyInstanceMetadataDefaults(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -160,6 +174,15 @@ func (c *Client) addOperationModifyInstanceMetadataDefaultsMiddlewares(stack *mi
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

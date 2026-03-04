@@ -11,8 +11,9 @@ spec:
   instance:
     type: g4dn.xlarge
     region: eu-north-1
-    ingressIpRanges:
-      - <MyIp>/<Range>
+    # ingressIpRanges is now optional - your IP is detected automatically
+    # ingressIpRanges:
+    #   - "YOUR_IP/32"  # Only needed for additional IP ranges
     image:
       architecture: X86_64
   containerRuntime:
@@ -25,5 +26,5 @@ spec:
   kubernetes:
     install: true
     installer: kubeadm
-    version: v1.30.2
-    crictlVersion: v1.30.0
+    version: v1.31.1
+    crictlVersion: v1.31.1

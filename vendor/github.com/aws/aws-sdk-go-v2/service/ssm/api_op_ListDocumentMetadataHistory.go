@@ -11,8 +11,14 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// Amazon Web Services Systems Manager Change Manager is no longer open to new
+// customers. Existing customers can continue to use the service as normal. For
+// more information, see [Amazon Web Services Systems Manager Change Manager availability change].
+//
 // Information about approval reviews for a version of a change template in Change
 // Manager.
+//
+// [Amazon Web Services Systems Manager Change Manager availability change]: https://docs.aws.amazon.com/systems-manager/latest/userguide/change-manager-availability-change.html
 func (c *Client) ListDocumentMetadataHistory(ctx context.Context, params *ListDocumentMetadataHistoryInput, optFns ...func(*Options)) (*ListDocumentMetadataHistoryOutput, error) {
 	if params == nil {
 		params = &ListDocumentMetadataHistoryInput{}
@@ -123,6 +129,9 @@ func (c *Client) addOperationListDocumentMetadataHistoryMiddlewares(stack *middl
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -139,6 +148,9 @@ func (c *Client) addOperationListDocumentMetadataHistoryMiddlewares(stack *middl
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListDocumentMetadataHistoryValidationMiddleware(stack); err != nil {
@@ -160,6 +172,15 @@ func (c *Client) addOperationListDocumentMetadataHistoryMiddlewares(stack *middl
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

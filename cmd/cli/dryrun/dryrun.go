@@ -26,9 +26,10 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
-	"golang.org/x/crypto/ssh"
+	"github.com/NVIDIA/holodeck/pkg/sshutil"
 
 	cli "github.com/urfave/cli/v2"
+	"golang.org/x/crypto/ssh"
 )
 
 type options struct {
@@ -69,20 +70,20 @@ func (m command) build() *cli.Command {
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				return fmt.Errorf("failed to read config file %s: %v", opts.envFile, err)
+				return fmt.Errorf("failed to read config file %s: %w", opts.envFile, err)
 			}
 
 			return nil
 		},
 		Action: func(c *cli.Context) error {
-			return m.run(c, &opts)
+			return m.run(&opts)
 		},
 	}
 
 	return &dryrun
 }
 
-func (m command) run(c *cli.Context, opts *options) error {
+func (m command) run(opts *options) error {
 	m.log.Info("Dryrun environment %s \U0001f50d", opts.cfg.Name)
 
 	// Check Provider
@@ -97,7 +98,7 @@ func (m command) run(c *cli.Context, opts *options) error {
 		if opts.cfg.Spec.Username == "" {
 			opts.cfg.Spec.Username = os.Getenv("USER")
 		}
-		if err := connectOrDie(opts.cfg.Spec.Auth.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.Instance.HostUrl); err != nil {
+		if err := connectOrDie(opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, opts.cfg.Spec.HostUrl); err != nil {
 			return err
 		}
 	default:
@@ -130,38 +131,32 @@ func validateAWS(log *logger.FunLogger, opts *options) error {
 // createSshClient creates a ssh client, and retries if it fails to connect
 func connectOrDie(keyPath, userName, hostUrl string) error {
 	var err error
-	key, err := os.ReadFile(keyPath)
+	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
-		return fmt.Errorf("failed to read key file: %v", err)
+		return fmt.Errorf("failed to read key file: %w", err)
 	}
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return fmt.Errorf("failed to parse private key: %v", err)
+		return fmt.Errorf("failed to parse private key: %w", err)
 	}
 	sshConfig := &ssh.ClientConfig{
 		User: userName,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
 	}
 
-	connectionFailed := false
-	for i := 0; i < 20; i++ {
+	var lastErr error
+	for range 20 {
 		client, err := ssh.Dial("tcp", hostUrl+":22", sshConfig)
 		if err == nil {
-			client.Close()
-			return nil // Connection succeeded,
+			_ = client.Close()
+			return nil
 		}
-		connectionFailed = true
-		// Sleep for a brief moment before retrying.
-		// You can adjust the duration based on your requirements.
+		lastErr = err
 		time.Sleep(1 * time.Second)
 	}
 
-	if connectionFailed {
-		return fmt.Errorf("failed to connect to %s", hostUrl)
-	}
-
-	return nil
+	return fmt.Errorf("failed to connect to %s after 20 retries: %w", hostUrl, lastErr)
 }

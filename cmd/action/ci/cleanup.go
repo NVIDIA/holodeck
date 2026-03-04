@@ -23,50 +23,27 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
-	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func cleanup(log *logger.FunLogger) error {
 	log.Info("Running Cleanup function")
 
-	// Map INPUT_AWS_ACCESS_KEY_ID and INPUT_AWS_SECRET_ACCESS_KEY
-	// to AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-	accessKeyID := os.Getenv("INPUT_AWS_ACCESS_KEY_ID")
-	if accessKeyID == "" {
-		log.Error(fmt.Errorf("aws access key id not provided"))
-		os.Exit(1)
-	}
-
-	secretAccessKey := os.Getenv("INPUT_AWS_SECRET_ACCESS_KEY")
-	if secretAccessKey == "" {
-		log.Error(fmt.Errorf("aws secret access key not provided"))
-		os.Exit(1)
-	}
-
-	os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
-	os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
-
+	// Read the config file
 	configFile := os.Getenv("INPUT_HOLODECK_CONFIG")
 	if configFile == "" {
 		log.Error(fmt.Errorf("config file not provided"))
 		os.Exit(1)
 	}
 	configFile = "/github/workspace/" + configFile
-
-	// Read the config file
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
 	if err != nil {
-		return fmt.Errorf("error reading config file: %s", err)
+		return fmt.Errorf("error reading config file: %w", err)
 	}
 
 	// Set env name
 	setCfgName(&cfg)
-
-	client, err := aws.New(log, cfg, cacheFile)
-	if err != nil {
-		log.Error(err)
-		log.Exit(1)
-	}
 
 	// check if cache exists
 	if _, err := os.Stat(cacheFile); err != nil {
@@ -75,7 +52,12 @@ func cleanup(log *logger.FunLogger) error {
 		os.Exit(1)
 	}
 
-	if err := client.Delete(); err != nil {
+	provider, err := newProvider(log, &cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	if err := provider.Delete(); err != nil {
 		log.Error(err)
 		log.Exit(1)
 	}
@@ -84,21 +66,51 @@ func cleanup(log *logger.FunLogger) error {
 	// if kubeconfig exists, delete it
 	if _, err := os.Stat(kubeconfig); err == nil {
 		if err := os.Remove(kubeconfig); err != nil {
-			log.Error(fmt.Errorf("error deleting kubeconfig: %s", err))
+			log.Error(fmt.Errorf("error deleting kubeconfig: %w", err))
 		}
 	}
 
 	if _, err := os.Stat(sshKeyFile); err == nil {
 		if err := os.Remove(sshKeyFile); err != nil {
-			log.Error(fmt.Errorf("error deleting ssh key: %s", err))
+			log.Error(fmt.Errorf("error deleting ssh key: %w", err))
 		}
-	}
-
-	if err := os.RemoveAll(cachedir); err != nil {
-		log.Error(fmt.Errorf("error deleting cache directory: %s", err))
 	}
 
 	log.Info("Successfully deleted environment %s\n", cfg.Name)
 
 	return nil
+}
+
+func isTerminated(log *logger.FunLogger) (bool, error) {
+	log.Info("Checking for Terminated condition")
+
+	// Read the config file
+	configFile := os.Getenv("INPUT_HOLODECK_CONFIG")
+	if configFile == "" {
+		log.Error(fmt.Errorf("config file not provided"))
+		os.Exit(1)
+	}
+	configFile = "/github/workspace/" + configFile
+	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](configFile)
+	if err != nil {
+		return false, fmt.Errorf("error reading config file: %w", err)
+	}
+
+	provider, err := newProvider(log, &cfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	status, err := provider.Status()
+	if err != nil {
+		return false, fmt.Errorf("failed to get status: %w", err)
+	}
+
+	for _, s := range status {
+		if s.Type == v1alpha1.ConditionTerminated {
+			return s.Status == metav1.ConditionTrue, nil
+		}
+	}
+
+	return false, nil
 }

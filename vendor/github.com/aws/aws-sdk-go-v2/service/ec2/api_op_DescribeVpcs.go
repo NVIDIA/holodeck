@@ -13,7 +13,6 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"time"
 )
 
@@ -78,7 +77,7 @@ type DescribeVpcsInput struct {
 	//
 	//   - state - The state of the VPC ( pending | available ).
 	//
-	//   - tag : - The key/value combination of a tag assigned to the resource. Use the
+	//   - tag - The key/value combination of a tag assigned to the resource. Use the
 	//   tag key in the filter name and the tag value as the filter value. For example,
 	//   to find all resources that have a tag with the key Owner and the value TeamA ,
 	//   specify tag:Owner for the filter name and TeamA for the filter value.
@@ -164,6 +163,9 @@ func (c *Client) addOperationDescribeVpcsMiddlewares(stack *middleware.Stack, op
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -182,6 +184,9 @@ func (c *Client) addOperationDescribeVpcsMiddlewares(stack *middleware.Stack, op
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeVpcs(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -198,6 +203,15 @@ func (c *Client) addOperationDescribeVpcsMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -362,29 +376,18 @@ func (w *VpcAvailableWaiter) WaitForOutput(ctx context.Context, params *Describe
 func vpcAvailableStateRetryable(ctx context.Context, input *DescribeVpcsInput, output *DescribeVpcsOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("Vpcs[].State", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.Vpcs
+		var v2 []types.VpcState
+		for _, v := range v1 {
+			v3 := v.State
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "available"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.VpcState)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.VpcState value, got %T", pathValue)
-			}
-
-			if string(value) != expectedValue {
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -393,6 +396,9 @@ func vpcAvailableStateRetryable(ctx context.Context, input *DescribeVpcsInput, o
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -570,6 +576,9 @@ func vpcExistsStateRetryable(ctx context.Context, input *DescribeVpcsInput, outp
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

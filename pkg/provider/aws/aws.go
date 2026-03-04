@@ -21,15 +21,17 @@ import (
 	"os"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/ami"
+	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
-	"sigs.k8s.io/yaml"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/aws-sdk-go-v2/service/route53"
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 const (
@@ -71,52 +73,141 @@ type AWS struct {
 	PublicDnsName             string
 }
 
-type Client struct {
-	Tags      []types.Tag
-	ec2       *ec2.Client
-	r53       *route53.Client
-	cacheFile string
+type Provider struct {
+	Tags        []types.Tag
+	ec2         internalaws.EC2Client
+	ssm         internalaws.SSMClient
+	elbv2       internalaws.ELBv2Client
+	amiResolver *ami.Resolver
+	cacheFile   string
 
 	*v1alpha1.Environment
 	log *logger.FunLogger
 }
 
-func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string) (*Client, error) {
+// Option is a functional option for configuring the Provider.
+type Option func(*Provider)
+
+// WithEC2Client sets a custom EC2 client for the Provider.
+// This is primarily used for testing to inject mock clients.
+func WithEC2Client(client internalaws.EC2Client) Option {
+	return func(p *Provider) {
+		p.ec2 = client
+	}
+}
+
+// WithSSMClient sets a custom SSM client for the Provider.
+// This is primarily used for testing to inject mock clients.
+func WithSSMClient(client internalaws.SSMClient) Option {
+	return func(p *Provider) {
+		p.ssm = client
+	}
+}
+
+// WithELBv2Client sets a custom ELBv2 client for the Provider.
+// This is primarily used for testing to inject mock clients.
+func WithELBv2Client(client internalaws.ELBv2Client) Option {
+	return func(p *Provider) {
+		p.elbv2 = client
+	}
+}
+
+// WithAMIResolver sets a custom AMI resolver for the Provider.
+// This is primarily used for testing.
+func WithAMIResolver(resolver *ami.Resolver) Option {
+	return func(p *Provider) {
+		p.amiResolver = resolver
+	}
+}
+
+// New creates a new AWS Provider with the given configuration.
+// Optional functional options can be provided to customize the provider,
+// such as injecting a mock EC2 client for testing.
+func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string,
+	opts ...Option) (*Provider, error) {
 	// Create an AWS session and configure the EC2 client
-	region := env.Spec.Region
+	// For cluster deployments, use cluster region; otherwise use instance region
+	var region string
+	if env.Spec.Cluster != nil && env.Spec.Cluster.Region != "" {
+		region = env.Spec.Cluster.Region
+	} else {
+		region = env.Spec.Region
+	}
 	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
 		region = envRegion
 	}
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-	if err != nil {
-		return nil, err
+	commitSHA := os.Getenv("GITHUB_SHA")
+	// short sha
+	if len(commitSHA) > 8 {
+		commitSHA = commitSHA[:8]
 	}
+	actor := os.Getenv("GITHUB_ACTOR")
+	branch := os.Getenv("GITHUB_REF_NAME")
+	repoName := os.Getenv("GITHUB_REPOSITORY")
+	gitHubRunId := os.Getenv("GITHUB_RUN_ID")
+	gitHubRunNumber := os.Getenv("GITHUB_RUN_NUMBER")
+	gitHubJob := os.Getenv("GITHUB_JOB")
+	gitHubRunAttempt := os.Getenv("GITHUB_RUN_ATTEMPT")
 
-	client := ec2.NewFromConfig(cfg)
-	r53 := route53.NewFromConfig(cfg)
-	c := &Client{
-		[]types.Tag{
+	p := &Provider{
+		Tags: []types.Tag{
 			{Key: aws.String("Product"), Value: aws.String("Cloud Native")},
 			{Key: aws.String("Name"), Value: aws.String(env.Name)},
 			{Key: aws.String("Project"), Value: aws.String("holodeck")},
 			{Key: aws.String("Environment"), Value: aws.String("cicd")},
+			{Key: aws.String("CommitSHA"), Value: aws.String(commitSHA)},
+			{Key: aws.String("Actor"), Value: aws.String(actor)},
+			{Key: aws.String("Branch"), Value: aws.String(branch)},
+			{Key: aws.String("GitHubRepository"), Value: aws.String(repoName)},
+			{Key: aws.String("GitHubRunId"), Value: aws.String(gitHubRunId)},
+			{Key: aws.String("GitHubRunNumber"), Value: aws.String(gitHubRunNumber)},
+			{Key: aws.String("GitHubJob"), Value: aws.String(gitHubJob)},
+			{Key: aws.String("GitHubRunAttempt"), Value: aws.String(gitHubRunAttempt)},
 		},
-		client,
-		r53,
-		cacheFile,
-		&env,
-		log,
+		cacheFile:   cacheFile,
+		Environment: &env,
+		log:         log,
 	}
 
-	return c, nil
+	// Apply functional options
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	// Create AWS clients if not injected (for testing)
+	if p.ec2 == nil || p.ssm == nil {
+		cfg, err := config.LoadDefaultConfig(
+			context.TODO(),
+			config.WithRegion(region),
+		)
+		if err != nil {
+			return nil, err
+		}
+		if p.ec2 == nil {
+			p.ec2 = ec2.NewFromConfig(cfg)
+		}
+		if p.ssm == nil {
+			p.ssm = ssm.NewFromConfig(cfg)
+		}
+		if p.elbv2 == nil {
+			p.elbv2 = elasticloadbalancingv2.NewFromConfig(cfg)
+		}
+	}
+
+	// Create AMI resolver if not injected
+	if p.amiResolver == nil {
+		p.amiResolver = ami.NewResolver(p.ec2, p.ssm, region)
+	}
+
+	return p, nil
 }
 
 // Name returns the name of the builder provisioner
-func (a *Client) Name() string { return Name }
+func (p *Provider) Name() string { return Name }
 
 // unmarsalCache unmarshals the cache file into the AWS struct
-func (a *Client) unmarsalCache() (*AWS, error) {
-	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](a.cacheFile)
+func (p *Provider) unmarsalCache() (*AWS, error) {
+	env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](p.cacheFile)
 	if err != nil {
 		return nil, err
 	}
@@ -148,34 +239,4 @@ func (a *Client) unmarsalCache() (*AWS, error) {
 	}
 
 	return aws, nil
-}
-
-// dump writes the AWS struct to the cache file
-func (a *Client) dumpCache(aws *AWS) error {
-	env := a.Environment.DeepCopy()
-	env.Status.Properties = []v1alpha1.Properties{
-		{Name: VpcID, Value: aws.Vpcid},
-		{Name: SubnetID, Value: aws.Subnetid},
-		{Name: InternetGwID, Value: aws.InternetGwid},
-		{Name: InternetGatewayAttachment, Value: aws.InternetGatewayAttachment},
-		{Name: RouteTable, Value: aws.RouteTable},
-		{Name: SecurityGroupID, Value: aws.SecurityGroupid},
-		{Name: InstanceID, Value: aws.Instanceid},
-		{Name: PublicDnsName, Value: aws.PublicDnsName},
-	}
-
-	data, err := yaml.Marshal(env)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(a.cacheFile, data, 0644)
-	if err != nil {
-		return err
-	}
-
-	// Update the environment object with the new properties
-	a.Environment = env
-
-	return nil
 }

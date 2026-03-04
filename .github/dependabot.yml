@@ -3,12 +3,13 @@
 
 version: 2
 updates:
+# main branch
   - package-ecosystem: "gomod"
     target-branch: main
-    directory: "/"
+    directories:
+    - "/"
     schedule:
-      interval: "weekly"
-      day: "sunday"
+      interval: "daily"
     labels:
     - dependencies
     groups:
@@ -23,3 +24,12 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: "docker"
+    target-branch: main
+    directories:
+    - "/"
+    schedule:
+      interval: "daily"
+    labels:
+    - dependencies

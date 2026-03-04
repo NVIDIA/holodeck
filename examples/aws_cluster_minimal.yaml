@@ -1,0 +1,38 @@
+# Minimal multinode cluster (no GPU)
+# Useful for testing Kubernetes without GPU requirements
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: minimal-cluster
+  description: "Minimal 3-node cluster without GPU"
+spec:
+  provider: aws
+  auth:
+    keyName: <your-aws-key-name>
+    privateKey: <path-to-your-private-key>
+
+  cluster:
+    region: us-east-1
+
+    controlPlane:
+      count: 1
+      instanceType: t3.medium
+      # Share control-plane for workloads (cost-effective for dev)
+      dedicated: false
+
+    workers:
+      count: 2
+      instanceType: t3.medium
+
+  # No GPU software needed
+  nvidiaDriver:
+    install: false
+  nvidiaContainerToolkit:
+    install: false
+
+  containerRuntime:
+    install: true
+    name: containerd
+  kubernetes:
+    install: true
+    installer: kubeadm

@@ -13,16 +13,14 @@ import (
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
-	jmespath "github.com/jmespath/go-jmespath"
 	"time"
 )
 
-// Describes one or more of your network interfaces.
+// Describes the specified network interfaces or all your network interfaces.
 //
 // If you have a large number of network interfaces, the operation fails unless
 // you use pagination or one of the following filters: group-id , mac-address ,
-// private-dns-name , private-ip-address , private-dns-name , subnet-id , or vpc-id
-// .
+// private-dns-name , private-ip-address , subnet-id , or vpc-id .
 //
 // We strongly recommend using only paginated requests. Unpaginated requests are
 // susceptible to throttling and timeouts.
@@ -101,6 +99,9 @@ type DescribeNetworkInterfacesInput struct {
 	//
 	//   - availability-zone - The Availability Zone of the network interface.
 	//
+	//   - availability-zone-id - The ID of the Availability Zone of the network
+	//   interface.
+	//
 	//   - description - The description of the network interface.
 	//
 	//   - group-id - The ID of a security group associated with the network interface.
@@ -110,14 +111,20 @@ type DescribeNetworkInterfacesInput struct {
 	//
 	//   - interface-type - The type of network interface ( api_gateway_managed |
 	//   aws_codestar_connections_managed | branch | ec2_instance_connect_endpoint |
-	//   efa | efs | gateway_load_balancer | gateway_load_balancer_endpoint |
-	//   global_accelerator_managed | interface | iot_rules_managed | lambda |
-	//   load_balancer | nat_gateway | network_load_balancer | quicksight |
-	//   transit_gateway | trunk | vpc_endpoint ).
+	//   efa | efa-only | efs | evs | gateway_load_balancer |
+	//   gateway_load_balancer_endpoint | global_accelerator_managed | interface |
+	//   iot_rules_managed | lambda | load_balancer | nat_gateway |
+	//   network_load_balancer | quicksight | transit_gateway | trunk | vpc_endpoint ).
 	//
 	//   - mac-address - The MAC address of the network interface.
 	//
 	//   - network-interface-id - The ID of the network interface.
+	//
+	//   - operator.managed - A Boolean that indicates whether this is a managed
+	//   network interface.
+	//
+	//   - operator.principal - The principal that manages the network interface. Only
+	//   valid for managed network interfaces, where managed is true .
 	//
 	//   - owner-id - The Amazon Web Services account ID of the network interface owner.
 	//
@@ -130,8 +137,8 @@ type DescribeNetworkInterfacesInput struct {
 	//   or service that created the network interface.
 	//
 	//   - requester-managed - Indicates whether the network interface is being managed
-	//   by an Amazon Web Service (for example, Amazon Web Services Management Console,
-	//   Auto Scaling, and so on).
+	//   by an Amazon Web Services service (for example, Amazon Web Services Management
+	//   Console, Auto Scaling, and so on).
 	//
 	//   - source-dest-check - Indicates whether the network interface performs
 	//   source/destination checking. A value of true means checking is enabled, and
@@ -233,6 +240,9 @@ func (c *Client) addOperationDescribeNetworkInterfacesMiddlewares(stack *middlew
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -251,6 +261,9 @@ func (c *Client) addOperationDescribeNetworkInterfacesMiddlewares(stack *middlew
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeNetworkInterfaces(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -267,6 +280,15 @@ func (c *Client) addOperationDescribeNetworkInterfacesMiddlewares(stack *middlew
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -435,29 +457,18 @@ func (w *NetworkInterfaceAvailableWaiter) WaitForOutput(ctx context.Context, par
 func networkInterfaceAvailableStateRetryable(ctx context.Context, input *DescribeNetworkInterfacesInput, output *DescribeNetworkInterfacesOutput, err error) (bool, error) {
 
 	if err == nil {
-		pathValue, err := jmespath.Search("NetworkInterfaces[].Status", output)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating waiter state: %w", err)
+		v1 := output.NetworkInterfaces
+		var v2 []types.NetworkInterfaceStatus
+		for _, v := range v1 {
+			v3 := v.Status
+			v2 = append(v2, v3)
 		}
-
 		expectedValue := "available"
-		var match = true
-		listOfValues, ok := pathValue.([]interface{})
-		if !ok {
-			return false, fmt.Errorf("waiter comparator expected list got %T", pathValue)
-		}
-
-		if len(listOfValues) == 0 {
-			match = false
-		}
-		for _, v := range listOfValues {
-			value, ok := v.(types.NetworkInterfaceStatus)
-			if !ok {
-				return false, fmt.Errorf("waiter comparator expected types.NetworkInterfaceStatus value, got %T", pathValue)
-			}
-
-			if string(value) != expectedValue {
+		match := len(v2) > 0
+		for _, v := range v2 {
+			if string(v) != expectedValue {
 				match = false
+				break
 			}
 		}
 
@@ -478,6 +489,9 @@ func networkInterfaceAvailableStateRetryable(ctx context.Context, input *Describ
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

@@ -1,0 +1,24 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-aws-e2e-test-arm64
+  description: "end-to-end test infrastructure for ARM64 (Graviton + GPU)"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /home/runner/.cache/key
+  instance:
+    type: g5g.xlarge
+    region: us-east-1
+    # architecture intentionally omitted to exercise inference from instance type
+  containerRuntime:
+    install: true
+    name: docker
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm

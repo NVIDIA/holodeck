@@ -1,0 +1,26 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-rpm-rocky9-containerd
+  description: "RPM E2E: Rocky 9 + containerd + full GPU stack"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /home/runner/.cache/key
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    os: rocky-9
+    image:
+      architecture: amd64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm
