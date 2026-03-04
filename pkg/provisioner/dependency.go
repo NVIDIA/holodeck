@@ -19,6 +19,14 @@ package provisioner
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -240,6 +248,7 @@ func kernel(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 type DependencyResolver struct {
 	Dependencies []ProvisionFunc
 	env          *v1alpha1.Environment
+	baseDir      string
 }
 
 // DependencyConfigurator defines methods for configuring dependencies
@@ -302,6 +311,124 @@ func (d *DependencyResolver) withKernel() {
 	d.Dependencies = append(d.Dependencies, functions[kernelInstaller])
 }
 
+// SetBaseDir sets the base directory for resolving relative file paths in custom templates.
+func (d *DependencyResolver) SetBaseDir(dir string) {
+	d.baseDir = dir
+}
+
+// addCustomTemplates appends ProvisionFunc closures for custom templates matching the given phase.
+func (d *DependencyResolver) addCustomTemplates(phase v1alpha1.TemplatePhase) {
+	for _, ct := range d.env.Spec.CustomTemplates {
+		tplPhase := ct.Phase
+		if tplPhase == "" {
+			tplPhase = v1alpha1.TemplatePhasePostInstall
+		}
+		if tplPhase != phase {
+			continue
+		}
+
+		// Capture loop variable
+		tpl := ct
+		d.Dependencies = append(d.Dependencies, func(buf *bytes.Buffer, env v1alpha1.Environment) error {
+			return d.executeCustomTemplate(buf, tpl)
+		})
+	}
+}
+
+// executeCustomTemplate writes the script content for a single custom template to the buffer.
+func (d *DependencyResolver) executeCustomTemplate(buf *bytes.Buffer, tpl v1alpha1.CustomTemplate) error {
+	fmt.Fprintf(buf, "\n# [CUSTOM] %s (phase: %s)\n", tpl.Name, tpl.Phase)
+	fmt.Fprintf(buf, "echo \"[CUSTOM] Executing template: %s\"\n", tpl.Name)
+
+	// Export environment variables
+	if len(tpl.Env) > 0 {
+		// Sort keys for deterministic output
+		keys := make([]string, 0, len(tpl.Env))
+		for k := range tpl.Env {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(buf, "export %s=%q\n", k, tpl.Env[k])
+		}
+	}
+
+	// ContinueOnError handling
+	if tpl.ContinueOnError {
+		fmt.Fprintf(buf, "set +e\n")
+	}
+
+	// Resolve script content
+	var content string
+	switch {
+	case tpl.Inline != "":
+		content = tpl.Inline
+	case tpl.File != "":
+		path := tpl.File
+		if !filepath.IsAbs(path) && d.baseDir != "" {
+			path = filepath.Join(d.baseDir, path)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("custom template %q: failed to read file %q: %w", tpl.Name, path, err)
+		}
+		content = string(data)
+	case tpl.URL != "":
+		data, err := fetchURL(tpl.URL)
+		if err != nil {
+			return fmt.Errorf("custom template %q: failed to fetch URL %q: %w", tpl.Name, tpl.URL, err)
+		}
+		content = string(data)
+	default:
+		return fmt.Errorf("custom template %q: no source specified (inline, file, or url required)", tpl.Name)
+	}
+
+	// Verify checksum if provided
+	if tpl.Checksum != "" {
+		if err := verifyChecksum([]byte(content), tpl.Checksum); err != nil {
+			return fmt.Errorf("custom template %q: %w", tpl.Name, err)
+		}
+	}
+
+	fmt.Fprintf(buf, "%s\n", content)
+
+	if tpl.ContinueOnError {
+		fmt.Fprintf(buf, "set -e\n")
+	}
+
+	return nil
+}
+
+// fetchURL downloads content from a URL with a timeout.
+func fetchURL(url string) ([]byte, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// verifyChecksum validates content against a "sha256:<hex>" checksum string.
+func verifyChecksum(data []byte, checksum string) error {
+	parts := strings.SplitN(checksum, ":", 2)
+	if len(parts) != 2 || parts[0] != "sha256" {
+		return fmt.Errorf("unsupported checksum format %q (expected sha256:<hex>)", checksum)
+	}
+
+	actual := fmt.Sprintf("%x", sha256.Sum256(data))
+	if actual != parts[1] {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", parts[1], actual)
+	}
+	return nil
+}
+
 // ensureKindCompatibleDocker ensures Docker version is compatible with KIND
 // source builds, which require Docker API v1.44+ (Docker 20.10+).
 // This method automatically sets a minimum Docker version if:
@@ -329,6 +456,9 @@ func (d *DependencyResolver) ensureKindCompatibleDocker() {
 
 // Resolve returns the dependency list in the correct order
 func (d *DependencyResolver) Resolve() []ProvisionFunc {
+	// Phase: pre-install (before any Holodeck components)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePreInstall)
+
 	// Add Kernel to the list first since it's a system-level dependency
 	if d.env.Spec.Kernel.Version != "" {
 		d.withKernel()
@@ -347,15 +477,27 @@ func (d *DependencyResolver) Resolve() []ProvisionFunc {
 		d.withContainerRuntime()
 	}
 
+	// Phase: post-runtime (after container runtime installation)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostRuntime)
+
 	// Add Container Toolkit to the list
 	if d.env.Spec.NVIDIAContainerToolkit.Install {
 		d.withContainerToolkit()
 	}
 
+	// Phase: post-toolkit (after NVIDIA Container Toolkit installation)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostToolkit)
+
 	// Add Kubernetes to the list
 	if d.env.Spec.Kubernetes.Install {
 		d.withKubernetes()
 	}
+
+	// Phase: post-kubernetes (after Kubernetes is ready)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostKubernetes)
+
+	// Phase: post-install (after all Holodeck components)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostInstall)
 
 	return d.Dependencies
 }
