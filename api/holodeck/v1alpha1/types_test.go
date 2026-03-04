@@ -49,6 +49,45 @@ func TestCustomTemplate_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCustomTemplate_JSONRoundTrip_AllFields(t *testing.T) {
+	tpl := CustomTemplate{
+		Name:            "full-template",
+		Phase:           TemplatePhasePostInstall,
+		Inline:          "#!/bin/bash\necho hello",
+		Timeout:         300,
+		ContinueOnError: true,
+		Env: map[string]string{
+			"FOO": "bar",
+			"BAZ": "qux",
+		},
+	}
+
+	data, err := json.Marshal(tpl)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	var got CustomTemplate
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+
+	if got.Timeout != tpl.Timeout {
+		t.Errorf("Timeout: got %d, want %d", got.Timeout, tpl.Timeout)
+	}
+	if got.ContinueOnError != tpl.ContinueOnError {
+		t.Errorf("ContinueOnError: got %v, want %v", got.ContinueOnError, tpl.ContinueOnError)
+	}
+	if len(got.Env) != len(tpl.Env) {
+		t.Fatalf("Env length: got %d, want %d", len(got.Env), len(tpl.Env))
+	}
+	for k, v := range tpl.Env {
+		if got.Env[k] != v {
+			t.Errorf("Env[%q]: got %q, want %q", k, got.Env[k], v)
+		}
+	}
+}
+
 func TestCustomTemplate_AllSources(t *testing.T) {
 	tests := []struct {
 		name string
@@ -73,7 +112,7 @@ func TestCustomTemplate_AllSources(t *testing.T) {
 			tpl: CustomTemplate{
 				Name:     "url-test",
 				URL:      "https://example.com/script.sh",
-				Checksum: "sha256:abc123",
+				Checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 			},
 		},
 	}
