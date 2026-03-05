@@ -204,7 +204,7 @@ var _ = Describe("DependencyResolver CustomTemplates", func() {
 		It("should resolve relative file paths using baseDir", func() {
 			tmpDir := GinkgoT().TempDir()
 			scriptPath := filepath.Join(tmpDir, "test-script.sh")
-			err := os.WriteFile(scriptPath, []byte("echo 'from file'"), 0644)
+			err := os.WriteFile(scriptPath, []byte("echo 'from file'"), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			env := v1alpha1.Environment{
@@ -231,7 +231,7 @@ var _ = Describe("DependencyResolver CustomTemplates", func() {
 		It("should handle absolute file paths regardless of baseDir", func() {
 			tmpDir := GinkgoT().TempDir()
 			scriptPath := filepath.Join(tmpDir, "abs-script.sh")
-			err := os.WriteFile(scriptPath, []byte("echo 'absolute'"), 0644)
+			err := os.WriteFile(scriptPath, []byte("echo 'absolute'"), 0600)
 			Expect(err).NotTo(HaveOccurred())
 
 			env := v1alpha1.Environment{

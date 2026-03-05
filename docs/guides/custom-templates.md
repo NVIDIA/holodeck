@@ -1,6 +1,9 @@
 # Custom Templates
 
-Custom templates let you run user-provided scripts at specific points during Holodeck provisioning. This enables customizations such as installing additional packages, configuring monitoring, or applying security policies without modifying Holodeck itself.
+Custom templates let you run user-provided scripts at specific points
+during Holodeck provisioning. This enables customizations such as
+installing additional packages, configuring monitoring, or applying
+security policies without modifying Holodeck itself.
 
 ## Source Types
 
@@ -53,7 +56,8 @@ customTemplates:
     file: ./scripts/monitoring.sh
 ```
 
-Relative paths are resolved from the directory containing the Holodeck configuration file. Absolute paths are used as-is.
+Relative paths are resolved from the directory containing the
+Holodeck configuration file. Absolute paths are used as-is.
 
 ### URL Source
 
@@ -129,8 +133,10 @@ customTemplates:
 ## Security Considerations
 
 - **Checksum verification**: Use `checksum` with URL sources to verify script integrity.
-- **HTTPS**: Always use HTTPS for URL sources. HTTP URLs will generate a warning during dryrun.
-- **`continueOnError`**: Use carefully. When enabled, a failing custom template will not stop provisioning, which may leave the system in a partially configured state.
+- **HTTPS required**: URL sources must use HTTPS. Non-HTTPS URLs are rejected during validation.
+- **`continueOnError`**: Use carefully. When enabled, a failing custom
+  template will not stop provisioning, which may leave the system in a
+  partially configured state.
 - **File paths**: Relative file paths are resolved from the config directory. Avoid path traversal patterns.
 
 ## Best Practices
