@@ -162,6 +162,18 @@ holodeck create -f examples/custom_templates.yaml
 See the [Custom Templates Guide](../guides/custom-templates.md) for all
 source types (inline, file, URL) and configuration options.
 
+### 19. ARM64 GPU Environment
+
+**File:** [`examples/aws_arm64.yaml`](../../examples/aws_arm64.yaml)
+
+An ARM64 GPU environment using g5g instances. Architecture is
+automatically inferred from the instance type — no need to set
+`architecture: arm64` explicitly.
+
+```bash
+holodeck create -f examples/aws_arm64.yaml
+```
+
 ---
 
 ## Updated AWS Examples
