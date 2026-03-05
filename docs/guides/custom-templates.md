@@ -29,7 +29,8 @@ Custom templates execute at one of five phases during provisioning:
 
 If no phase is specified, the template defaults to `post-install`.
 
-Multiple templates can share the same phase and execute in the order they appear in the YAML.
+Multiple templates can share the same phase and execute in the
+order they appear in the YAML.
 
 ## Configuration Options
 
@@ -132,19 +133,27 @@ customTemplates:
 
 ## Security Considerations
 
-- **Checksum verification**: Use `checksum` with URL sources to verify script integrity.
-- **HTTPS required**: URL sources must use HTTPS. Non-HTTPS URLs are rejected during validation.
+- **Checksum verification**: Use `checksum` with URL sources to
+  verify script integrity.
+- **HTTPS required**: URL sources must use HTTPS. Non-HTTPS URLs
+  are rejected during validation.
 - **`continueOnError`**: Use carefully. When enabled, a failing custom
   template will not stop provisioning, which may leave the system in a
   partially configured state.
-- **File paths**: Relative file paths are resolved from the config directory. Avoid path traversal patterns.
+- **File paths**: Relative file paths are resolved from the config
+  directory. Avoid path traversal patterns.
 
 ## Best Practices
 
-1. **Use `pre-install` for system prerequisites** like package repos, kernel parameters, or certificates.
-2. **Use `post-kubernetes` for workload deployment** since the cluster is ready at that point.
-3. **Use `post-install` for validation scripts** that verify the full stack.
-4. **Set `continueOnError: true` for non-critical scripts** like monitoring or logging.
+1. **Use `pre-install` for system prerequisites** like package
+   repos, kernel parameters, or certificates.
+2. **Use `post-kubernetes` for workload deployment** since the
+   cluster is ready at that point.
+3. **Use `post-install` for validation scripts** that verify
+   the full stack.
+4. **Set `continueOnError: true` for non-critical scripts**
+   like monitoring or logging.
 5. **Add checksums for URL sources** to ensure script integrity.
 6. **Keep scripts idempotent** so re-runs produce the same result.
-7. **Test with `holodeck dryrun`** to validate configuration before provisioning.
+7. **Test with `holodeck dryrun`** to validate configuration
+   before provisioning.
