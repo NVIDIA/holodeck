@@ -146,6 +146,22 @@ detailed configuration options.
 See the [Container Runtime Sources Guide](../guides/runtime-sources.md)
 for all runtime options.
 
+### 18. Custom Templates
+
+**File:**
+[`examples/custom_templates.yaml`](../../examples/custom_templates.yaml)
+
+Run user-provided scripts at specific provisioning phases. This example
+shows inline scripts at pre-install, post-kubernetes, and post-install
+phases.
+
+```bash
+holodeck create -f examples/custom_templates.yaml
+```
+
+See the [Custom Templates Guide](../guides/custom-templates.md) for all
+source types (inline, file, URL) and configuration options.
+
 ---
 
 ## Updated AWS Examples
