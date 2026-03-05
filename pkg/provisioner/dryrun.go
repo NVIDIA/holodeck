@@ -22,6 +22,7 @@ import (
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/provisioner/templates"
 )
 
 // validateCTKConfig validates the NVIDIA Container Toolkit configuration.
@@ -112,10 +113,11 @@ func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 
 	// Validate custom templates
 	if len(env.Spec.CustomTemplates) > 0 {
-		if err := validateCustomTemplates(log, env); err != nil {
+		if err := templates.ValidateTemplateInputs(env); err != nil {
 			cancel(logger.ErrLoadingFailed)
 			return err
 		}
+		logCustomTemplates(log, env)
 	}
 
 	cancel(nil)
@@ -124,28 +126,9 @@ func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 	return nil
 }
 
-// validPhases is the set of allowed TemplatePhase values.
-var validPhases = map[v1alpha1.TemplatePhase]bool{
-	v1alpha1.TemplatePhasePreInstall:      true,
-	v1alpha1.TemplatePhasePostRuntime:     true,
-	v1alpha1.TemplatePhasePostToolkit:     true,
-	v1alpha1.TemplatePhasePostKubernetes:  true,
-	v1alpha1.TemplatePhasePostInstall:     true,
-}
-
-// validateCustomTemplates checks that each custom template has valid configuration.
-func validateCustomTemplates(log *logger.FunLogger, env v1alpha1.Environment) error {
+// logCustomTemplates logs each custom template's source and phase during dryrun.
+func logCustomTemplates(log *logger.FunLogger, env v1alpha1.Environment) {
 	for _, ct := range env.Spec.CustomTemplates {
-		// Validate phase
-		if ct.Phase != "" && !validPhases[ct.Phase] {
-			return fmt.Errorf("custom template %q: invalid phase %q", ct.Name, ct.Phase)
-		}
-
-		// Validate that at least one source is provided
-		if ct.Inline == "" && ct.File == "" && ct.URL == "" {
-			return fmt.Errorf("custom template %q: must specify one of inline, file, or url", ct.Name)
-		}
-
 		phase := ct.Phase
 		if phase == "" {
 			phase = v1alpha1.TemplatePhasePostInstall
@@ -163,5 +146,4 @@ func validateCustomTemplates(log *logger.FunLogger, env v1alpha1.Environment) er
 			}
 		}
 	}
-	return nil
 }

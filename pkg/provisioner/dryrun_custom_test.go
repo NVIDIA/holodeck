@@ -112,7 +112,7 @@ func TestDryrun_CustomTemplates_URLSource(t *testing.T) {
 					Name:     "url-template",
 					Phase:    v1alpha1.TemplatePhasePostInstall,
 					URL:      "https://example.com/script.sh",
-					Checksum: "sha256:abc123",
+					Checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 				},
 			},
 		},

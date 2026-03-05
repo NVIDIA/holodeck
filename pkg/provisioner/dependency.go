@@ -19,14 +19,6 @@ package provisioner
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -335,98 +327,14 @@ func (d *DependencyResolver) addCustomTemplates(phase v1alpha1.TemplatePhase) {
 	}
 }
 
-// executeCustomTemplate writes the script content for a single custom template to the buffer.
+// executeCustomTemplate loads and executes a single custom template using the templates package.
 func (d *DependencyResolver) executeCustomTemplate(buf *bytes.Buffer, tpl v1alpha1.CustomTemplate) error {
-	fmt.Fprintf(buf, "\n# [CUSTOM] %s (phase: %s)\n", tpl.Name, tpl.Phase)
-	fmt.Fprintf(buf, "echo \"[CUSTOM] Executing template: %s\"\n", tpl.Name)
-
-	// Export environment variables
-	if len(tpl.Env) > 0 {
-		// Sort keys for deterministic output
-		keys := make([]string, 0, len(tpl.Env))
-		for k := range tpl.Env {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(buf, "export %s=%q\n", k, tpl.Env[k])
-		}
-	}
-
-	// ContinueOnError handling
-	if tpl.ContinueOnError {
-		fmt.Fprintf(buf, "set +e\n")
-	}
-
-	// Resolve script content
-	var content string
-	switch {
-	case tpl.Inline != "":
-		content = tpl.Inline
-	case tpl.File != "":
-		path := tpl.File
-		if !filepath.IsAbs(path) && d.baseDir != "" {
-			path = filepath.Join(d.baseDir, path)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("custom template %q: failed to read file %q: %w", tpl.Name, path, err)
-		}
-		content = string(data)
-	case tpl.URL != "":
-		data, err := fetchURL(tpl.URL)
-		if err != nil {
-			return fmt.Errorf("custom template %q: failed to fetch URL %q: %w", tpl.Name, tpl.URL, err)
-		}
-		content = string(data)
-	default:
-		return fmt.Errorf("custom template %q: no source specified (inline, file, or url required)", tpl.Name)
-	}
-
-	// Verify checksum if provided
-	if tpl.Checksum != "" {
-		if err := verifyChecksum([]byte(content), tpl.Checksum); err != nil {
-			return fmt.Errorf("custom template %q: %w", tpl.Name, err)
-		}
-	}
-
-	fmt.Fprintf(buf, "%s\n", content)
-
-	if tpl.ContinueOnError {
-		fmt.Fprintf(buf, "set -e\n")
-	}
-
-	return nil
-}
-
-// fetchURL downloads content from a URL with a timeout.
-func fetchURL(url string) ([]byte, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
+	content, err := templates.LoadCustomTemplate(tpl, d.baseDir)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
-	}
-
-	return io.ReadAll(resp.Body)
-}
-
-// verifyChecksum validates content against a "sha256:<hex>" checksum string.
-func verifyChecksum(data []byte, checksum string) error {
-	parts := strings.SplitN(checksum, ":", 2)
-	if len(parts) != 2 || parts[0] != "sha256" {
-		return fmt.Errorf("unsupported checksum format %q (expected sha256:<hex>)", checksum)
-	}
-
-	actual := fmt.Sprintf("%x", sha256.Sum256(data))
-	if actual != parts[1] {
-		return fmt.Errorf("checksum mismatch: expected %s, got %s", parts[1], actual)
-	}
-	return nil
+	executor := templates.NewCustomTemplateExecutor(tpl, content)
+	return executor.Execute(buf, *d.env)
 }
 
 // ensureKindCompatibleDocker ensures Docker version is compatible with KIND
