@@ -143,6 +143,37 @@ customTemplates:
 - **File paths**: Relative file paths are resolved from the config
   directory. Avoid path traversal patterns.
 
+## Troubleshooting
+
+### Template fails with "no such file or directory"
+
+- **Cause:** File path is relative but `baseDir` was not set, or the
+    file doesn't exist at the resolved path.
+- **Fix:** Use absolute paths or ensure the file exists relative to
+    the Holodeck config file directory.
+
+### Template fails with "checksum mismatch"
+
+- **Cause:** The downloaded or read content doesn't match the
+    expected SHA256 hash.
+- **Fix:** Regenerate the checksum:
+    `sha256sum script.sh | awk '{print "sha256:" $1}'`
+
+### Template fails with "invalid environment variable name"
+
+- **Cause:** Env var keys must match POSIX shell rules:
+    start with letter or underscore, contain only letters, digits,
+    and underscores.
+- **Fix:** Rename the variable (e.g., `my-var` -> `MY_VAR`).
+
+### Dryrun passes but template fails at runtime
+
+- **Cause:** Dryrun validates configuration but does not execute
+    scripts. Runtime failures (missing commands, network issues) are
+    only caught during provisioning.
+- **Fix:** Test scripts locally before adding to Holodeck config.
+    Use `continueOnError: true` for non-critical scripts.
+
 ## Best Practices
 
 1. **Use `pre-install` for system prerequisites** like package
@@ -157,3 +188,11 @@ customTemplates:
 6. **Keep scripts idempotent** so re-runs produce the same result.
 7. **Test with `holodeck dryrun`** to validate configuration
    before provisioning.
+
+## Related
+
+- [Examples: Custom Templates](../../examples/custom_templates.yaml)
+- [Dryrun Command](../commands/dryrun.md) — validates custom template
+    configuration
+- [Source Selection Guide](source-selection.md) — choosing installation
+    sources for other components
