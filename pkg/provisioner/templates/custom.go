@@ -161,7 +161,7 @@ func (ct *CustomTemplateExecutor) Execute(tpl *bytes.Buffer, _ v1alpha1.Environm
 
 	// Log header
 	fmt.Fprintf(tpl, "\n# === [CUSTOM] Template: %s (phase: %s) ===\n", safeName, safePhase)
-	fmt.Fprintf(tpl, `holodeck_log \"INFO\" \"custom\" \"[CUSTOM] Running template '%s' (phase: %s)\"`+"\n", safeName, safePhase)
+	fmt.Fprintf(tpl, `holodeck_log "INFO" "custom" "[CUSTOM] Running template '%s' (phase: %s)"`+"\n", safeName, safePhase)
 
 	// Export environment variables with single-quote shell quoting (prevent value injection)
 	for k, v := range ct.Env {
@@ -175,14 +175,14 @@ func (ct *CustomTemplateExecutor) Execute(tpl *bytes.Buffer, _ v1alpha1.Environm
 		tpl.Write(ct.Content)
 		fmt.Fprintf(tpl, "\n_custom_rc=$?\nset -e\n")
 		fmt.Fprintf(tpl, "if [ $_custom_rc -ne 0 ]; then\n")
-		fmt.Fprintf(tpl, `  holodeck_log \"WARN\" \"custom\" \"[CUSTOM] Template '%s' failed (exit code: $_custom_rc)\" || true`+"\n", safeName)
+		fmt.Fprintf(tpl, `  holodeck_log "WARN" "custom" "[CUSTOM] Template '%s' failed (exit code: $_custom_rc)" || true`+"\n", safeName)
 		fmt.Fprintf(tpl, "fi\n")
 	} else {
 		tpl.Write(ct.Content)
 		fmt.Fprintf(tpl, "\n")
 	}
 
-	fmt.Fprintf(tpl, `holodeck_log \"INFO\" \"custom\" \"[CUSTOM] Template '%s' completed\"`+"\n", safeName)
+	fmt.Fprintf(tpl, `holodeck_log "INFO" "custom" "[CUSTOM] Template '%s' completed"`+"\n", safeName)
 
 	return nil
 }
