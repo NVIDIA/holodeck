@@ -70,7 +70,7 @@ func LoadCustomTemplate(tpl v1alpha1.CustomTemplate, baseDir string) ([]byte, er
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(baseDir, path)
 		}
-		content, err = os.ReadFile(path)
+		content, err = os.ReadFile(filepath.Clean(path)) //nolint:gosec // path is validated by caller
 		if err != nil {
 			return nil, fmt.Errorf("custom template %q: failed to read file %q: %w", tpl.Name, path, err)
 		}
@@ -102,7 +102,7 @@ func fetchURL(url, name string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("custom template %q: failed to fetch %q: %w", name, url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("custom template %q: URL %q returned status %d", name, url, resp.StatusCode)

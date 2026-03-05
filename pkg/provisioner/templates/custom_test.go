@@ -46,7 +46,7 @@ func TestLoadCustomTemplate_File(t *testing.T) {
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "test.sh")
 	scriptContent := "#!/bin/bash\necho from file"
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0644); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0600); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
@@ -68,7 +68,7 @@ func TestLoadCustomTemplate_FileRelative(t *testing.T) {
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "test.sh")
 	scriptContent := "#!/bin/bash\necho relative"
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0644); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0600); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestLoadCustomTemplate_ChecksumMatch(t *testing.T) {
 	content := "#!/bin/bash\necho hello"
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "test.sh")
-	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(content), 0600); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestLoadCustomTemplate_ChecksumMismatch(t *testing.T) {
 	content := "#!/bin/bash\necho hello"
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "test.sh")
-	if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(content), 0600); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
