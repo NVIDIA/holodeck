@@ -48,6 +48,9 @@ var (
 
 	// checksumPattern matches "sha256:<64 hex chars>"
 	checksumPattern = regexp.MustCompile(`^sha256:[a-fA-F0-9]{64}$`)
+
+	// envVarKeyPattern matches valid environment variable names.
+	envVarKeyPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 )
 
 // ValidateTemplateInputs validates user-supplied fields that will be interpolated
@@ -232,14 +235,23 @@ func validateCustomTemplates(templates []v1alpha1.CustomTemplate) error {
 			if !filePathPattern.MatchString(tpl.File) {
 				return fmt.Errorf("custom template %q: file path %q contains disallowed characters", tpl.Name, tpl.File)
 			}
-			if strings.Contains(tpl.File, "..") {
-				return fmt.Errorf("custom template %q: file path %q contains path traversal", tpl.Name, tpl.File)
+			for _, part := range strings.Split(tpl.File, "/") {
+				if part == ".." {
+					return fmt.Errorf("custom template %q: file path %q contains path traversal", tpl.Name, tpl.File)
+				}
 			}
 		}
 
 		// Validate checksum format
 		if tpl.Checksum != "" && !checksumPattern.MatchString(tpl.Checksum) {
 			return fmt.Errorf("custom template %q: checksum must be in format sha256:<64 hex chars>", tpl.Name)
+		}
+
+		// Validate env var keys
+		for k := range tpl.Env {
+			if !envVarKeyPattern.MatchString(k) {
+				return fmt.Errorf("custom template %q: invalid env var name %q (must match [a-zA-Z_][a-zA-Z0-9_]*)", tpl.Name, k)
+			}
 		}
 	}
 	return nil

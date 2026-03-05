@@ -424,3 +424,57 @@ func TestValidateTemplateInputs_CustomTemplates_DuplicateNames(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+func TestValidateTemplateInputs_CustomTemplates_InvalidEnvKey(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:   "bad-env",
+					Inline: "echo hello",
+					Env:    map[string]string{"FOO;rm -rf /": "bar"},
+				},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for invalid env var key")
+	}
+	if !strings.Contains(err.Error(), "invalid env var name") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_ValidEnvKey(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:   "good-env",
+					Inline: "echo hello",
+					Env:    map[string]string{"MY_VAR": "value", "_PRIVATE": "secret"},
+				},
+			},
+		},
+	}
+	if err := ValidateTemplateInputs(env); err != nil {
+		t.Errorf("expected no error for valid env keys, got: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_DoubleDotFilename(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name: "double-dot-name",
+					File: "foo..bar.sh",
+				},
+			},
+		},
+	}
+	if err := ValidateTemplateInputs(env); err != nil {
+		t.Errorf("expected no error for filename with consecutive dots, got: %v", err)
+	}
+}
