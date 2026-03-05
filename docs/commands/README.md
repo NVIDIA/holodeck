@@ -20,7 +20,7 @@ Manage supported operating systems and AMI resolution:
 |---------|-------------|
 | `holodeck os list` | List all supported operating systems |
 | `holodeck os describe <os>` | Show details for a specific OS |
-| `holodeck os ami <os> --region <region>` | Resolve the AMI ID for an OS in a region |
+| `holodeck os ami <os> --region <region>` | Resolve the AMI ID for a region |
 
 See the [OS Selection Guide](../guides/os-selection.md) for details.
 
