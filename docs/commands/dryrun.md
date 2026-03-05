@@ -31,6 +31,9 @@ The dry run command checks:
 - Network configuration
 - Component compatibility
 - Dependencies resolution
+- **Custom templates**: Validates template names, phases, source
+    configuration, URL schemes (HTTPS required), checksum formats,
+    environment variable names, and file path safety.
 
 ## Sample Output
 
