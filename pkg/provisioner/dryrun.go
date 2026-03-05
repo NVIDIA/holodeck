@@ -22,6 +22,7 @@ import (
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/provisioner/templates"
 )
 
 // validateCTKConfig validates the NVIDIA Container Toolkit configuration.
@@ -110,8 +111,39 @@ func Dryrun(log *logger.FunLogger, env v1alpha1.Environment) error {
 		}
 	}
 
+	// Validate custom templates
+	if len(env.Spec.CustomTemplates) > 0 {
+		if err := templates.ValidateTemplateInputs(env); err != nil {
+			cancel(logger.ErrLoadingFailed)
+			return err
+		}
+		logCustomTemplates(log, env)
+	}
+
 	cancel(nil)
 	log.Wg.Wait()
 
 	return nil
+}
+
+// logCustomTemplates logs each custom template's source and phase during dryrun.
+func logCustomTemplates(log *logger.FunLogger, env v1alpha1.Environment) {
+	for _, ct := range env.Spec.CustomTemplates {
+		phase := ct.Phase
+		if phase == "" {
+			phase = v1alpha1.TemplatePhasePostInstall
+		}
+
+		switch {
+		case ct.Inline != "":
+			log.Info("Custom template %q: inline script (phase: %s)", ct.Name, phase)
+		case ct.File != "":
+			log.Info("Custom template %q: file %s (phase: %s)", ct.Name, ct.File, phase)
+		case ct.URL != "":
+			log.Info("Custom template %q: URL %s (phase: %s)", ct.Name, ct.URL, phase)
+			if !strings.HasPrefix(ct.URL, "https://") {
+				log.Warning("Custom template %q: URL does not use HTTPS", ct.Name)
+			}
+		}
+	}
 }

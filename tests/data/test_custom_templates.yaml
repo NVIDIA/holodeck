@@ -1,0 +1,52 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-custom-templates-test
+  description: "Test environment with custom templates at various phases"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /home/runner/.cache/key
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    image:
+      architecture: amd64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm
+  customTemplates:
+    - name: configure-repos
+      phase: pre-install
+      inline: |
+        #!/bin/bash
+        echo "Configuring custom package repositories"
+        apt-get update
+    - name: post-runtime-config
+      phase: post-runtime
+      inline: |
+        #!/bin/bash
+        echo "Configuring container runtime settings"
+    - name: install-monitoring
+      phase: post-kubernetes
+      inline: |
+        #!/bin/bash
+        echo "Installing monitoring stack"
+      env:
+        MONITORING_NS: monitoring
+        PROMETHEUS_VERSION: "2.45.0"
+    - name: cleanup
+      phase: post-install
+      inline: |
+        #!/bin/bash
+        echo "Final cleanup"
+      continueOnError: true
+      timeout: 300

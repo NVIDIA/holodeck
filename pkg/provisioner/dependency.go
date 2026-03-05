@@ -240,6 +240,7 @@ func kernel(tpl *bytes.Buffer, env v1alpha1.Environment) error {
 type DependencyResolver struct {
 	Dependencies []ProvisionFunc
 	env          *v1alpha1.Environment
+	baseDir      string
 }
 
 // DependencyConfigurator defines methods for configuring dependencies
@@ -302,6 +303,40 @@ func (d *DependencyResolver) withKernel() {
 	d.Dependencies = append(d.Dependencies, functions[kernelInstaller])
 }
 
+// SetBaseDir sets the base directory for resolving relative file paths in custom templates.
+func (d *DependencyResolver) SetBaseDir(dir string) {
+	d.baseDir = dir
+}
+
+// addCustomTemplates appends ProvisionFunc closures for custom templates matching the given phase.
+func (d *DependencyResolver) addCustomTemplates(phase v1alpha1.TemplatePhase) {
+	for _, ct := range d.env.Spec.CustomTemplates {
+		tplPhase := ct.Phase
+		if tplPhase == "" {
+			tplPhase = v1alpha1.TemplatePhasePostInstall
+		}
+		if tplPhase != phase {
+			continue
+		}
+
+		// Capture loop variable
+		tpl := ct
+		d.Dependencies = append(d.Dependencies, func(buf *bytes.Buffer, env v1alpha1.Environment) error {
+			return d.executeCustomTemplate(buf, tpl)
+		})
+	}
+}
+
+// executeCustomTemplate loads and executes a single custom template using the templates package.
+func (d *DependencyResolver) executeCustomTemplate(buf *bytes.Buffer, tpl v1alpha1.CustomTemplate) error {
+	content, err := templates.LoadCustomTemplate(tpl, d.baseDir)
+	if err != nil {
+		return err
+	}
+	executor := templates.NewCustomTemplateExecutor(tpl, content)
+	return executor.Execute(buf, *d.env)
+}
+
 // ensureKindCompatibleDocker ensures Docker version is compatible with KIND
 // source builds, which require Docker API v1.44+ (Docker 20.10+).
 // This method automatically sets a minimum Docker version if:
@@ -329,6 +364,9 @@ func (d *DependencyResolver) ensureKindCompatibleDocker() {
 
 // Resolve returns the dependency list in the correct order
 func (d *DependencyResolver) Resolve() []ProvisionFunc {
+	// Phase: pre-install (before any Holodeck components)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePreInstall)
+
 	// Add Kernel to the list first since it's a system-level dependency
 	if d.env.Spec.Kernel.Version != "" {
 		d.withKernel()
@@ -347,15 +385,27 @@ func (d *DependencyResolver) Resolve() []ProvisionFunc {
 		d.withContainerRuntime()
 	}
 
+	// Phase: post-runtime (after container runtime installation)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostRuntime)
+
 	// Add Container Toolkit to the list
 	if d.env.Spec.NVIDIAContainerToolkit.Install {
 		d.withContainerToolkit()
 	}
 
+	// Phase: post-toolkit (after NVIDIA Container Toolkit installation)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostToolkit)
+
 	// Add Kubernetes to the list
 	if d.env.Spec.Kubernetes.Install {
 		d.withKubernetes()
 	}
+
+	// Phase: post-kubernetes (after Kubernetes is ready)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostKubernetes)
+
+	// Phase: post-install (after all Holodeck components)
+	d.addCustomTemplates(v1alpha1.TemplatePhasePostInstall)
 
 	return d.Dependencies
 }
