@@ -17,6 +17,7 @@
 package templates
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -243,5 +244,237 @@ func TestValidateTemplateInputs_AcceptsValidEndpointHost(t *testing.T) {
 	err := ValidateTemplateInputs(env)
 	if err != nil {
 		t.Errorf("expected no error for valid endpoint host, got: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_Valid(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:   "inline-test",
+					Phase:  v1alpha1.TemplatePhasePostInstall,
+					Inline: "#!/bin/bash\necho hello",
+				},
+				{
+					Name: "file-test",
+					File: "./scripts/setup.sh",
+				},
+				{
+					Name:     "url-test",
+					URL:      "https://example.com/script.sh",
+					Checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+				},
+			},
+		},
+	}
+	if err := ValidateTemplateInputs(env); err != nil {
+		t.Errorf("expected no error for valid templates, got: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_NoName(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{Inline: "echo hello"},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for template without name")
+	}
+	if !strings.Contains(err.Error(), "name is required") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_NoSource(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{Name: "empty-source"},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for template without source")
+	}
+	if !strings.Contains(err.Error(), "exactly one source") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_MultipleSources(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:   "multi-source",
+					Inline: "echo hello",
+					File:   "./script.sh",
+				},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for template with multiple sources")
+	}
+	if !strings.Contains(err.Error(), "exactly one source") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_InvalidURL(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name: "bad-url",
+					URL:  "file:///etc/passwd",
+				},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for non-HTTPS URL")
+	}
+	if !strings.Contains(err.Error(), "must use https://") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_InvalidChecksum(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:     "bad-checksum",
+					URL:      "https://example.com/script.sh",
+					Checksum: "md5:abc123",
+				},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for non-SHA256 checksum")
+	}
+	if !strings.Contains(err.Error(), "sha256:") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_InvalidPhase(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:   "bad-phase",
+					Phase:  "during-install",
+					Inline: "echo hello",
+				},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for invalid phase")
+	}
+	if !strings.Contains(err.Error(), "invalid phase") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_UnsafeFilePath(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name: "bad-path",
+					File: "../../../etc/passwd",
+				},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for unsafe file path")
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_DuplicateNames(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{Name: "my-template", Inline: "echo a"},
+				{Name: "my-template", Inline: "echo b"},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for duplicate template names")
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_InvalidEnvKey(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:   "bad-env",
+					Inline: "echo hello",
+					Env:    map[string]string{"FOO;rm -rf /": "bar"},
+				},
+			},
+		},
+	}
+	err := ValidateTemplateInputs(env)
+	if err == nil {
+		t.Fatal("expected error for invalid env var key")
+	}
+	if !strings.Contains(err.Error(), "invalid env var name") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_ValidEnvKey(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name:   "good-env",
+					Inline: "echo hello",
+					Env:    map[string]string{"MY_VAR": "value", "_PRIVATE": "secret"},
+				},
+			},
+		},
+	}
+	if err := ValidateTemplateInputs(env); err != nil {
+		t.Errorf("expected no error for valid env keys, got: %v", err)
+	}
+}
+
+func TestValidateTemplateInputs_CustomTemplates_DoubleDotFilename(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			CustomTemplates: []v1alpha1.CustomTemplate{
+				{
+					Name: "double-dot-name",
+					File: "foo..bar.sh",
+				},
+			},
+		},
+	}
+	if err := ValidateTemplateInputs(env); err != nil {
+		t.Errorf("expected no error for filename with consecutive dots, got: %v", err)
 	}
 }

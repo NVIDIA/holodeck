@@ -19,6 +19,7 @@ package templates
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
@@ -44,6 +45,12 @@ var (
 
 	// hostnamePattern matches safe hostnames and IP addresses.
 	hostnamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.\-:]*$`)
+
+	// checksumPattern matches "sha256:<64 hex chars>"
+	checksumPattern = regexp.MustCompile(`^sha256:[a-fA-F0-9]{64}$`)
+
+	// envVarKeyPattern matches valid environment variable names.
+	envVarKeyPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 )
 
 // ValidateTemplateInputs validates user-supplied fields that will be interpolated
@@ -161,5 +168,91 @@ func ValidateTemplateInputs(env v1alpha1.Environment) error {
 		}
 	}
 
+	// Validate custom templates
+	if err := validateCustomTemplates(env.Spec.CustomTemplates); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateCustomTemplates validates user-supplied custom templates.
+func validateCustomTemplates(templates []v1alpha1.CustomTemplate) error {
+	validPhases := map[v1alpha1.TemplatePhase]bool{
+		v1alpha1.TemplatePhasePreInstall:     true,
+		v1alpha1.TemplatePhasePostRuntime:    true,
+		v1alpha1.TemplatePhasePostToolkit:    true,
+		v1alpha1.TemplatePhasePostKubernetes: true,
+		v1alpha1.TemplatePhasePostInstall:    true,
+		"":                                   true, // empty defaults to post-install
+	}
+
+	names := make(map[string]bool)
+	for i, tpl := range templates {
+		// Name is required
+		if tpl.Name == "" {
+			return fmt.Errorf("custom template %d: name is required", i)
+		}
+
+		// Check duplicate names
+		if names[tpl.Name] {
+			return fmt.Errorf("custom template %q: duplicate name", tpl.Name)
+		}
+		names[tpl.Name] = true
+
+		// Validate phase
+		if !validPhases[tpl.Phase] {
+			return fmt.Errorf("custom template %q: invalid phase %q", tpl.Name, tpl.Phase)
+		}
+
+		// Exactly one source must be specified
+		sourceCount := 0
+		if tpl.Inline != "" {
+			sourceCount++
+		}
+		if tpl.File != "" {
+			sourceCount++
+		}
+		if tpl.URL != "" {
+			sourceCount++
+		}
+		if sourceCount != 1 {
+			return fmt.Errorf("custom template %q: exactly one source (inline, file, or url) must be specified", tpl.Name)
+		}
+
+		// Validate URL source
+		if tpl.URL != "" {
+			if !strings.HasPrefix(tpl.URL, "https://") {
+				return fmt.Errorf("custom template %q: url must use https:// scheme", tpl.Name)
+			}
+			if !gitURLPattern.MatchString(tpl.URL) {
+				return fmt.Errorf("custom template %q: url %q contains disallowed characters", tpl.Name, tpl.URL)
+			}
+		}
+
+		// Validate file path
+		if tpl.File != "" {
+			if !filePathPattern.MatchString(tpl.File) {
+				return fmt.Errorf("custom template %q: file path %q contains disallowed characters", tpl.Name, tpl.File)
+			}
+			for _, part := range strings.Split(tpl.File, "/") {
+				if part == ".." {
+					return fmt.Errorf("custom template %q: file path %q contains path traversal", tpl.Name, tpl.File)
+				}
+			}
+		}
+
+		// Validate checksum format
+		if tpl.Checksum != "" && !checksumPattern.MatchString(tpl.Checksum) {
+			return fmt.Errorf("custom template %q: checksum must be in format sha256:<64 hex chars>", tpl.Name)
+		}
+
+		// Validate env var keys
+		for k := range tpl.Env {
+			if !envVarKeyPattern.MatchString(k) {
+				return fmt.Errorf("custom template %q: invalid env var name %q (must match [a-zA-Z_][a-zA-Z0-9_]*)", tpl.Name, k)
+			}
+		}
+	}
 	return nil
 }
