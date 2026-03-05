@@ -92,6 +92,62 @@ configuration options.
 
 ---
 
+## Source Configuration Examples
+
+### 9. OS Auto-Detection
+
+**File:** [`examples/aws_simple_os.yaml`](../../examples/aws_simple_os.yaml)
+
+Use the `os` field for automatic AMI resolution instead of specifying
+AMI IDs directly.
+
+```bash
+holodeck create -f examples/aws_simple_os.yaml
+```
+
+### 10. All Components Pinned
+
+**File:** [`examples/all_pinned.yaml`](../../examples/all_pinned.yaml)
+
+Pin every component (driver, runtime, toolkit, Kubernetes) to exact
+versions for reproducible environments.
+
+### 11. NVIDIA Driver from Git
+
+**File:** [`examples/driver_git_source.yaml`](../../examples/driver_git_source.yaml)
+
+Build the NVIDIA driver from source using open-gpu-kernel-modules.
+Useful for testing unreleased fixes or custom patches.
+
+### 12. NVIDIA Driver from Runfile
+
+**File:** [`examples/driver_runfile.yaml`](../../examples/driver_runfile.yaml)
+
+Install the NVIDIA driver using the official `.run` installer.
+
+### 13-15. CTK Source Examples
+
+**Files:**
+
+- [`examples/ctk_package_pinned.yaml`](../../examples/ctk_package_pinned.yaml) — CTK pinned to a specific version
+- [`examples/ctk_git_source.yaml`](../../examples/ctk_git_source.yaml) — CTK built from git
+- [`examples/ctk_latest_source.yaml`](../../examples/ctk_latest_source.yaml) — CTK tracking latest branch
+
+See the [CTK Installation Sources Guide](../guides/ctk-sources.md) for
+detailed configuration options.
+
+### 16-17. Container Runtime Source Examples
+
+**Files:**
+
+- [`examples/runtime_containerd_git.yaml`](../../examples/runtime_containerd_git.yaml) — Containerd built from git
+- [`examples/runtime_containerd_latest.yaml`](../../examples/runtime_containerd_latest.yaml) — Containerd tracking latest
+
+See the [Container Runtime Sources Guide](../guides/runtime-sources.md)
+for all runtime options.
+
+---
+
 ## Updated AWS Examples
 
 The example configurations now show that `ingressIpRanges` is optional:
