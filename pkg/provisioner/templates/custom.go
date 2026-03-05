@@ -24,11 +24,30 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
+
+// envKeyPattern matches valid POSIX shell variable names.
+var envKeyPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+// shellSafeNamePattern matches characters unsafe for interpolation into shell strings.
+var shellSafeNamePattern = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+
+// shellQuote produces a single-quoted shell string, escaping embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// sanitizeName strips shell-unsafe characters from a template name for use in shell output.
+func sanitizeName(s string) string {
+	return shellSafeNamePattern.ReplaceAllString(s, "_")
+}
+
+const maxURLResponseBytes = 10 * 1024 * 1024 // 10MB
 
 // sha256Hex computes the hex-encoded SHA256 hash of data.
 func sha256Hex(data []byte) string {
@@ -89,10 +108,13 @@ func fetchURL(url, name string) ([]byte, error) {
 		return nil, fmt.Errorf("custom template %q: URL %q returned status %d", name, url, resp.StatusCode)
 	}
 
-	// Limit read to 10MB to prevent abuse
-	content, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	// Read one extra byte to detect truncation
+	content, err := io.ReadAll(io.LimitReader(resp.Body, maxURLResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("custom template %q: failed to read response: %w", name, err)
+	}
+	if len(content) > maxURLResponseBytes {
+		return nil, fmt.Errorf("custom template %q: URL response exceeds 10MB limit", name)
 	}
 
 	return content, nil
@@ -126,13 +148,24 @@ func NewCustomTemplateExecutor(tpl v1alpha1.CustomTemplate, content []byte) *Cus
 
 // Execute writes the custom template script to the buffer.
 func (ct *CustomTemplateExecutor) Execute(tpl *bytes.Buffer, _ v1alpha1.Environment) error {
-	// Log header
-	fmt.Fprintf(tpl, "\n# === [CUSTOM] Template: %s (phase: %s) ===\n", ct.Name, ct.Phase)
-	fmt.Fprintf(tpl, `holodeck_log "INFO" "custom" "[CUSTOM] Running template '%s' (phase: %s)"`+"\n", ct.Name, ct.Phase)
+	// Sanitize name and phase for safe shell interpolation (defense-in-depth)
+	safeName := sanitizeName(ct.Name)
+	safePhase := sanitizeName(string(ct.Phase))
 
-	// Export environment variables with proper shell quoting
+	// Validate env var keys before generating any output (prevent key injection)
+	for k := range ct.Env {
+		if !envKeyPattern.MatchString(k) {
+			return fmt.Errorf("custom template %q: invalid environment variable name %q", ct.Name, k)
+		}
+	}
+
+	// Log header
+	fmt.Fprintf(tpl, "\n# === [CUSTOM] Template: %s (phase: %s) ===\n", safeName, safePhase)
+	fmt.Fprintf(tpl, `holodeck_log \"INFO\" \"custom\" \"[CUSTOM] Running template '%s' (phase: %s)\"`+"\n", safeName, safePhase)
+
+	// Export environment variables with single-quote shell quoting (prevent value injection)
 	for k, v := range ct.Env {
-		fmt.Fprintf(tpl, "export %s=%q\n", k, v)
+		fmt.Fprintf(tpl, "export %s=%s\n", k, shellQuote(v))
 	}
 
 	// Write the script content with error handling
@@ -142,14 +175,14 @@ func (ct *CustomTemplateExecutor) Execute(tpl *bytes.Buffer, _ v1alpha1.Environm
 		tpl.Write(ct.Content)
 		fmt.Fprintf(tpl, "\n_custom_rc=$?\nset -e\n")
 		fmt.Fprintf(tpl, "if [ $_custom_rc -ne 0 ]; then\n")
-		fmt.Fprintf(tpl, `  holodeck_log "WARN" "custom" "[CUSTOM] Template '%s' failed (exit code: $_custom_rc) || true"`+"\n", ct.Name)
+		fmt.Fprintf(tpl, `  holodeck_log \"WARN\" \"custom\" \"[CUSTOM] Template '%s' failed (exit code: $_custom_rc)\" || true`+"\n", safeName)
 		fmt.Fprintf(tpl, "fi\n")
 	} else {
 		tpl.Write(ct.Content)
 		fmt.Fprintf(tpl, "\n")
 	}
 
-	fmt.Fprintf(tpl, `holodeck_log "INFO" "custom" "[CUSTOM] Template '%s' completed"`+"\n", ct.Name)
+	fmt.Fprintf(tpl, `holodeck_log \"INFO\" \"custom\" \"[CUSTOM] Template '%s' completed\"`+"\n", safeName)
 
 	return nil
 }
