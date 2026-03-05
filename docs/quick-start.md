@@ -36,12 +36,17 @@ spec:
     type: g4dn.xlarge
     region: us-west-2
     image:
-      architecture: amd64
-      imageId: ami-0fe8bec493a81c7da # Ubuntu 22.04 image
+      os: ubuntu-22.04
   kubernetes:
     install: true
+    installer: kubeadm
     version: v1.28.5
 ```
+
+> **Tip:** The `os` field automatically resolves the correct AMI for your
+> region and architecture. See the
+> [OS Selection Guide](guides/os-selection.md) for supported operating
+> systems.
 
 1. Create the environment:
 
@@ -70,6 +75,11 @@ holodeck delete <instance-id>
 ## Next Steps
 
 - Check out the [Prerequisites](prerequisites.md) for detailed setup
-   requirements
-- Explore the [Command Reference](commands/README.md) for all available commands
-- See [Examples](../examples/) for more complex configurations
+    requirements
+- Explore the [Command Reference](commands/README.md) for all available
+    commands
+- See [Examples](examples/README.md) for more complex configurations
+- Read the [OS Selection Guide](guides/os-selection.md) to learn about
+    supported operating systems
+- Try [Custom Templates](guides/custom-templates.md) to run your own
+    scripts during provisioning
