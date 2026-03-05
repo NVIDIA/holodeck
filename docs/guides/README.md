@@ -22,6 +22,8 @@ This section is for in-depth guides and tutorials related to Holodeck.
     multiple control-plane and worker nodes, including HA configuration.
 - [RPM Distribution Guide](rpm-distributions.md): Setup and configuration for
     Rocky Linux 9 and Amazon Linux 2023, including RPM-specific considerations.
+- [Custom Templates](custom-templates.md): Run user-provided scripts at
+    specific provisioning phases with inline, file, or URL sources.
 
 ## Contributing
 
