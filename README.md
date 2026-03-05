@@ -19,6 +19,25 @@ A tool for creating and managing GPU-ready Cloud test environments.
 
 ---
 
+## ✨ Features
+
+- **Multi-OS Support**: Ubuntu, Rocky Linux 9, Amazon Linux 2023 with
+    automatic AMI resolution
+    ([guide](docs/guides/os-selection.md))
+- **Multi-Architecture**: x86_64 and ARM64 with automatic architecture
+    inference
+- **Custom Templates**: Run user-provided scripts at any provisioning
+    phase ([guide](docs/guides/custom-templates.md))
+- **Multi-Node Clusters**: HA Kubernetes clusters with kubeadm
+    ([guide](docs/guides/multinode-clusters.md))
+- **Flexible Sources**: Install components from packages, git, runfiles,
+    or latest branches
+    ([guide](docs/guides/source-selection.md))
+- **Automatic IP Detection**: No manual IP configuration needed for AWS
+    ([guide](docs/guides/ip-detection.md))
+
+---
+
 ## 🚀 Quick Start
 
 See [docs/quick-start.md](docs/quick-start.md) for a full walkthrough.

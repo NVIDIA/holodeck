@@ -12,6 +12,18 @@ commands.
 - [status](status.md) - Check the status of an environment
 - [dryrun](dryrun.md) - Perform a dry run of environment creation
 
+### OS Commands
+
+Manage supported operating systems and AMI resolution:
+
+| Command | Description |
+|---------|-------------|
+| `holodeck os list` | List all supported operating systems |
+| `holodeck os describe <os>` | Show details for a specific OS |
+| `holodeck os ami <os> --region <region>` | Resolve the AMI ID for a region |
+
+See the [OS Selection Guide](../guides/os-selection.md) for details.
+
 ## Command Usage
 
 All commands follow this general pattern:

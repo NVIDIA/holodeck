@@ -1,0 +1,24 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: arm64-gpu-env
+  description: "ARM64 GPU environment with automatic architecture inference"
+spec:
+  provider: aws
+  instance:
+    type: g5g.xlarge
+    region: us-east-1
+    image:
+      os: ubuntu-22.04
+      # architecture is automatically inferred from instance type
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm
+    version: v1.28.5

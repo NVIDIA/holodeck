@@ -1,0 +1,47 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: custom-templates-demo
+  description: "Demo environment with custom templates at multiple phases"
+spec:
+  provider: aws
+  instance:
+    type: g4dn.xlarge
+    region: us-west-2
+    image:
+      os: ubuntu-22.04
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm
+    version: v1.28.5
+  customTemplates:
+    # Run before any Holodeck components are installed
+    - name: system-prerequisites
+      phase: pre-install
+      inline: |
+        #!/bin/bash
+        apt-get update -y
+        apt-get install -y jq curl htop
+    # Run after Kubernetes is ready
+    - name: verify-cluster
+      phase: post-kubernetes
+      inline: |
+        #!/bin/bash
+        kubectl get nodes -o wide
+        kubectl get pods -A
+      continueOnError: true
+    # Run at the very end (default phase)
+    - name: final-validation
+      inline: |
+        #!/bin/bash
+        nvidia-smi
+        kubectl get nodes -o json | jq '.items[].status.allocatable'
+      env:
+        LOG_LEVEL: info
