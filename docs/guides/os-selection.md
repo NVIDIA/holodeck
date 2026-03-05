@@ -43,6 +43,36 @@ Run `holodeck os list` to see all available operating systems:
   components (Docker, containerd, CRI-O, NVIDIA driver, container toolkit,
   Kubernetes)
 
+### ARM64 Instance Families
+
+Holodeck automatically detects ARM64 instance types and selects the
+correct AMI. You do not need to set `architecture: arm64` explicitly
+for these instance families:
+
+| Family | Type | Use Case |
+|--------|------|----------|
+| g5g    | GPU  | NVIDIA T4G inference |
+| m7g    | General | ARM compute |
+| c7g    | Compute | ARM compute-optimized |
+| r7g    | Memory | ARM memory-optimized |
+| t4g    | Burstable | ARM development |
+
+**Example:**
+
+```yaml
+spec:
+  instance:
+    type: g5g.xlarge
+    region: us-east-1
+    image:
+      os: ubuntu-22.04
+      # architecture automatically set to arm64
+```
+
+> **How it works:** Holodeck queries `DescribeInstanceTypes` to detect
+> if the instance type supports only ARM64. If so, it automatically
+> sets the architecture before AMI resolution.
+
 ## CLI Commands
 
 ### List Available Operating Systems
