@@ -130,14 +130,14 @@ var _ = Describe("Status Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(os.RemoveAll, tempDir)
 
-			instanceID := "test12345678"
+			instanceID := "ab12cd34"
 			cacheFile := filepath.Join(tempDir, instanceID+".yaml")
 			validYAML := `apiVersion: holodeck.nvidia.com/v1alpha1
 kind: Environment
 metadata:
   name: test-environment
   labels:
-    holodeck-instance-id: test12345678
+    holodeck-instance-id: ab12cd34
 spec:
   provider: ssh
   username: testuser

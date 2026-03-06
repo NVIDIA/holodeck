@@ -131,8 +131,8 @@ var _ = Describe("Delete Command", func() {
 
 			It("should delete single SSH instance successfully", func() {
 				// Create a valid SSH cache file
-				yaml := sshCacheYAML("sshdelete1", "ssh-delete-test")
-				cacheFile := filepath.Join(tempDir, "sshdelete1.yaml")
+				yaml := sshCacheYAML("a1b2c3d4", "ssh-delete-test")
+				cacheFile := filepath.Join(tempDir, "a1b2c3d4.yaml")
 				err := os.WriteFile(cacheFile, []byte(yaml), 0600)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -141,7 +141,7 @@ var _ = Describe("Delete Command", func() {
 					Commands: []*cli.Command{cmd},
 				}
 
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "sshdelete1"})
+				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "a1b2c3d4"})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify cache file was removed
@@ -150,15 +150,15 @@ var _ = Describe("Delete Command", func() {
 
 				// Verify success message
 				Expect(buf.String()).To(ContainSubstring("Successfully deleted"))
-				Expect(buf.String()).To(ContainSubstring("sshdelete1"))
+				Expect(buf.String()).To(ContainSubstring("a1b2c3d4"))
 			})
 
 			It("should delete multiple SSH instances successfully", func() {
 				// Create two cache files
-				yaml1 := sshCacheYAML("sshmulti1", "ssh-multi-1")
-				yaml2 := sshCacheYAML("sshmulti2", "ssh-multi-2")
-				cacheFile1 := filepath.Join(tempDir, "sshmulti1.yaml")
-				cacheFile2 := filepath.Join(tempDir, "sshmulti2.yaml")
+				yaml1 := sshCacheYAML("e5f6a7b8", "ssh-multi-1")
+				yaml2 := sshCacheYAML("c9d0e1f2", "ssh-multi-2")
+				cacheFile1 := filepath.Join(tempDir, "e5f6a7b8.yaml")
+				cacheFile2 := filepath.Join(tempDir, "c9d0e1f2.yaml")
 				err := os.WriteFile(cacheFile1, []byte(yaml1), 0600)
 				Expect(err).NotTo(HaveOccurred())
 				err = os.WriteFile(cacheFile2, []byte(yaml2), 0600)
@@ -169,7 +169,7 @@ var _ = Describe("Delete Command", func() {
 					Commands: []*cli.Command{cmd},
 				}
 
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "sshmulti1", "sshmulti2"})
+				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "e5f6a7b8", "c9d0e1f2"})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify both cache files were removed
@@ -179,14 +179,14 @@ var _ = Describe("Delete Command", func() {
 				Expect(os.IsNotExist(err)).To(BeTrue())
 
 				// Verify success messages for both
-				Expect(buf.String()).To(ContainSubstring("sshmulti1"))
-				Expect(buf.String()).To(ContainSubstring("sshmulti2"))
+				Expect(buf.String()).To(ContainSubstring("e5f6a7b8"))
+				Expect(buf.String()).To(ContainSubstring("c9d0e1f2"))
 			})
 
 			It("should stop on first error with multiple instances", func() {
 				// Create only one valid cache file
-				yaml := sshCacheYAML("sshvalid1", "ssh-valid")
-				cacheFile := filepath.Join(tempDir, "sshvalid1.yaml")
+				yaml := sshCacheYAML("a3b4c5d6", "ssh-valid")
+				cacheFile := filepath.Join(tempDir, "a3b4c5d6.yaml")
 				err := os.WriteFile(cacheFile, []byte(yaml), 0600)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -196,7 +196,7 @@ var _ = Describe("Delete Command", func() {
 				}
 
 				// First instance doesn't exist, should fail before processing second
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "nonexistent", "sshvalid1"})
+				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "nonexistent", "a3b4c5d6"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get instance nonexistent"))
 
@@ -207,8 +207,8 @@ var _ = Describe("Delete Command", func() {
 
 			It("should fail if second instance doesn't exist", func() {
 				// Create only one valid cache file
-				yaml := sshCacheYAML("sshfirst1", "ssh-first")
-				cacheFile := filepath.Join(tempDir, "sshfirst1.yaml")
+				yaml := sshCacheYAML("e7f8a9b0", "ssh-first")
+				cacheFile := filepath.Join(tempDir, "e7f8a9b0.yaml")
 				err := os.WriteFile(cacheFile, []byte(yaml), 0600)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -218,7 +218,7 @@ var _ = Describe("Delete Command", func() {
 				}
 
 				// First succeeds, second fails
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "sshfirst1", "nonexistent"})
+				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "e7f8a9b0", "nonexistent"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get instance nonexistent"))
 
@@ -235,8 +235,8 @@ var _ = Describe("Delete Command", func() {
 				DeferCleanup(os.RemoveAll, tempDir)
 
 				// Create a cache file in custom path
-				yaml := sshCacheYAML("customdel", "custom-delete")
-				cacheFile := filepath.Join(tempDir, "customdel.yaml")
+				yaml := sshCacheYAML("f1e2d3c4", "custom-delete")
+				cacheFile := filepath.Join(tempDir, "f1e2d3c4.yaml")
 				err = os.WriteFile(cacheFile, []byte(yaml), 0600)
 				Expect(err).NotTo(HaveOccurred())
 
@@ -246,7 +246,7 @@ var _ = Describe("Delete Command", func() {
 				}
 
 				// Use -c alias for cachepath
-				err = app.Run([]string{"holodeck", "delete", "-c", tempDir, "customdel"})
+				err = app.Run([]string{"holodeck", "delete", "-c", tempDir, "f1e2d3c4"})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify cache file was removed
