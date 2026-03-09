@@ -323,6 +323,32 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 		},
 	}
 
+	// Self-referencing rules: allow all traffic between instances in this SG.
+	// Covers webhooks (dynamic ports), NodePort (30000-32767), IPIP (Calico),
+	// and any future K8s inter-node communication.
+	// Uses explicit TCP+UDP+ICMP (not protocol -1) for stricter compliance.
+	sgRef := []types.UserIdGroupPair{{GroupId: sgOutput.GroupId}}
+	permissions = append(permissions,
+		types.IpPermission{
+			FromPort:         aws.Int32(0),
+			ToPort:           aws.Int32(65535),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: sgRef,
+		},
+		types.IpPermission{
+			FromPort:         aws.Int32(0),
+			ToPort:           aws.Int32(65535),
+			IpProtocol:       aws.String("udp"),
+			UserIdGroupPairs: sgRef,
+		},
+		types.IpPermission{
+			FromPort:         aws.Int32(-1),
+			ToPort:           aws.Int32(-1),
+			IpProtocol:       aws.String("icmp"),
+			UserIdGroupPairs: sgRef,
+		},
+	)
+
 	irInput := &ec2.AuthorizeSecurityGroupIngressInput{
 		GroupId:       sgOutput.GroupId,
 		IpPermissions: permissions,
