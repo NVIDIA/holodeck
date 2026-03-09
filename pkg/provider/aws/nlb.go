@@ -45,7 +45,14 @@ func (p *Provider) createNLB(cache *ClusterCache) error {
 	cancelLoading := p.log.Loading("Creating Network Load Balancer")
 
 	lbType := elbv2types.LoadBalancerTypeEnumNetwork
-	lbName := fmt.Sprintf("%s-nlb", p.ObjectMeta.Name)
+	// AWS load balancer names are limited to 32 characters.
+	const nlbSuffix = "-nlb"
+	maxNLBNameLen := 32 - len(nlbSuffix)
+	nlbBaseName := p.ObjectMeta.Name
+	if len(nlbBaseName) > maxNLBNameLen {
+		nlbBaseName = nlbBaseName[:maxNLBNameLen]
+	}
+	lbName := nlbBaseName + nlbSuffix
 
 	// Determine subnet IDs (use the same subnet for NLB)
 	subnetIDs := []string{cache.Subnetid}
@@ -91,7 +98,15 @@ func (p *Provider) createTargetGroup(cache *ClusterCache) error {
 
 	cancelLoading := p.log.Loading("Creating target group for Kubernetes API")
 
-	tgName := fmt.Sprintf("%s-k8s-api-tg", p.ObjectMeta.Name)
+	// AWS target group names are limited to 32 characters.
+	// Truncate the environment name to fit within the limit.
+	const tgSuffix = "-k8s-tg"
+	maxNameLen := 32 - len(tgSuffix)
+	name := p.ObjectMeta.Name
+	if len(name) > maxNameLen {
+		name = name[:maxNameLen]
+	}
+	tgName := name + tgSuffix
 
 	// Create target group for Kubernetes API (port 6443)
 	createTGInput := &elasticloadbalancingv2.CreateTargetGroupInput{
