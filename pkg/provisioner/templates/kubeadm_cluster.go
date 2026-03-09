@@ -158,14 +158,13 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
     # Detect this node's private IP for API server binding
     NODE_PRIVATE_IP=$(hostname -I | awk '{print $1}')
 
-    # For HA with NLB, use local IP for init health checks to avoid chicken-and-egg:
-    # NLB can't route to API server until it's healthy, but kubeadm won't report
-    # healthy until it can reach the control-plane-endpoint (NLB).
-    # Solution: init with local endpoint, include NLB in cert SANs for later joins.
-    if [[ "$IS_HA" == "true" ]] && { [[ "$CONTROL_PLANE_ENDPOINT" == *"elb.amazonaws.com"* ]] || \
-       [[ "$CONTROL_PLANE_ENDPOINT" == *"amazonaws.com"* ]]; }; then
+    # Always use local IP for init health checks: kubeadm v1.33+ validates the API
+    # server via control-plane-endpoint, which may not be routable from within the
+    # instance during init (public IPs, NLB DNS, etc.). Use private IP for init and
+    # include the original endpoint in cert SANs so external access works.
+    if [[ "$CONTROL_PLANE_ENDPOINT" != "$NODE_PRIVATE_IP" ]]; then
         INIT_ENDPOINT="${NODE_PRIVATE_IP}"
-        holodeck_log "INFO" "$COMPONENT" "HA mode: using local IP ${NODE_PRIVATE_IP} for init, NLB in cert SANs"
+        holodeck_log "INFO" "$COMPONENT" "Using local IP ${NODE_PRIVATE_IP} for init (endpoint: ${CONTROL_PLANE_ENDPOINT} in cert SANs)"
     else
         INIT_ENDPOINT="${CONTROL_PLANE_ENDPOINT}"
     fi
