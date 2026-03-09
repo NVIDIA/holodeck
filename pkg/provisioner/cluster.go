@@ -155,8 +155,8 @@ func (cp *ClusterProvisioner) determineControlPlaneEndpoint(firstCP NodeInfo) st
 	if cp.Environment.Status.Cluster != nil && cp.Environment.Status.Cluster.LoadBalancerDNS != "" {
 		return cp.Environment.Status.Cluster.LoadBalancerDNS
 	}
-	// Fall back to first control-plane private IP
-	return firstCP.PrivateIP
+	// Fall back to first control-plane public IP so kubeconfig is reachable externally
+	return firstCP.PublicIP
 }
 
 // provisionBaseOnAllNodes provisions base dependencies (kernel, driver, runtime, toolkit)
