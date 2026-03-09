@@ -306,6 +306,19 @@ else
     GHCR_DIGEST="source-build"
 fi
 
+# Ensure nvidia-container-runtime exists (newer toolkit versions may not
+# build it as a separate binary). Create a symlink so container runtimes
+# can find it at the expected path.
+if ! command -v nvidia-container-runtime &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Creating nvidia-container-runtime symlink from nvidia-ctk"
+    CTK_PATH=$(command -v nvidia-ctk)
+    sudo ln -sf "$CTK_PATH" "$(dirname "$CTK_PATH")/nvidia-container-runtime"
+    # Also ensure it's in /usr/bin for container runtime configs
+    if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
+        sudo ln -sf "$CTK_PATH" /usr/bin/nvidia-container-runtime
+    fi
+fi
+
 holodeck_progress "$COMPONENT" 5 5 "Configuring runtime"
 
 sudo nvidia-ctk runtime configure \
@@ -508,6 +521,18 @@ else
     done
 
     GHCR_DIGEST="source-build"
+fi
+
+# Ensure nvidia-container-runtime exists (newer toolkit versions may not
+# build it as a separate binary). Create a symlink so container runtimes
+# can find it at the expected path.
+if ! command -v nvidia-container-runtime &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Creating nvidia-container-runtime symlink from nvidia-ctk"
+    CTK_PATH=$(command -v nvidia-ctk)
+    sudo ln -sf "$CTK_PATH" "$(dirname "$CTK_PATH")/nvidia-container-runtime"
+    if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
+        sudo ln -sf "$CTK_PATH" /usr/bin/nvidia-container-runtime
+    fi
 fi
 
 holodeck_progress "$COMPONENT" 5 5 "Configuring runtime"

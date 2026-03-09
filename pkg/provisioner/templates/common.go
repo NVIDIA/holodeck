@@ -312,6 +312,14 @@ holodeck_verify_crio() {
 holodeck_verify_toolkit() {
     command -v nvidia-ctk &>/dev/null || return 1
     nvidia-ctk --version &>/dev/null || return 1
+    # Verify the runtime binary exists (needed by container runtimes)
+    if ! command -v nvidia-container-runtime &>/dev/null; then
+        holodeck_log "WARN" "nvidia-container-toolkit" \
+            "nvidia-container-runtime binary not found, creating symlink from nvidia-ctk"
+        local ctk_path
+        ctk_path=$(command -v nvidia-ctk)
+        sudo ln -sf "$ctk_path" /usr/bin/nvidia-container-runtime
+    fi
     return 0
 }
 
