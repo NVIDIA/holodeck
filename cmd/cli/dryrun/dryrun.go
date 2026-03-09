@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/pkg/sshutil"
+	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	cli "github.com/urfave/cli/v2"
 	"golang.org/x/crypto/ssh"
@@ -131,6 +132,10 @@ func validateAWS(log *logger.FunLogger, opts *options) error {
 // createSshClient creates a ssh client, and retries if it fails to connect
 func connectOrDie(keyPath, userName, hostUrl string) error {
 	var err error
+	keyPath, err = utils.ExpandPath(keyPath)
+	if err != nil {
+		return fmt.Errorf("expanding key path: %w", err)
+	}
 	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to read key file: %w", err)

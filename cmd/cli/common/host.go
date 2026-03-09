@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/sshutil"
+	"github.com/NVIDIA/holodeck/pkg/utils"
 )
 
 // GetHostURL resolves the SSH-reachable host URL for an environment.
@@ -82,6 +83,10 @@ const (
 // ConnectSSH establishes an SSH connection with retries.
 // Host key verification uses Trust-On-First-Use (TOFU).
 func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.Client, error) {
+	keyPath, err := utils.ExpandPath(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("expanding key path: %w", err)
+	}
 	key, err := os.ReadFile(keyPath) //nolint:gosec // keyPath is from trusted env config
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file %s: %w", keyPath, err)
