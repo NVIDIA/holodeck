@@ -404,6 +404,25 @@ func (p *Provider) createSecurityGroup(cache *AWS) error {
 				IpProtocol: &tcp,
 				IpRanges:   ipRanges,
 			},
+			// Self-referencing: allow all TCP/UDP/ICMP between SG members
+			{
+				FromPort:         aws.Int32(0),
+				ToPort:           aws.Int32(65535),
+				IpProtocol:       aws.String("tcp"),
+				UserIdGroupPairs: []types.UserIdGroupPair{{GroupId: sgOutput.GroupId}},
+			},
+			{
+				FromPort:         aws.Int32(0),
+				ToPort:           aws.Int32(65535),
+				IpProtocol:       aws.String("udp"),
+				UserIdGroupPairs: []types.UserIdGroupPair{{GroupId: sgOutput.GroupId}},
+			},
+			{
+				FromPort:         aws.Int32(-1),
+				ToPort:           aws.Int32(-1),
+				IpProtocol:       aws.String("icmp"),
+				UserIdGroupPairs: []types.UserIdGroupPair{{GroupId: sgOutput.GroupId}},
+			},
 		},
 	}
 
