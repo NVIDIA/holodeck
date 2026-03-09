@@ -149,14 +149,18 @@ func (cp *ClusterProvisioner) ProvisionCluster(nodes []NodeInfo) error {
 	return nil
 }
 
-// determineControlPlaneEndpoint returns the control plane endpoint
+// determineControlPlaneEndpoint returns the control plane endpoint for cluster-internal
+// communication (kubeadm init, join, API server binding). For HA with NLB, returns the
+// NLB DNS. For non-HA, returns the first CP's private IP since all nodes are in the
+// same VPC and the private IP is always routable. External access (kubeconfig) is
+// handled separately by RewriteKubeConfigServer.
 func (cp *ClusterProvisioner) determineControlPlaneEndpoint(firstCP NodeInfo) string {
 	// Check if HA is enabled and we have a load balancer DNS
 	if cp.Environment.Status.Cluster != nil && cp.Environment.Status.Cluster.LoadBalancerDNS != "" {
 		return cp.Environment.Status.Cluster.LoadBalancerDNS
 	}
-	// Fall back to first control-plane public IP so kubeconfig is reachable externally
-	return firstCP.PublicIP
+	// Use private IP for intra-VPC communication (init + join)
+	return firstCP.PrivateIP
 }
 
 // provisionBaseOnAllNodes provisions base dependencies (kernel, driver, runtime, toolkit)

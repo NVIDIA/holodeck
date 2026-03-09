@@ -302,7 +302,7 @@ func TestClusterProvisioner_determineControlPlaneEndpoint(t *testing.T) {
 			expected: "my-lb.elb.amazonaws.com",
 		},
 		{
-			name: "Fall back to first CP public IP",
+			name: "Fall back to first CP private IP",
 			env: &v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{
 					Cluster: &v1alpha1.ClusterSpec{},
@@ -313,7 +313,7 @@ func TestClusterProvisioner_determineControlPlaneEndpoint(t *testing.T) {
 				PublicIP:  "54.1.2.3",
 				PrivateIP: "10.0.0.1",
 			},
-			expected: "54.1.2.3",
+			expected: "10.0.0.1",
 		},
 		{
 			name: "No cluster status",
@@ -326,7 +326,7 @@ func TestClusterProvisioner_determineControlPlaneEndpoint(t *testing.T) {
 				PublicIP:  "54.1.2.4",
 				PrivateIP: "10.0.0.2",
 			},
-			expected: "54.1.2.4",
+			expected: "10.0.0.2",
 		},
 	}
 
