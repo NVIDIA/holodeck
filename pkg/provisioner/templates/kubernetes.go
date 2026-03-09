@@ -203,12 +203,34 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
 
         set +e
 {{- if .UseLegacyInit }}
+        # Use private IP for init health checks (kubeadm v1.33+ checks via control-plane-endpoint).
+        # Public DNS may not be routable from within the instance during init.
+        # Include public endpoint in cert SANs so kubectl works externally.
+        KUBEADM_NODE_IP=$(hostname -I | awk '{print $1}')
         sudo kubeadm init \
             --kubernetes-version="${K8S_VERSION}" \
             --pod-network-cidr=192.168.0.0/16 \
-            --control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443" \
+            --control-plane-endpoint="${KUBEADM_NODE_IP}:6443" \
+            --apiserver-advertise-address="${KUBEADM_NODE_IP}" \
+            --apiserver-cert-extra-sans="${K8S_ENDPOINT_HOST},${KUBEADM_NODE_IP},localhost" \
             --ignore-preflight-errors=all
 {{- else }}
+        # Use private IP for init health checks (kubeadm v1.33+ checks via control-plane-endpoint).
+        # The config file has the public DNS as controlPlaneEndpoint, which may not be
+        # routable from within the instance during init. Replace with private IP and
+        # add cert SANs so kubectl works externally.
+        KUBEADM_NODE_IP=$(hostname -I | awk '{print $1}')
+        sudo sed -i "s|controlPlaneEndpoint: \"${K8S_ENDPOINT_HOST}:6443\"|controlPlaneEndpoint: \"${KUBEADM_NODE_IP}:6443\"|" \
+            /etc/kubernetes/kubeadm-config.yaml
+        # Inject certSANs into ClusterConfiguration if not already present
+        if ! grep -q 'certSANs' /etc/kubernetes/kubeadm-config.yaml; then
+            sudo sed -i "/^controlPlaneEndpoint:/a\\
+apiServer:\\
+  certSANs:\\
+  - \"${K8S_ENDPOINT_HOST}\"\\
+  - \"${KUBEADM_NODE_IP}\"\\
+  - \"localhost\"" /etc/kubernetes/kubeadm-config.yaml
+        fi
         sudo kubeadm init \
             --config /etc/kubernetes/kubeadm-config.yaml \
             --ignore-preflight-errors=all
