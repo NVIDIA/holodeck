@@ -485,7 +485,7 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 				break
 			}
 		}
-		if err = utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
+		if err = utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig, ""); err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %w", err)
 		}
 	}
@@ -563,7 +563,7 @@ func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
 			}
 		}
 		if hostUrl != "" {
-			if err := utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
+			if err := utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig, ""); err != nil {
 				return fmt.Errorf("failed to get kubeconfig: %w", err)
 			}
 		}

@@ -24,10 +24,64 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
+	"sigs.k8s.io/yaml"
 )
 
+// kubeConfig is a minimal representation for server URL rewriting.
+type kubeConfig struct {
+	APIVersion     string                   `json:"apiVersion"`
+	Kind           string                   `json:"kind"`
+	Clusters       []kubeConfigClusterEntry `json:"clusters"`
+	Contexts       []any                    `json:"contexts"`
+	CurrentContext string                   `json:"current-context"`
+	Users          []any                    `json:"users"`
+}
+
+type kubeConfigClusterEntry struct {
+	Name    string            `json:"name"`
+	Cluster kubeConfigCluster `json:"cluster"`
+}
+
+type kubeConfigCluster struct {
+	Server                   string `json:"server"`
+	CertificateAuthorityData string `json:"certificate-authority-data,omitempty"`
+}
+
+// RewriteKubeConfigServer rewrites the server URL in a kubeconfig file.
+// If serverURL is empty, this is a no-op.
+func RewriteKubeConfigServer(path string, serverURL string) error {
+	if serverURL == "" {
+		return nil
+	}
+
+	data, err := os.ReadFile(path) //nolint:gosec // path is caller-provided kubeconfig
+	if err != nil {
+		return fmt.Errorf("reading kubeconfig: %w", err)
+	}
+
+	var cfg kubeConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("parsing kubeconfig: %w", err)
+	}
+
+	for i := range cfg.Clusters {
+		cfg.Clusters[i].Cluster.Server = serverURL
+	}
+
+	out, err := yaml.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling kubeconfig: %w", err)
+	}
+
+	if err := os.WriteFile(path, out, 0600); err != nil {
+		return fmt.Errorf("writing kubeconfig: %w", err)
+	}
+
+	return nil
+}
+
 // GetKubeConfig downloads the kubeconfig file from the remote host
-func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl string, dest string) error {
+func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl string, dest string, desiredServerURL string) error {
 	remoteFilePath := "${HOME}/.kube/config"
 
 	// Create a new ssh session
@@ -75,6 +129,13 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	}
 
 	log.Info(fmt.Sprintf("Kubeconfig saved to %s\n", dest))
+
+	if desiredServerURL != "" {
+		if err := RewriteKubeConfigServer(dest, desiredServerURL); err != nil {
+			return fmt.Errorf("failed to rewrite kubeconfig server URL: %w", err)
+		}
+		log.Info(fmt.Sprintf("Kubeconfig server URL rewritten to %s\n", desiredServerURL))
+	}
 
 	return nil
 }
