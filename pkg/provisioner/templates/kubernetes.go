@@ -234,14 +234,25 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
         KUBEADM_NODE_IP=$(hostname -I | awk '{print $1}')
         sudo sed -i "s|controlPlaneEndpoint: \"${K8S_ENDPOINT_HOST}:6443\"|controlPlaneEndpoint: \"${KUBEADM_NODE_IP}:6443\"|" \
             /etc/kubernetes/kubeadm-config.yaml
-        # Inject certSANs into ClusterConfiguration if not already present
+        # Inject certSANs into ClusterConfiguration so the API server cert
+        # covers both the public endpoint and the private IP we use for init.
         if ! grep -q 'certSANs' /etc/kubernetes/kubeadm-config.yaml; then
-            sudo sed -i "/^controlPlaneEndpoint:/a\\
+            if grep -q '^apiServer:' /etc/kubernetes/kubeadm-config.yaml; then
+                # apiServer block exists (e.g. feature gates) — inject certSANs into it
+                sudo sed -i "/^apiServer:/a\\
+  certSANs:\\
+  - \"${K8S_ENDPOINT_HOST}\"\\
+  - \"${KUBEADM_NODE_IP}\"\\
+  - \"localhost\"" /etc/kubernetes/kubeadm-config.yaml
+            else
+                # No apiServer block — create one after controlPlaneEndpoint
+                sudo sed -i "/^controlPlaneEndpoint:/a\\
 apiServer:\\
   certSANs:\\
   - \"${K8S_ENDPOINT_HOST}\"\\
   - \"${KUBEADM_NODE_IP}\"\\
   - \"localhost\"" /etc/kubernetes/kubeadm-config.yaml
+            fi
         fi
         sudo kubeadm init \
             --config /etc/kubernetes/kubeadm-config.yaml \
