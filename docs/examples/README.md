@@ -129,9 +129,12 @@ Install the NVIDIA driver using the official `.run` installer.
 
 **Files:**
 
-- [`examples/ctk_package_pinned.yaml`](../../examples/ctk_package_pinned.yaml) — CTK pinned to a specific version
-- [`examples/ctk_git_source.yaml`](../../examples/ctk_git_source.yaml) — CTK built from git
-- [`examples/ctk_latest_source.yaml`](../../examples/ctk_latest_source.yaml) — CTK tracking latest branch
+- [`ctk_package_pinned.yaml`](../../examples/ctk_package_pinned.yaml)
+  — CTK pinned to a specific version
+- [`ctk_git_source.yaml`](../../examples/ctk_git_source.yaml)
+  — CTK built from git
+- [`ctk_latest_source.yaml`](../../examples/ctk_latest_source.yaml)
+  — CTK tracking latest branch
 
 See the [CTK Installation Sources Guide](../guides/ctk-sources.md) for
 detailed configuration options.
@@ -140,8 +143,10 @@ detailed configuration options.
 
 **Files:**
 
-- [`examples/runtime_containerd_git.yaml`](../../examples/runtime_containerd_git.yaml) — Containerd built from git
-- [`examples/runtime_containerd_latest.yaml`](../../examples/runtime_containerd_latest.yaml) — Containerd tracking latest
+- [`runtime_containerd_git.yaml`](../../examples/runtime_containerd_git.yaml)
+  — Containerd built from git
+- [`runtime_containerd_latest.yaml`](../../examples/runtime_containerd_latest.yaml)
+  — Containerd tracking latest
 
 See the [Container Runtime Sources Guide](../guides/runtime-sources.md)
 for all runtime options.
