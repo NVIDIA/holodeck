@@ -84,6 +84,11 @@ case "${HOLODECK_OS_FAMILY}" in
         if [[ ! -f /etc/yum.repos.d/nvidia-container-toolkit.repo ]]; then
             sudo curl -fsSL -o /etc/yum.repos.d/nvidia-container-toolkit.repo \
                 "https://nvidia.github.io/libnvidia-container/${CHANNEL}/rpm/nvidia-container-toolkit.repo"
+            # Disable repo metadata GPG check — upstream repomd.xml signature
+            # is intermittently broken. Individual RPM packages are still
+            # GPG-verified via gpgcheck=1.
+            sudo sed -i 's/^repo_gpgcheck=1/repo_gpgcheck=0/' \
+                /etc/yum.repos.d/nvidia-container-toolkit.repo
         fi
         holodeck_retry 3 "$COMPONENT" pkg_update
         ;;
