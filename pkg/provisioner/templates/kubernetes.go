@@ -179,6 +179,18 @@ sudo systemctl enable --now kubelet
 
 holodeck_progress "$COMPONENT" 5 8 "Initializing Kubernetes cluster"
 
+# Ensure CRI socket service is running before kubeadm init.
+# When Docker is the runtime, CTK installation restarts dockerd between the
+# Docker and kubeadm provisioning steps. cri-dockerd loses its Docker
+# connection and crashes. With systemd StartLimitBurst=3 in 60s, it may
+# not auto-recover by the time kubeadm runs.
+{{- if eq .CriSocket "unix:///run/cri-dockerd.sock" }}
+holodeck_log "INFO" "$COMPONENT" "Ensuring cri-dockerd is running"
+sudo systemctl reset-failed cri-docker.service 2>/dev/null || true
+sudo systemctl restart cri-docker.service
+sleep 2
+{{- end }}
+
 # Initialize cluster only if not already initialized
 if [[ ! -f /etc/kubernetes/admin.conf ]]; then
     # Pre-pull images before init. kubeadm init with --ignore-preflight-errors=all
@@ -248,7 +260,7 @@ apiServer:\\
         holodeck_log "INFO" "$COMPONENT" "--- kubelet logs (last 30 lines) ---"
         sudo journalctl -u kubelet --no-pager -n 30 2>&1 || true
         holodeck_log "INFO" "$COMPONENT" "--- container status via crictl ---"
-        sudo crictl --runtime-endpoint unix:///run/cri-dockerd.sock ps -a 2>&1 || true
+        sudo crictl --runtime-endpoint {{ .CriSocket }} ps -a 2>&1 || true
         holodeck_log "INFO" "$COMPONENT" "--- container status via docker ---"
         sudo docker ps -a 2>&1 || true
         holodeck_log "INFO" "$COMPONENT" "--- kubeadm-flags.env ---"
@@ -257,7 +269,7 @@ apiServer:\\
 
         if [[ $KUBEADM_ATTEMPT -lt $KUBEADM_MAX_ATTEMPTS ]]; then
             holodeck_log "INFO" "$COMPONENT" "Resetting cluster state before retry"
-            sudo kubeadm reset -f --cri-socket "unix:///run/cri-dockerd.sock" 2>&1 || true
+            sudo kubeadm reset -f --cri-socket "{{ .CriSocket }}" 2>&1 || true
             # Re-enable kubelet after reset
             sudo systemctl daemon-reload
             sudo systemctl restart kubelet
