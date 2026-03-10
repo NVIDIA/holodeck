@@ -313,10 +313,15 @@ if ! command -v nvidia-container-runtime &>/dev/null; then
     holodeck_log "INFO" "$COMPONENT" "Creating nvidia-container-runtime symlink from nvidia-ctk"
     CTK_PATH=$(command -v nvidia-ctk)
     sudo ln -sf "$CTK_PATH" "$(dirname "$CTK_PATH")/nvidia-container-runtime"
-    # Also ensure it's in /usr/bin for container runtime configs
-    if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
-        sudo ln -sf "$CTK_PATH" /usr/bin/nvidia-container-runtime
-    fi
+fi
+# nvidia-ctk runtime configure hardcodes /usr/bin/nvidia-container-runtime in
+# the container runtime config. Ensure a binary or symlink exists there even
+# when the actual binary was installed elsewhere (e.g. /usr/local/bin from
+# a source build).
+if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
+    RUNTIME_SRC=$(command -v nvidia-container-runtime 2>/dev/null || command -v nvidia-ctk)
+    holodeck_log "INFO" "$COMPONENT" "Symlinking ${RUNTIME_SRC} -> /usr/bin/nvidia-container-runtime"
+    sudo ln -sf "$RUNTIME_SRC" /usr/bin/nvidia-container-runtime
 fi
 
 holodeck_progress "$COMPONENT" 5 5 "Configuring runtime"
@@ -530,9 +535,15 @@ if ! command -v nvidia-container-runtime &>/dev/null; then
     holodeck_log "INFO" "$COMPONENT" "Creating nvidia-container-runtime symlink from nvidia-ctk"
     CTK_PATH=$(command -v nvidia-ctk)
     sudo ln -sf "$CTK_PATH" "$(dirname "$CTK_PATH")/nvidia-container-runtime"
-    if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
-        sudo ln -sf "$CTK_PATH" /usr/bin/nvidia-container-runtime
-    fi
+fi
+# nvidia-ctk runtime configure hardcodes /usr/bin/nvidia-container-runtime in
+# the container runtime config. Ensure a binary or symlink exists there even
+# when the actual binary was installed elsewhere (e.g. /usr/local/bin from
+# a source build).
+if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
+    RUNTIME_SRC=$(command -v nvidia-container-runtime 2>/dev/null || command -v nvidia-ctk)
+    holodeck_log "INFO" "$COMPONENT" "Symlinking ${RUNTIME_SRC} -> /usr/bin/nvidia-container-runtime"
+    sudo ln -sf "$RUNTIME_SRC" /usr/bin/nvidia-container-runtime
 fi
 
 holodeck_progress "$COMPONENT" 5 5 "Configuring runtime"
