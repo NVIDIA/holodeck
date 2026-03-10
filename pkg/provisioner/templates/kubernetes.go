@@ -199,7 +199,8 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
     holodeck_log "INFO" "$COMPONENT" "Pre-pulling control plane images"
 {{- if .UseLegacyInit }}
     holodeck_retry 3 "$COMPONENT" sudo kubeadm config images pull \
-        --kubernetes-version="${K8S_VERSION}"
+        --kubernetes-version="${K8S_VERSION}" \
+        --cri-socket "{{ .CriSocket }}"
 {{- else }}
     holodeck_retry 3 "$COMPONENT" sudo kubeadm config images pull \
         --config /etc/kubernetes/kubeadm-config.yaml
@@ -221,6 +222,7 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
         KUBEADM_NODE_IP=$(hostname -I | awk '{print $1}')
         sudo kubeadm init \
             --kubernetes-version="${K8S_VERSION}" \
+            --cri-socket "{{ .CriSocket }}" \
             --pod-network-cidr=192.168.0.0/16 \
             --control-plane-endpoint="${KUBEADM_NODE_IP}:6443" \
             --apiserver-advertise-address="${KUBEADM_NODE_IP}" \
