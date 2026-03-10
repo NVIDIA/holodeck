@@ -21,10 +21,11 @@ import (
 	"io"
 	"os"
 
+	"sigs.k8s.io/yaml"
+
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
-	"sigs.k8s.io/yaml"
 )
 
 // kubeConfig is a minimal representation for server URL rewriting.

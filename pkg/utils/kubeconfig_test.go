@@ -95,7 +95,7 @@ users:
 			err = RewriteKubeConfigServer(path, tt.serverURL)
 			require.NoError(t, err)
 
-			data, err := os.ReadFile(path)
+			data, err := os.ReadFile(path) //nolint:gosec // test file from t.TempDir()
 			require.NoError(t, err)
 
 			if tt.serverURL == "" {
