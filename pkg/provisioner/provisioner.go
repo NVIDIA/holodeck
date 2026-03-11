@@ -411,7 +411,7 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 	_ = session.Close()
 
 	// Clean up the local temporary file — it's already on the remote host
-	os.Remove(localFilePath) //nolint:errcheck // best-effort cleanup
+	_ = os.Remove(localFilePath)
 
 	return nil
 }
