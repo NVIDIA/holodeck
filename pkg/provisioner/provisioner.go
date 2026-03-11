@@ -451,6 +451,17 @@ func addScriptHeader(tpl *bytes.Buffer) error {
 func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 	var client *ssh.Client
 	var err error
+	if strings.HasPrefix(keyPath, "~") {
+		home, homeErr := os.UserHomeDir()
+		if homeErr != nil {
+			return nil, fmt.Errorf("expanding key path: %w", homeErr)
+		}
+		if keyPath == "~" {
+			keyPath = home
+		} else {
+			keyPath = filepath.Join(home, keyPath[2:])
+		}
+	}
 	key, err := os.ReadFile(keyPath) // nolint:gosec
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file: %w", err)

@@ -266,7 +266,7 @@ func TestKubernetes_Execute(t *testing.T) {
 			},
 			wantErr:        false,
 			checkTemplate:  true,
-			expectedString: `--control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443"`,
+			expectedString: `--control-plane-endpoint="${KUBEADM_NODE_IP}:6443"`,
 			checkSafeExit:  true,
 		},
 		{

@@ -310,6 +310,7 @@ func TestClusterProvisioner_determineControlPlaneEndpoint(t *testing.T) {
 				Status: v1alpha1.EnvironmentStatus{},
 			},
 			firstCP: NodeInfo{
+				PublicIP:  "54.1.2.3",
 				PrivateIP: "10.0.0.1",
 			},
 			expected: "10.0.0.1",
@@ -322,6 +323,7 @@ func TestClusterProvisioner_determineControlPlaneEndpoint(t *testing.T) {
 				},
 			},
 			firstCP: NodeInfo{
+				PublicIP:  "54.1.2.4",
 				PrivateIP: "10.0.0.2",
 			},
 			expected: "10.0.0.2",

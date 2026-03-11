@@ -138,10 +138,43 @@ holodeck_progress "$COMPONENT" 5 8 "Initializing Kubernetes cluster"
 
 # Initialize cluster
 if [[ ! -f /etc/kubernetes/admin.conf ]]; then
+    # Wait for control-plane endpoint to be resolvable (NLB DNS may take time)
+    if [[ "$CONTROL_PLANE_ENDPOINT" == *"elb.amazonaws.com"* ]] || \
+       [[ "$CONTROL_PLANE_ENDPOINT" == *"amazonaws.com"* ]]; then
+        holodeck_log "INFO" "$COMPONENT" "Waiting for NLB DNS to resolve: ${CONTROL_PLANE_ENDPOINT}"
+        for i in {1..30}; do
+            if host "${CONTROL_PLANE_ENDPOINT}" &>/dev/null || \
+               getent hosts "${CONTROL_PLANE_ENDPOINT}" &>/dev/null; then
+                holodeck_log "INFO" "$COMPONENT" "NLB DNS resolved successfully"
+                break
+            fi
+            if [[ $i -eq 30 ]]; then
+                holodeck_log "WARN" "$COMPONENT" "NLB DNS not yet resolved after 5 min, proceeding anyway"
+            fi
+            sleep 10
+        done
+    fi
+
+    # Detect this node's private IP for API server binding
+    NODE_PRIVATE_IP=$(hostname -I | awk '{print $1}')
+
+    # Always use local IP for init health checks: kubeadm v1.33+ validates the API
+    # server via control-plane-endpoint, which may not be routable from within the
+    # instance during init (public IPs, NLB DNS, etc.). Use private IP for init and
+    # include the original endpoint in cert SANs so external access works.
+    if [[ "$CONTROL_PLANE_ENDPOINT" != "$NODE_PRIVATE_IP" ]]; then
+        INIT_ENDPOINT="${NODE_PRIVATE_IP}"
+        holodeck_log "INFO" "$COMPONENT" "Using local IP ${NODE_PRIVATE_IP} for init (endpoint: ${CONTROL_PLANE_ENDPOINT} in cert SANs)"
+    else
+        INIT_ENDPOINT="${CONTROL_PLANE_ENDPOINT}"
+    fi
+
     INIT_ARGS=(
         --kubernetes-version="${K8S_VERSION}"
         --pod-network-cidr=192.168.0.0/16
-        --control-plane-endpoint="${CONTROL_PLANE_ENDPOINT}:6443"
+        --control-plane-endpoint="${INIT_ENDPOINT}:6443"
+        --apiserver-advertise-address="${NODE_PRIVATE_IP}"
+        --apiserver-cert-extra-sans="${CONTROL_PLANE_ENDPOINT},${NODE_PRIVATE_IP},${INIT_ENDPOINT}"
         --ignore-preflight-errors=all
     )
 
@@ -150,8 +183,22 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
         INIT_ARGS+=(--upload-certs)
     fi
 
-    holodeck_log "INFO" "$COMPONENT" "Running kubeadm init"
+    holodeck_log "INFO" "$COMPONENT" "Running kubeadm init with args: ${INIT_ARGS[*]}"
     holodeck_retry 3 "$COMPONENT" sudo kubeadm init "${INIT_ARGS[@]}"
+
+    # For HA with NLB: after init succeeds, update the cluster config to use NLB DNS
+    # so that join tokens reference the NLB endpoint (reachable by other nodes).
+    if [[ "$IS_HA" == "true" ]] && [[ "$INIT_ENDPOINT" != "$CONTROL_PLANE_ENDPOINT" ]]; then
+        holodeck_log "INFO" "$COMPONENT" "Updating cluster config to use NLB endpoint: ${CONTROL_PLANE_ENDPOINT}:6443"
+        # Update the kubeadm-config ConfigMap
+        sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system get configmap kubeadm-config -o yaml | \
+            sed "s|controlPlaneEndpoint: ${INIT_ENDPOINT}:6443|controlPlaneEndpoint: ${CONTROL_PLANE_ENDPOINT}:6443|g" | \
+            sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f - || \
+            holodeck_log "WARN" "$COMPONENT" "Could not update kubeadm-config, join may need manual endpoint"
+        # Also update admin.conf kubeconfig to use the NLB
+        sudo sed -i "s|server: https://${INIT_ENDPOINT}:6443|server: https://${CONTROL_PLANE_ENDPOINT}:6443|g" \
+            /etc/kubernetes/admin.conf
+    fi
 fi
 
 # Setup kubeconfig

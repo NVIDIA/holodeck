@@ -179,6 +179,18 @@ sudo systemctl enable --now kubelet
 
 holodeck_progress "$COMPONENT" 5 8 "Initializing Kubernetes cluster"
 
+# Ensure CRI socket service is running before kubeadm init.
+# When Docker is the runtime, CTK installation restarts dockerd between the
+# Docker and kubeadm provisioning steps. cri-dockerd loses its Docker
+# connection and crashes. With systemd StartLimitBurst=3 in 60s, it may
+# not auto-recover by the time kubeadm runs.
+{{- if eq .CriSocket "unix:///run/cri-dockerd.sock" }}
+holodeck_log "INFO" "$COMPONENT" "Ensuring cri-dockerd is running"
+sudo systemctl reset-failed cri-docker.service 2>/dev/null || true
+sudo systemctl restart cri-docker.service
+sleep 2
+{{- end }}
+
 # Initialize cluster only if not already initialized
 if [[ ! -f /etc/kubernetes/admin.conf ]]; then
     # Pre-pull images before init. kubeadm init with --ignore-preflight-errors=all
@@ -187,7 +199,8 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
     holodeck_log "INFO" "$COMPONENT" "Pre-pulling control plane images"
 {{- if .UseLegacyInit }}
     holodeck_retry 3 "$COMPONENT" sudo kubeadm config images pull \
-        --kubernetes-version="${K8S_VERSION}"
+        --kubernetes-version="${K8S_VERSION}" \
+        --cri-socket "{{ .CriSocket }}"
 {{- else }}
     holodeck_retry 3 "$COMPONENT" sudo kubeadm config images pull \
         --config /etc/kubernetes/kubeadm-config.yaml
@@ -203,12 +216,46 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
 
         set +e
 {{- if .UseLegacyInit }}
+        # Use private IP for init health checks (kubeadm v1.33+ checks via control-plane-endpoint).
+        # Public DNS may not be routable from within the instance during init.
+        # Include public endpoint in cert SANs so kubectl works externally.
+        KUBEADM_NODE_IP=$(hostname -I | awk '{print $1}')
         sudo kubeadm init \
             --kubernetes-version="${K8S_VERSION}" \
+            --cri-socket "{{ .CriSocket }}" \
             --pod-network-cidr=192.168.0.0/16 \
-            --control-plane-endpoint="${K8S_ENDPOINT_HOST}:6443" \
+            --control-plane-endpoint="${KUBEADM_NODE_IP}:6443" \
+            --apiserver-advertise-address="${KUBEADM_NODE_IP}" \
+            --apiserver-cert-extra-sans="${K8S_ENDPOINT_HOST},${KUBEADM_NODE_IP},localhost" \
             --ignore-preflight-errors=all
 {{- else }}
+        # Use private IP for init health checks (kubeadm v1.33+ checks via control-plane-endpoint).
+        # The config file has the public DNS as controlPlaneEndpoint, which may not be
+        # routable from within the instance during init. Replace with private IP and
+        # add cert SANs so kubectl works externally.
+        KUBEADM_NODE_IP=$(hostname -I | awk '{print $1}')
+        sudo sed -i "s|controlPlaneEndpoint: \"${K8S_ENDPOINT_HOST}:6443\"|controlPlaneEndpoint: \"${KUBEADM_NODE_IP}:6443\"|" \
+            /etc/kubernetes/kubeadm-config.yaml
+        # Inject certSANs into ClusterConfiguration so the API server cert
+        # covers both the public endpoint and the private IP we use for init.
+        if ! grep -q 'certSANs' /etc/kubernetes/kubeadm-config.yaml; then
+            if grep -q '^apiServer:' /etc/kubernetes/kubeadm-config.yaml; then
+                # apiServer block exists (e.g. feature gates) — inject certSANs into it
+                sudo sed -i "/^apiServer:/a\\
+  certSANs:\\
+  - \"${K8S_ENDPOINT_HOST}\"\\
+  - \"${KUBEADM_NODE_IP}\"\\
+  - \"localhost\"" /etc/kubernetes/kubeadm-config.yaml
+            else
+                # No apiServer block — create one after controlPlaneEndpoint
+                sudo sed -i "/^controlPlaneEndpoint:/a\\
+apiServer:\\
+  certSANs:\\
+  - \"${K8S_ENDPOINT_HOST}\"\\
+  - \"${KUBEADM_NODE_IP}\"\\
+  - \"localhost\"" /etc/kubernetes/kubeadm-config.yaml
+            fi
+        fi
         sudo kubeadm init \
             --config /etc/kubernetes/kubeadm-config.yaml \
             --ignore-preflight-errors=all
@@ -226,7 +273,7 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
         holodeck_log "INFO" "$COMPONENT" "--- kubelet logs (last 30 lines) ---"
         sudo journalctl -u kubelet --no-pager -n 30 2>&1 || true
         holodeck_log "INFO" "$COMPONENT" "--- container status via crictl ---"
-        sudo crictl --runtime-endpoint unix:///run/cri-dockerd.sock ps -a 2>&1 || true
+        sudo crictl --runtime-endpoint {{ .CriSocket }} ps -a 2>&1 || true
         holodeck_log "INFO" "$COMPONENT" "--- container status via docker ---"
         sudo docker ps -a 2>&1 || true
         holodeck_log "INFO" "$COMPONENT" "--- kubeadm-flags.env ---"
@@ -235,7 +282,7 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
 
         if [[ $KUBEADM_ATTEMPT -lt $KUBEADM_MAX_ATTEMPTS ]]; then
             holodeck_log "INFO" "$COMPONENT" "Resetting cluster state before retry"
-            sudo kubeadm reset -f --cri-socket "unix:///run/cri-dockerd.sock" 2>&1 || true
+            sudo kubeadm reset -f --cri-socket "{{ .CriSocket }}" 2>&1 || true
             # Re-enable kubelet after reset
             sudo systemctl daemon-reload
             sudo systemctl restart kubelet

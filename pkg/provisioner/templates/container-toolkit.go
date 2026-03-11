@@ -84,6 +84,11 @@ case "${HOLODECK_OS_FAMILY}" in
         if [[ ! -f /etc/yum.repos.d/nvidia-container-toolkit.repo ]]; then
             sudo curl -fsSL -o /etc/yum.repos.d/nvidia-container-toolkit.repo \
                 "https://nvidia.github.io/libnvidia-container/${CHANNEL}/rpm/nvidia-container-toolkit.repo"
+            # Disable repo metadata GPG check — upstream repomd.xml signature
+            # is intermittently broken. Individual RPM packages are still
+            # GPG-verified via gpgcheck=1.
+            sudo sed -i 's/^repo_gpgcheck=1/repo_gpgcheck=0/' \
+                /etc/yum.repos.d/nvidia-container-toolkit.repo
         fi
         holodeck_retry 3 "$COMPONENT" pkg_update
         ;;
@@ -306,6 +311,24 @@ else
     GHCR_DIGEST="source-build"
 fi
 
+# Ensure nvidia-container-runtime exists (newer toolkit versions may not
+# build it as a separate binary). Create a symlink so container runtimes
+# can find it at the expected path.
+if ! command -v nvidia-container-runtime &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Creating nvidia-container-runtime symlink from nvidia-ctk"
+    CTK_PATH=$(command -v nvidia-ctk)
+    sudo ln -sf "$CTK_PATH" "$(dirname "$CTK_PATH")/nvidia-container-runtime"
+fi
+# nvidia-ctk runtime configure hardcodes /usr/bin/nvidia-container-runtime in
+# the container runtime config. Ensure a binary or symlink exists there even
+# when the actual binary was installed elsewhere (e.g. /usr/local/bin from
+# a source build).
+if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
+    RUNTIME_SRC=$(command -v nvidia-container-runtime 2>/dev/null || command -v nvidia-ctk)
+    holodeck_log "INFO" "$COMPONENT" "Symlinking ${RUNTIME_SRC} -> /usr/bin/nvidia-container-runtime"
+    sudo ln -sf "$RUNTIME_SRC" /usr/bin/nvidia-container-runtime
+fi
+
 holodeck_progress "$COMPONENT" 5 5 "Configuring runtime"
 
 sudo nvidia-ctk runtime configure \
@@ -508,6 +531,24 @@ else
     done
 
     GHCR_DIGEST="source-build"
+fi
+
+# Ensure nvidia-container-runtime exists (newer toolkit versions may not
+# build it as a separate binary). Create a symlink so container runtimes
+# can find it at the expected path.
+if ! command -v nvidia-container-runtime &>/dev/null; then
+    holodeck_log "INFO" "$COMPONENT" "Creating nvidia-container-runtime symlink from nvidia-ctk"
+    CTK_PATH=$(command -v nvidia-ctk)
+    sudo ln -sf "$CTK_PATH" "$(dirname "$CTK_PATH")/nvidia-container-runtime"
+fi
+# nvidia-ctk runtime configure hardcodes /usr/bin/nvidia-container-runtime in
+# the container runtime config. Ensure a binary or symlink exists there even
+# when the actual binary was installed elsewhere (e.g. /usr/local/bin from
+# a source build).
+if [[ ! -f /usr/bin/nvidia-container-runtime ]]; then
+    RUNTIME_SRC=$(command -v nvidia-container-runtime 2>/dev/null || command -v nvidia-ctk)
+    holodeck_log "INFO" "$COMPONENT" "Symlinking ${RUNTIME_SRC} -> /usr/bin/nvidia-container-runtime"
+    sudo ln -sf "$RUNTIME_SRC" /usr/bin/nvidia-container-runtime
 fi
 
 holodeck_progress "$COMPONENT" 5 5 "Configuring runtime"

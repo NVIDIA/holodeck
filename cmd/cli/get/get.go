@@ -181,7 +181,7 @@ func (m command) runKubeconfig(instanceID string) error {
 	}
 
 	// Download kubeconfig
-	if err := utils.GetKubeConfig(m.log, &env, hostUrl, outputPath); err != nil {
+	if err := utils.GetKubeConfig(m.log, &env, hostUrl, outputPath, ""); err != nil {
 		return fmt.Errorf("failed to download kubeconfig: %w", err)
 	}
 

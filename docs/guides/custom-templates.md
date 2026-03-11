@@ -178,15 +178,15 @@ customTemplates:
 
 1. **Use `pre-install` for system prerequisites** like package
    repos, kernel parameters, or certificates.
-2. **Use `post-kubernetes` for workload deployment** since the
+1. **Use `post-kubernetes` for workload deployment** since the
    cluster is ready at that point.
-3. **Use `post-install` for validation scripts** that verify
+1. **Use `post-install` for validation scripts** that verify
    the full stack.
-4. **Set `continueOnError: true` for non-critical scripts**
+1. **Set `continueOnError: true` for non-critical scripts**
    like monitoring or logging.
-5. **Add checksums for URL sources** to ensure script integrity.
-6. **Keep scripts idempotent** so re-runs produce the same result.
-7. **Test with `holodeck dryrun`** to validate configuration
+1. **Add checksums for URL sources** to ensure script integrity.
+1. **Keep scripts idempotent** so re-runs produce the same result.
+1. **Test with `holodeck dryrun`** to validate configuration
    before provisioning.
 
 ## Related
