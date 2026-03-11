@@ -342,12 +342,19 @@ func (p *Provisioner) createKindConfig(env v1alpha1.Environment) error {
 	return nil
 }
 
+// kubeadmConfigLocalPath returns the local cache path for a kubeadm config file.
+// Each environment gets a unique file to prevent race conditions when multiple
+// holodeck processes run concurrently.
+func kubeadmConfigLocalPath(envName string) string {
+	cachePath := filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
+	return filepath.Join(cachePath, fmt.Sprintf("kubeadm-config-%s.yaml", envName))
+}
+
 // createKubeAdmConfig creates a kubeadm config file on the remote machine
 // at /etc/kubernetes/kubeadm-config.yaml
 func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
-	cachePath := filepath.Join(os.Getenv("HOME"), ".cache", "holodeck")
-	// Define local and remote paths
-	localFilePath := fmt.Sprintf("%s/kubeadm-config.yaml", cachePath)
+	localFilePath := kubeadmConfigLocalPath(env.Name)
+	cachePath := filepath.Dir(localFilePath)
 	remoteFilePath := "/etc/kubernetes/kubeadm-config.yaml"
 	tempRemotePath := "/tmp/kubeadm-config.yaml" // Temporary upload path
 
@@ -402,6 +409,9 @@ func (p *Provisioner) createKubeAdmConfig(env v1alpha1.Environment) error {
 		return fmt.Errorf("failed to move kubeadm config to final destination: %w", err)
 	}
 	_ = session.Close()
+
+	// Clean up the local temporary file — it's already on the remote host
+	os.Remove(localFilePath) //nolint:errcheck // best-effort cleanup
 
 	return nil
 }
