@@ -47,13 +47,13 @@ const (
 	PublicDnsName             string = "public-dns-name"
 
 	// Cluster networking cache keys
-	PublicSubnetID      string = "public-subnet-id"
-	NatGatewayID        string = "nat-gateway-id"
-	PrivateRouteTable   string = "private-route-table-id"
-	PublicRouteTable    string = "public-route-table-id"
-	CPSecurityGroupID   string = "cp-security-group-id"
+	PublicSubnetID        string = "public-subnet-id"
+	NatGatewayID          string = "nat-gateway-id"
+	PrivateRouteTable     string = "private-route-table-id"
+	PublicRouteTable      string = "public-route-table-id"
+	CPSecurityGroupID     string = "cp-security-group-id"
 	WorkerSecurityGroupID string = "worker-security-group-id"
-	EIPAllocationID     string = "eip-allocation-id"
+	EIPAllocationID       string = "eip-allocation-id"
 	IAMInstanceProfileArn string = "iam-instance-profile-arn"
 )
 
