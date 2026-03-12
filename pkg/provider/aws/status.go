@@ -93,6 +93,13 @@ func (p *Provider) updateStatus(env v1alpha1.Environment, cache *AWS, condition 
 			{Name: SecurityGroupID, Value: cache.SecurityGroupid},
 			{Name: InstanceID, Value: cache.Instanceid},
 			{Name: PublicDnsName, Value: cache.PublicDnsName},
+			{Name: PublicSubnetID, Value: cache.PublicSubnetid},
+			{Name: NatGatewayID, Value: cache.NatGatewayid},
+			{Name: PublicRouteTable, Value: cache.PublicRouteTable},
+			{Name: CPSecurityGroupID, Value: cache.CPSecurityGroupid},
+			{Name: WorkerSecurityGroupID, Value: cache.WorkerSecurityGroupid},
+			{Name: EIPAllocationID, Value: cache.EIPAllocationid},
+			{Name: IAMInstanceProfileArn, Value: cache.IAMInstanceProfileArn},
 		}
 		modified = true
 	} else {
@@ -136,6 +143,41 @@ func (p *Provider) updateStatus(env v1alpha1.Environment, cache *AWS, condition 
 			case PublicDnsName:
 				if properties.Value != cache.PublicDnsName {
 					properties.Value = cache.PublicDnsName
+					modified = true
+				}
+			case PublicSubnetID:
+				if properties.Value != cache.PublicSubnetid {
+					properties.Value = cache.PublicSubnetid
+					modified = true
+				}
+			case NatGatewayID:
+				if properties.Value != cache.NatGatewayid {
+					properties.Value = cache.NatGatewayid
+					modified = true
+				}
+			case PublicRouteTable:
+				if properties.Value != cache.PublicRouteTable {
+					properties.Value = cache.PublicRouteTable
+					modified = true
+				}
+			case CPSecurityGroupID:
+				if properties.Value != cache.CPSecurityGroupid {
+					properties.Value = cache.CPSecurityGroupid
+					modified = true
+				}
+			case WorkerSecurityGroupID:
+				if properties.Value != cache.WorkerSecurityGroupid {
+					properties.Value = cache.WorkerSecurityGroupid
+					modified = true
+				}
+			case EIPAllocationID:
+				if properties.Value != cache.EIPAllocationid {
+					properties.Value = cache.EIPAllocationid
+					modified = true
+				}
+			case IAMInstanceProfileArn:
+				if properties.Value != cache.IAMInstanceProfileArn {
+					properties.Value = cache.IAMInstanceProfileArn
 					modified = true
 				}
 			default:

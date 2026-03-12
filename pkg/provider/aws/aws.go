@@ -45,6 +45,16 @@ const (
 	SecurityGroupID           string = "security-group-id"
 	InstanceID                string = "instance-id"
 	PublicDnsName             string = "public-dns-name"
+
+	// Cluster networking cache keys
+	PublicSubnetID      string = "public-subnet-id"
+	NatGatewayID        string = "nat-gateway-id"
+	PrivateRouteTable   string = "private-route-table-id"
+	PublicRouteTable    string = "public-route-table-id"
+	CPSecurityGroupID   string = "cp-security-group-id"
+	WorkerSecurityGroupID string = "worker-security-group-id"
+	EIPAllocationID     string = "eip-allocation-id"
+	IAMInstanceProfileArn string = "iam-instance-profile-arn"
 )
 
 var (
@@ -71,6 +81,15 @@ type AWS struct {
 	SecurityGroupid           string
 	Instanceid                string
 	PublicDnsName             string
+
+	// Cluster networking fields
+	PublicSubnetid        string
+	NatGatewayid          string
+	PublicRouteTable      string
+	CPSecurityGroupid     string
+	WorkerSecurityGroupid string
+	EIPAllocationid       string
+	IAMInstanceProfileArn string
 }
 
 type Provider struct {
@@ -232,6 +251,22 @@ func (p *Provider) unmarsalCache() (*AWS, error) {
 			aws.Instanceid = p.Value
 		case PublicDnsName:
 			aws.PublicDnsName = p.Value
+		case PublicSubnetID:
+			aws.PublicSubnetid = p.Value
+		case NatGatewayID:
+			aws.NatGatewayid = p.Value
+		case PrivateRouteTable:
+			aws.RouteTable = p.Value
+		case PublicRouteTable:
+			aws.PublicRouteTable = p.Value
+		case CPSecurityGroupID:
+			aws.CPSecurityGroupid = p.Value
+		case WorkerSecurityGroupID:
+			aws.WorkerSecurityGroupid = p.Value
+		case EIPAllocationID:
+			aws.EIPAllocationid = p.Value
+		case IAMInstanceProfileArn:
+			aws.IAMInstanceProfileArn = p.Value
 		default:
 			// Ignore non AWS infra properties
 			continue
