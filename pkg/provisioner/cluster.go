@@ -59,8 +59,10 @@ type NodeInfo struct {
 	Name        string
 	PublicIP    string
 	PrivateIP   string
-	Role        string // "control-plane" or "worker"
-	SSHUsername string // SSH username for this node (optional, falls back to ClusterProvisioner.UserName)
+	Role        string    // "control-plane" or "worker"
+	SSHUsername string    // SSH username for this node (optional, falls back to ClusterProvisioner.UserName)
+	InstanceID  string    // EC2 instance ID (used by SSMTransport for private-subnet nodes)
+	Transport   Transport // Transport controls how SSH connections are established; nil falls back to DirectTransport
 }
 
 // NewClusterProvisioner creates a new cluster provisioner
@@ -81,6 +83,16 @@ func (cp *ClusterProvisioner) getUsernameForNode(node NodeInfo) string {
 		return node.SSHUsername
 	}
 	return cp.UserName
+}
+
+// transportOptsForNode returns functional options for New() based on the node's transport.
+// If the node has a Transport configured, it is passed via WithTransport; otherwise
+// the default DirectTransport(PublicIP) is used automatically by New().
+func (cp *ClusterProvisioner) transportOptsForNode(node NodeInfo) []Option {
+	if node.Transport != nil {
+		return []Option{WithTransport(node.Transport)}
+	}
+	return nil
 }
 
 // ProvisionCluster provisions a multinode Kubernetes cluster
@@ -173,7 +185,7 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 		g.Go(func() error {
 			cp.log.Info("Provisioning base dependencies on %s (%s)", node.Name, node.PublicIP)
 
-			provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
+			provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
 			if err != nil {
 				return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 			}
@@ -215,11 +227,18 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 	cp.log.Info("Installing K8s binaries on %s (%s)", node.Name, node.PublicIP)
 
-	client, err := connectOrDie(cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
-	defer client.Close() // nolint: errcheck
+	defer func() {
+		if provisioner.Client != nil {
+			_ = provisioner.Client.Close()
+		}
+		if provisioner.transport != nil {
+			_ = provisioner.transport.Close()
+		}
+	}()
 
 	// Generate script
 	var tpl bytes.Buffer
@@ -236,7 +255,7 @@ func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 	}
 
 	// Run the script via SSH
-	session, err := client.NewSession()
+	session, err := provisioner.Client.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
@@ -272,7 +291,7 @@ func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 
 // initFirstControlPlane initializes the first control-plane node with kubeadm init
 func (cp *ClusterProvisioner) initFirstControlPlane(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -364,7 +383,7 @@ printf '%s\n%s\n%s' "$TOKEN" "$HASH" "$CERTKEY"
 
 // joinControlPlane joins an additional control-plane node to the cluster
 func (cp *ClusterProvisioner) joinControlPlane(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -399,7 +418,7 @@ func (cp *ClusterProvisioner) joinControlPlane(node NodeInfo) error {
 
 // joinWorker joins a worker node to the cluster
 func (cp *ClusterProvisioner) joinWorker(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -441,7 +460,7 @@ func (cp *ClusterProvisioner) isHAEnabled() bool {
 // configureNodes applies labels, taints, and roles to all cluster nodes
 // This is run from the first control-plane node after all nodes have joined
 func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(firstCP), firstCP.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(firstCP), firstCP.PublicIP, cp.transportOptsForNode(firstCP)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", firstCP.Name, err)
 	}
@@ -638,14 +657,36 @@ func (cp *ClusterProvisioner) GetClusterHealth(firstCPPublicIP string) (*Cluster
 			}
 		}
 	}
-	provisioner, err := New(cp.log, cp.KeyPath, username, firstCPPublicIP)
+	// Build transport options from node info in environment status
+	var transportOpts []Option
+	if cp.Environment != nil && cp.Environment.Status.Cluster != nil {
+		for _, node := range cp.Environment.Status.Cluster.Nodes {
+			if node.PublicIP == firstCPPublicIP {
+				nodeInfo := NodeInfo{
+					PublicIP:   node.PublicIP,
+					PrivateIP:  node.PrivateIP,
+					InstanceID: node.InstanceID,
+				}
+				transportOpts = cp.transportOptsForNode(nodeInfo)
+				break
+			}
+		}
+	}
+	provisioner, err := New(cp.log, cp.KeyPath, username, firstCPPublicIP, transportOpts...)
 	if err != nil {
 		return &ClusterHealth{
 			Healthy: false,
 			Message: fmt.Sprintf("Failed to connect to control-plane: %v", err),
 		}, nil
 	}
-	defer provisioner.Client.Close() // nolint: errcheck
+	defer func() {
+		if provisioner.Client != nil {
+			_ = provisioner.Client.Close()
+		}
+		if provisioner.transport != nil {
+			_ = provisioner.transport.Close()
+		}
+	}()
 
 	health := &ClusterHealth{
 		Nodes: []NodeHealth{},
