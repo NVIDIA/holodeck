@@ -476,3 +476,46 @@ func TestDeleteSecurityGroups_AllEmpty(t *testing.T) {
 		t.Fatalf("expected no error when all SG IDs are empty, got: %v", err)
 	}
 }
+
+func TestDeleteSecurityGroups_SharedSameAsCP(t *testing.T) {
+	// When SecurityGroupid == CPSecurityGroupid (single-node mode where both
+	// point to the same SG), the shared SG should NOT be double-deleted.
+	var deletedSGs []string
+	mock := &MockEC2Client{
+		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+			deletedSGs = append(deletedSGs, aws.ToString(params.GroupId))
+			return &ec2.DeleteSecurityGroupOutput{}, nil
+		},
+		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+			return nil, fmt.Errorf("InvalidGroup.NotFound")
+		},
+	}
+
+	env := testEnvironment()
+	provider := &Provider{
+		ec2:         mock,
+		log:         mockLogger(),
+		Environment: env,
+	}
+
+	cache := &AWS{
+		SecurityGroupid:       "sg-same-001",
+		CPSecurityGroupid:     "sg-same-001",
+		WorkerSecurityGroupid: "sg-worker-002",
+	}
+
+	if err := provider.deleteSecurityGroups(cache); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should delete worker and CP, but NOT double-delete the shared SG
+	if len(deletedSGs) != 2 {
+		t.Fatalf("expected 2 delete calls, got %d: %v", len(deletedSGs), deletedSGs)
+	}
+	if deletedSGs[0] != "sg-worker-002" {
+		t.Errorf("first delete should be worker SG, got %s", deletedSGs[0])
+	}
+	if deletedSGs[1] != "sg-same-001" {
+		t.Errorf("second delete should be CP SG (same as shared), got %s", deletedSGs[1])
+	}
+}

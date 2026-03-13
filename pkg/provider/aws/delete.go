@@ -270,7 +270,10 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 		return fmt.Errorf("error deleting control-plane security group %s: %w", cache.CPSecurityGroupid, err)
 	}
 
-	// Delete the shared/single-node SG
+	// Delete the shared/single-node SG (skip if same as CP SG — cluster mode sets them equal)
+	if cache.SecurityGroupid == cache.CPSecurityGroupid {
+		cache.SecurityGroupid = "" // already deleted above
+	}
 	if err := p.deleteSecurityGroup(cache.SecurityGroupid, "shared"); err != nil {
 		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting security group"); err != nil {
 			p.log.Error(fmt.Errorf("failed to update degraded condition: %w", err))
