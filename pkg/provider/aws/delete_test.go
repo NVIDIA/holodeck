@@ -22,10 +22,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// testEnvironment returns a minimal Environment for tests that call
+// updateProgressingCondition / updateDegradedCondition (which invoke DeepCopy).
+func testEnvironment() *v1alpha1.Environment {
+	return &v1alpha1.Environment{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+		Spec: v1alpha1.EnvironmentSpec{
+			Provider: v1alpha1.ProviderAWS,
+			Instance: v1alpha1.Instance{
+				Type:   "t3.medium",
+				Region: "us-east-1",
+			},
+		},
+	}
+}
 
 func TestDeleteConstants(t *testing.T) {
 	tests := []struct {
@@ -318,5 +336,143 @@ func TestDeletePublicSubnet_Success(t *testing.T) {
 	}
 	if deletedID != "subnet-public-123" {
 		t.Errorf("expected deletion of subnet-public-123, got %s", deletedID)
+	}
+}
+
+// Tests for dual security group cleanup
+
+func TestDeleteSecurityGroup_EmptyID(t *testing.T) {
+	provider := &Provider{log: mockLogger()}
+	if err := provider.deleteSecurityGroup("", "worker"); err != nil {
+		t.Fatalf("expected no error for empty SG ID, got: %v", err)
+	}
+}
+
+func TestDeleteSecurityGroup_AlreadyDeleted(t *testing.T) {
+	mock := &MockEC2Client{
+		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+			return nil, fmt.Errorf("InvalidGroup.NotFound: sg-gone")
+		},
+		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+			return nil, fmt.Errorf("InvalidGroup.NotFound")
+		},
+	}
+	provider := &Provider{ec2: mock, log: mockLogger()}
+	if err := provider.deleteSecurityGroup("sg-gone", "control-plane"); err != nil {
+		t.Fatalf("expected no error for InvalidGroup.NotFound, got: %v", err)
+	}
+}
+
+func TestDeleteSecurityGroup_Success(t *testing.T) {
+	var deletedID string
+	mock := &MockEC2Client{
+		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+			deletedID = aws.ToString(params.GroupId)
+			return &ec2.DeleteSecurityGroupOutput{}, nil
+		},
+		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+			return nil, fmt.Errorf("InvalidGroup.NotFound")
+		},
+	}
+	provider := &Provider{ec2: mock, log: mockLogger()}
+	if err := provider.deleteSecurityGroup("sg-cp-123", "control-plane"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if deletedID != "sg-cp-123" {
+		t.Errorf("expected deletion of sg-cp-123, got %s", deletedID)
+	}
+}
+
+func TestDeleteSecurityGroups_DualSG_DeleteOrder(t *testing.T) {
+	// Verify Worker SG is deleted before CP SG (dependency order)
+	var deleteOrder []string
+	mock := &MockEC2Client{
+		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+			deleteOrder = append(deleteOrder, aws.ToString(params.GroupId))
+			return &ec2.DeleteSecurityGroupOutput{}, nil
+		},
+		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+			return nil, fmt.Errorf("InvalidGroup.NotFound")
+		},
+	}
+
+	env := testEnvironment()
+	provider := &Provider{
+		ec2:         mock,
+		log:         mockLogger(),
+		Environment: env,
+	}
+	cache := &AWS{
+		SecurityGroupid:       "sg-shared",
+		CPSecurityGroupid:     "sg-cp",
+		WorkerSecurityGroupid: "sg-worker",
+	}
+
+	if err := provider.deleteSecurityGroups(cache); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(deleteOrder) != 3 {
+		t.Fatalf("expected 3 deletions, got %d: %v", len(deleteOrder), deleteOrder)
+	}
+	// Worker must come before CP, both before shared
+	if deleteOrder[0] != "sg-worker" {
+		t.Errorf("expected sg-worker deleted first, got %s", deleteOrder[0])
+	}
+	if deleteOrder[1] != "sg-cp" {
+		t.Errorf("expected sg-cp deleted second, got %s", deleteOrder[1])
+	}
+	if deleteOrder[2] != "sg-shared" {
+		t.Errorf("expected sg-shared deleted third, got %s", deleteOrder[2])
+	}
+}
+
+func TestDeleteSecurityGroups_SingleNode_EmptyCPAndWorker(t *testing.T) {
+	// Single-node mode: CP and Worker SG IDs are empty, only shared SG exists
+	var deletedIDs []string
+	mock := &MockEC2Client{
+		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+			deletedIDs = append(deletedIDs, aws.ToString(params.GroupId))
+			return &ec2.DeleteSecurityGroupOutput{}, nil
+		},
+		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+			return nil, fmt.Errorf("InvalidGroup.NotFound")
+		},
+	}
+
+	env := testEnvironment()
+	provider := &Provider{
+		ec2:         mock,
+		log:         mockLogger(),
+		Environment: env,
+	}
+	cache := &AWS{
+		SecurityGroupid:       "sg-shared",
+		CPSecurityGroupid:     "",
+		WorkerSecurityGroupid: "",
+	}
+
+	if err := provider.deleteSecurityGroups(cache); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(deletedIDs) != 1 {
+		t.Fatalf("expected 1 deletion (shared SG only), got %d: %v", len(deletedIDs), deletedIDs)
+	}
+	if deletedIDs[0] != "sg-shared" {
+		t.Errorf("expected sg-shared, got %s", deletedIDs[0])
+	}
+}
+
+func TestDeleteSecurityGroups_AllEmpty(t *testing.T) {
+	env := testEnvironment()
+	provider := &Provider{
+		log:         mockLogger(),
+		Environment: env,
+	}
+	cache := &AWS{}
+
+	if err := provider.deleteSecurityGroups(cache); err != nil {
+		t.Fatalf("expected no error when all SG IDs are empty, got: %v", err)
 	}
 }

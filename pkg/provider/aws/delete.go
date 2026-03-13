@@ -249,31 +249,60 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 }
 
 func (p *Provider) deleteSecurityGroups(cache *AWS) error {
-	if cache.SecurityGroupid == "" {
-		p.log.Info("No security group to delete")
-		return nil
-	}
-
-	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting security group"); err != nil {
+	if err := p.updateProgressingCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Deleting security groups"); err != nil {
 		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))
 	}
 
-	// Delete security group with retries
+	// Delete Worker SG first — it references CP SG, so CP SG can't be deleted
+	// while Worker SG still exists.
+	if err := p.deleteSecurityGroup(cache.WorkerSecurityGroupid, "worker"); err != nil {
+		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting worker security group"); err != nil {
+			p.log.Error(fmt.Errorf("failed to update degraded condition: %w", err))
+		}
+		return fmt.Errorf("error deleting worker security group %s: %w", cache.WorkerSecurityGroupid, err)
+	}
+
+	// Delete CP SG
+	if err := p.deleteSecurityGroup(cache.CPSecurityGroupid, "control-plane"); err != nil {
+		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting control-plane security group"); err != nil {
+			p.log.Error(fmt.Errorf("failed to update degraded condition: %w", err))
+		}
+		return fmt.Errorf("error deleting control-plane security group %s: %w", cache.CPSecurityGroupid, err)
+	}
+
+	// Delete the shared/single-node SG
+	if err := p.deleteSecurityGroup(cache.SecurityGroupid, "shared"); err != nil {
+		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting security group"); err != nil {
+			p.log.Error(fmt.Errorf("failed to update degraded condition: %w", err))
+		}
+		return fmt.Errorf("error deleting security group %s: %w", cache.SecurityGroupid, err)
+	}
+
+	return nil
+}
+
+// deleteSecurityGroup deletes a single security group by ID. It gracefully
+// handles empty IDs (skips) and already-deleted groups. The label parameter
+// is used only for logging (e.g. "worker", "control-plane", "shared").
+func (p *Provider) deleteSecurityGroup(sgID, label string) error {
+	if sgID == "" {
+		p.log.Info("No %s security group to delete", label)
+		return nil
+	}
+
 	err := p.retryWithBackoff(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
 		defer cancel()
 		_, err := p.ec2.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{
-			GroupId: &cache.SecurityGroupid,
+			GroupId: &sgID,
 		})
 		if err != nil {
-			// Check if security group doesn't exist
 			if strings.Contains(err.Error(), "InvalidGroup.NotFound") {
-				p.log.Info("Security group %s already deleted", cache.SecurityGroupid)
+				p.log.Info("Security group %s (%s) already deleted", sgID, label)
 				return nil
 			}
-			// Check if security group is still in use
 			if strings.Contains(err.Error(), "DependencyViolation") {
-				p.log.Info("Security group %s still in use, will retry", cache.SecurityGroupid)
+				p.log.Info("Security group %s (%s) still in use, will retry", sgID, label)
 				return err
 			}
 			return err
@@ -282,19 +311,16 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 	})
 
 	if err != nil {
-		if err := p.updateDegradedCondition(*p.DeepCopy(), cache, "v1alpha1.Destroying", "Error deleting security group"); err != nil {
-			p.log.Error(fmt.Errorf("failed to update degraded condition: %w", err))
-		}
-		return fmt.Errorf("error deleting security group %s: %w", cache.SecurityGroupid, err)
+		return err
 	}
 
 	// Verify deletion
 	time.Sleep(verificationDelay)
-	if p.securityGroupExists(cache.SecurityGroupid) {
-		return fmt.Errorf("security group %s still exists after deletion", cache.SecurityGroupid)
+	if p.securityGroupExists(sgID) {
+		return fmt.Errorf("security group %s (%s) still exists after deletion", sgID, label)
 	}
 
-	p.log.Info("Security group %s successfully deleted", cache.SecurityGroupid)
+	p.log.Info("Security group %s (%s) successfully deleted", sgID, label)
 	return nil
 }
 
@@ -345,6 +371,13 @@ func (p *Provider) deleteVPCResources(cache *AWS) error {
 	if err := p.deleteVPC(cache); err != nil {
 		return err
 	}
+
+	// TODO(Wave 3): Delete IAM instance profile + role when IAM client is added.
+	// If cache.IAMInstanceProfileArn is populated:
+	//   1. Remove role from instance profile
+	//   2. Delete instance profile
+	//   3. Delete the role
+	// This requires adding an IAM client to the Provider struct.
 
 	return p.updateTerminatedCondition(*p.Environment, cache)
 }
