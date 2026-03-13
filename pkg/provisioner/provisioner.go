@@ -60,28 +60,39 @@ type Provisioner struct {
 	Client         *ssh.Client
 	SessionManager *ssm.Client
 
-	HostUrl  string
-	UserName string
-	KeyPath  string
-	tpl      bytes.Buffer
+	HostUrl   string
+	UserName  string
+	KeyPath   string
+	tpl       bytes.Buffer
+	transport Transport
 
 	log *logger.FunLogger
 }
 
-func New(log *logger.FunLogger, keyPath, userName, hostUrl string) (*Provisioner, error) {
-	client, err := connectOrDie(keyPath, userName, hostUrl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to %s: %w", hostUrl, err)
-	}
-
+func New(log *logger.FunLogger, keyPath, userName, hostUrl string, opts ...Option) (*Provisioner, error) {
 	p := &Provisioner{
-		Client:   client,
 		HostUrl:  hostUrl,
 		UserName: userName,
 		KeyPath:  keyPath,
 		tpl:      bytes.Buffer{},
 		log:      log,
 	}
+
+	// Apply functional options
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	// Default to DirectTransport if none provided
+	if p.transport == nil {
+		p.transport = NewDirectTransport(hostUrl)
+	}
+
+	client, err := connectOrDie(keyPath, userName, hostUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %s: %w", hostUrl, err)
+	}
+	p.Client = client
 
 	return p, nil
 }
