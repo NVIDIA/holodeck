@@ -161,15 +161,6 @@ func TestSecurityGroupExists(t *testing.T) {
 	}
 }
 
-func containsSubstringHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 // Test individual delete helpers for new NAT/public resources
 
 func TestDeleteNATGateway_Empty(t *testing.T) {
