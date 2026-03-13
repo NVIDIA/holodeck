@@ -446,3 +446,33 @@ func strPtr(s string) *string {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+// Elastic IP operations
+
+func (m *MockEC2Client) AllocateAddress(ctx context.Context, params *ec2.AllocateAddressInput, optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error) {
+	return &ec2.AllocateAddressOutput{}, nil
+}
+
+func (m *MockEC2Client) ReleaseAddress(ctx context.Context, params *ec2.ReleaseAddressInput, optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
+	return &ec2.ReleaseAddressOutput{}, nil
+}
+
+// NAT Gateway operations
+
+func (m *MockEC2Client) CreateNatGateway(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
+	return &ec2.CreateNatGatewayOutput{}, nil
+}
+
+func (m *MockEC2Client) DeleteNatGateway(ctx context.Context, params *ec2.DeleteNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error) {
+	return &ec2.DeleteNatGatewayOutput{}, nil
+}
+
+func (m *MockEC2Client) DescribeNatGateways(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
+	return &ec2.DescribeNatGatewaysOutput{}, nil
+}
+
+// Subnet attribute operations
+
+func (m *MockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput, optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error) {
+	return &ec2.ModifySubnetAttributeOutput{}, nil
+}
