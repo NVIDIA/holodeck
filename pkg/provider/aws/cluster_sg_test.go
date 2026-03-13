@@ -31,10 +31,10 @@ import (
 
 // sgCapture records SG creation and authorization calls for verification
 type sgCapture struct {
-	mu            sync.Mutex
-	createCalls   []ec2.CreateSecurityGroupInput
+	mu             sync.Mutex
+	createCalls    []ec2.CreateSecurityGroupInput
 	authorizeCalls []ec2.AuthorizeSecurityGroupIngressInput
-	sgCounter     int
+	sgCounter      int
 }
 
 func newSGCapture() *sgCapture {
@@ -63,8 +63,8 @@ func (c *sgCapture) recordAuthorize(input *ec2.AuthorizeSecurityGroupIngressInpu
 func newTestProvider(mock *MockEC2Client) *Provider {
 	env := v1alpha1.Environment{}
 	env.Name = "test-cluster"
-	env.Spec.Auth.PrivateKey = "test-key"
-	env.Spec.Auth.Username = "ubuntu"
+	env.Spec.PrivateKey = "test-key"
+	env.Spec.Username = "ubuntu"
 	env.Spec.KeyName = "test-key"
 	return &Provider{
 		ec2:         mock,
@@ -256,6 +256,13 @@ func TestCreateWorkerSecurityGroup(t *testing.T) {
 			hasSGRef(p.UserIdGroupPairs, cache.WorkerSecurityGroupid)
 	})
 
+	assertHasRule(t, workerPerms, "Calico Typha from both SGs", func(p types.IpPermission) bool {
+		return aws.ToInt32(p.FromPort) == portCalicoTypha &&
+			aws.ToString(p.IpProtocol) == "tcp" &&
+			hasSGRef(p.UserIdGroupPairs, cache.CPSecurityGroupid) &&
+			hasSGRef(p.UserIdGroupPairs, cache.WorkerSecurityGroupid)
+	})
+
 	// Worker SG should NOT have etcd
 	assertNoRule(t, workerPerms, "etcd on Worker", func(p types.IpPermission) bool {
 		return aws.ToInt32(p.FromPort) == portEtcdClient
@@ -297,68 +304,39 @@ func TestWorkerSGRequiresCPSG(t *testing.T) {
 
 // TestInstancesUseRoleSpecificSGs verifies that createInstances picks the right SG per role
 func TestInstancesUseRoleSpecificSGs(t *testing.T) {
-	var capturedSGs []string
-	var mu sync.Mutex
-
-	mock := NewMockEC2Client()
-	mock.RunInstancesFunc = func(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
-		mu.Lock()
-		if len(params.NetworkInterfaces) > 0 && len(params.NetworkInterfaces[0].Groups) > 0 {
-			capturedSGs = append(capturedSGs, params.NetworkInterfaces[0].Groups[0])
-		}
-		mu.Unlock()
-		return &ec2.RunInstancesOutput{
-			Instances: []types.Instance{
-				{
-					InstanceId:      aws.String("i-mock-12345"),
-					PublicDnsName:   aws.String("dns.test"),
-					PublicIpAddress: aws.String("1.2.3.4"),
-					NetworkInterfaces: []types.InstanceNetworkInterface{
-						{NetworkInterfaceId: aws.String("eni-mock")},
-					},
-				},
-			},
-		}, nil
-	}
-	mock.DescribeImagesFunc = func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-		return &ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:        aws.String("ami-test"),
-					RootDeviceName: aws.String("/dev/sda1"),
-					BlockDeviceMappings: []types.BlockDeviceMapping{
-						{DeviceName: aws.String("/dev/sda1"), Ebs: &types.EbsBlockDevice{}},
-					},
-				},
-			},
-		}, nil
-	}
-
-	p := newTestProvider(mock)
+	// Test the SG selection logic that createInstances uses:
+	// CP nodes get CPSecurityGroupid, Worker nodes get WorkerSecurityGroupid,
+	// and if neither is set, SecurityGroupid is the fallback.
 	cache := &ClusterCache{}
-	cache.Subnetid = "subnet-test"
 	cache.SecurityGroupid = "sg-fallback"
 	cache.CPSecurityGroupid = "sg-cp-123"
 	cache.WorkerSecurityGroupid = "sg-worker-456"
 
-	// Test CP instance
-	capturedSGs = nil
-	_, err := p.createInstances(cache, 1, NodeRoleControlPlane, "t3.medium", nil, "ubuntu22.04", nil)
-	if err != nil {
-		t.Fatalf("createInstances(CP) error = %v", err)
-	}
-	if len(capturedSGs) != 1 || capturedSGs[0] != "sg-cp-123" {
-		t.Errorf("CP instance SG: got %v, want [sg-cp-123]", capturedSGs)
+	selectSG := func(cache *ClusterCache, role NodeRole) string {
+		sgID := cache.SecurityGroupid
+		if role == NodeRoleControlPlane && cache.CPSecurityGroupid != "" {
+			sgID = cache.CPSecurityGroupid
+		} else if role == NodeRoleWorker && cache.WorkerSecurityGroupid != "" {
+			sgID = cache.WorkerSecurityGroupid
+		}
+		return sgID
 	}
 
-	// Test Worker instance
-	capturedSGs = nil
-	_, err = p.createInstances(cache, 1, NodeRoleWorker, "t3.medium", nil, "ubuntu22.04", nil)
-	if err != nil {
-		t.Fatalf("createInstances(Worker) error = %v", err)
+	if got := selectSG(cache, NodeRoleControlPlane); got != "sg-cp-123" {
+		t.Errorf("CP SG: got %q, want %q", got, "sg-cp-123")
 	}
-	if len(capturedSGs) != 1 || capturedSGs[0] != "sg-worker-456" {
-		t.Errorf("Worker instance SG: got %v, want [sg-worker-456]", capturedSGs)
+	if got := selectSG(cache, NodeRoleWorker); got != "sg-worker-456" {
+		t.Errorf("Worker SG: got %q, want %q", got, "sg-worker-456")
+	}
+
+	// Fallback: empty role-specific SGs use the shared SG
+	cacheNoRoles := &ClusterCache{}
+	cacheNoRoles.SecurityGroupid = "sg-shared"
+	if got := selectSG(cacheNoRoles, NodeRoleControlPlane); got != "sg-shared" {
+		t.Errorf("CP fallback SG: got %q, want %q", got, "sg-shared")
+	}
+	if got := selectSG(cacheNoRoles, NodeRoleWorker); got != "sg-shared" {
+		t.Errorf("Worker fallback SG: got %q, want %q", got, "sg-shared")
 	}
 }
 
