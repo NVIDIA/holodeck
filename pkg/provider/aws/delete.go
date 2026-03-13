@@ -306,27 +306,172 @@ func (p *Provider) deleteVPCResources(cache *AWS) error {
 		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))
 	}
 
-	// Step 1: Delete Subnet
+	// Step 1: Delete NAT Gateway (async — must wait for deleted state before releasing EIP)
+	if err := p.deleteNATGateway(cache); err != nil {
+		return err
+	}
+
+	// Step 2: Release Elastic IP (must happen after NAT GW is deleted)
+	if err := p.releaseElasticIP(cache); err != nil {
+		return err
+	}
+
+	// Step 3: Delete public route table
+	if err := p.deletePublicRouteTable(cache); err != nil {
+		return err
+	}
+
+	// Step 4: Delete public subnet
+	if err := p.deletePublicSubnet(cache); err != nil {
+		return err
+	}
+
+	// Step 5: Delete private Subnet
 	if err := p.deleteSubnet(cache); err != nil {
 		return err
 	}
 
-	// Step 2: Delete Route Table
+	// Step 6: Delete private Route Table
 	if err := p.deleteRouteTable(cache); err != nil {
 		return err
 	}
 
-	// Step 3: Detach and Delete Internet Gateway
+	// Step 7: Detach and Delete Internet Gateway
 	if err := p.deleteInternetGateway(cache); err != nil {
 		return err
 	}
 
-	// Step 4: Delete VPC
+	// Step 8: Delete VPC
 	if err := p.deleteVPC(cache); err != nil {
 		return err
 	}
 
 	return p.updateTerminatedCondition(*p.Environment, cache)
+}
+
+func (p *Provider) deleteNATGateway(cache *AWS) error {
+	if cache.NatGatewayid == "" {
+		return nil
+	}
+
+	p.log.Info("Deleting NAT Gateway %s", cache.NatGatewayid)
+	ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+	defer cancel()
+	_, err := p.ec2.DeleteNatGateway(ctx, &ec2.DeleteNatGatewayInput{
+		NatGatewayId: &cache.NatGatewayid,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "NatGatewayNotFound") {
+			p.log.Info("NAT Gateway %s already deleted", cache.NatGatewayid)
+			return nil
+		}
+		return fmt.Errorf("error deleting NAT Gateway %s: %w", cache.NatGatewayid, err)
+	}
+
+	// NAT Gateway deletion is async — wait for deleted state before releasing EIP
+	p.log.Info("Waiting for NAT Gateway %s to reach deleted state", cache.NatGatewayid)
+	for i := 0; i < 36; i++ { // 36 × 5s = 3 minutes max
+		time.Sleep(5 * time.Second)
+		dCtx, dCancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		out, err := p.ec2.DescribeNatGateways(dCtx, &ec2.DescribeNatGatewaysInput{
+			NatGatewayIds: []string{cache.NatGatewayid},
+		})
+		dCancel()
+		if err != nil {
+			if strings.Contains(err.Error(), "NatGatewayNotFound") {
+				break
+			}
+			p.log.Warning("Error checking NAT Gateway state: %v", err)
+			continue
+		}
+		if len(out.NatGateways) == 0 || out.NatGateways[0].State == types.NatGatewayStateDeleted {
+			break
+		}
+	}
+
+	p.log.Info("NAT Gateway %s deleted", cache.NatGatewayid)
+	return nil
+}
+
+func (p *Provider) releaseElasticIP(cache *AWS) error {
+	if cache.EIPAllocationid == "" {
+		return nil
+	}
+
+	p.log.Info("Releasing Elastic IP %s", cache.EIPAllocationid)
+	ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+	defer cancel()
+	_, err := p.ec2.ReleaseAddress(ctx, &ec2.ReleaseAddressInput{
+		AllocationId: &cache.EIPAllocationid,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "InvalidAllocationID.NotFound") {
+			p.log.Info("Elastic IP %s already released", cache.EIPAllocationid)
+			return nil
+		}
+		return fmt.Errorf("error releasing Elastic IP %s: %w", cache.EIPAllocationid, err)
+	}
+
+	p.log.Info("Elastic IP %s released", cache.EIPAllocationid)
+	return nil
+}
+
+func (p *Provider) deletePublicRouteTable(cache *AWS) error {
+	if cache.PublicRouteTable == "" {
+		return nil
+	}
+
+	p.log.Info("Deleting public route table %s", cache.PublicRouteTable)
+	err := p.retryWithBackoff(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{
+			RouteTableId: &cache.PublicRouteTable,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "InvalidRouteTableID.NotFound") {
+				p.log.Info("Public route table %s already deleted", cache.PublicRouteTable)
+				return nil
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("error deleting public route table %s: %w", cache.PublicRouteTable, err)
+	}
+
+	p.log.Info("Public route table %s deleted", cache.PublicRouteTable)
+	return nil
+}
+
+func (p *Provider) deletePublicSubnet(cache *AWS) error {
+	if cache.PublicSubnetid == "" {
+		return nil
+	}
+
+	p.log.Info("Deleting public subnet %s", cache.PublicSubnetid)
+	err := p.retryWithBackoff(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer cancel()
+		_, err := p.ec2.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
+			SubnetId: &cache.PublicSubnetid,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "InvalidSubnetID.NotFound") {
+				p.log.Info("Public subnet %s already deleted", cache.PublicSubnetid)
+				return nil
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("error deleting public subnet %s: %w", cache.PublicSubnetid, err)
+	}
+
+	p.log.Info("Public subnet %s deleted", cache.PublicSubnetid)
+	return nil
 }
 
 func (p *Provider) deleteSubnet(cache *AWS) error {

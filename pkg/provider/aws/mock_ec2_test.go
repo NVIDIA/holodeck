@@ -77,6 +77,18 @@ type MockEC2Client struct {
 	// Tags
 	CreateTagsFunc   func(ctx context.Context, params *ec2.CreateTagsInput, optFns ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error)
 	DescribeTagsFunc func(ctx context.Context, params *ec2.DescribeTagsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error)
+
+	// Elastic IP
+	AllocateAddressFunc func(ctx context.Context, params *ec2.AllocateAddressInput, optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error)
+	ReleaseAddressFunc  func(ctx context.Context, params *ec2.ReleaseAddressInput, optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error)
+
+	// NAT Gateway
+	CreateNatGatewayFunc    func(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error)
+	DeleteNatGatewayFunc    func(ctx context.Context, params *ec2.DeleteNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error)
+	DescribeNatGatewaysFunc func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error)
+
+	// Subnet Attribute
+	ModifySubnetAttrFunc func(ctx context.Context, params *ec2.ModifySubnetAttributeInput, optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error)
 }
 
 // VPC operations
@@ -363,6 +375,53 @@ func (m *MockEC2Client) DescribeTags(ctx context.Context, params *ec2.DescribeTa
 		return m.DescribeTagsFunc(ctx, params, optFns...)
 	}
 	return &ec2.DescribeTagsOutput{}, nil
+}
+
+// Elastic IP operations
+func (m *MockEC2Client) AllocateAddress(ctx context.Context, params *ec2.AllocateAddressInput, optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error) {
+	if m.AllocateAddressFunc != nil {
+		return m.AllocateAddressFunc(ctx, params, optFns...)
+	}
+	return &ec2.AllocateAddressOutput{AllocationId: aws.String("eipalloc-mock-12345")}, nil
+}
+
+func (m *MockEC2Client) ReleaseAddress(ctx context.Context, params *ec2.ReleaseAddressInput, optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
+	if m.ReleaseAddressFunc != nil {
+		return m.ReleaseAddressFunc(ctx, params, optFns...)
+	}
+	return &ec2.ReleaseAddressOutput{}, nil
+}
+
+// NAT Gateway operations
+func (m *MockEC2Client) CreateNatGateway(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
+	if m.CreateNatGatewayFunc != nil {
+		return m.CreateNatGatewayFunc(ctx, params, optFns...)
+	}
+	return &ec2.CreateNatGatewayOutput{
+		NatGateway: &types.NatGateway{NatGatewayId: aws.String("nat-mock-12345")},
+	}, nil
+}
+
+func (m *MockEC2Client) DeleteNatGateway(ctx context.Context, params *ec2.DeleteNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error) {
+	if m.DeleteNatGatewayFunc != nil {
+		return m.DeleteNatGatewayFunc(ctx, params, optFns...)
+	}
+	return &ec2.DeleteNatGatewayOutput{}, nil
+}
+
+func (m *MockEC2Client) DescribeNatGateways(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
+	if m.DescribeNatGatewaysFunc != nil {
+		return m.DescribeNatGatewaysFunc(ctx, params, optFns...)
+	}
+	return &ec2.DescribeNatGatewaysOutput{}, nil
+}
+
+// Subnet Attribute operations
+func (m *MockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput, optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error) {
+	if m.ModifySubnetAttrFunc != nil {
+		return m.ModifySubnetAttrFunc(ctx, params, optFns...)
+	}
+	return &ec2.ModifySubnetAttributeOutput{}, nil
 }
 
 // NewMockEC2Client creates a new MockEC2Client with default implementations.

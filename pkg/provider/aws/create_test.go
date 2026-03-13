@@ -286,6 +286,38 @@ func (m *mockEC2Client) DescribeTags(ctx context.Context, params *ec2.DescribeTa
 	return &ec2.DescribeTagsOutput{}, nil
 }
 
+func (m *mockEC2Client) AllocateAddress(ctx context.Context, params *ec2.AllocateAddressInput,
+	optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error) {
+	return &ec2.AllocateAddressOutput{AllocationId: aws.String("eipalloc-123")}, nil
+}
+
+func (m *mockEC2Client) ReleaseAddress(ctx context.Context, params *ec2.ReleaseAddressInput,
+	optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
+	return &ec2.ReleaseAddressOutput{}, nil
+}
+
+func (m *mockEC2Client) CreateNatGateway(ctx context.Context, params *ec2.CreateNatGatewayInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
+	return &ec2.CreateNatGatewayOutput{
+		NatGateway: &types.NatGateway{NatGatewayId: aws.String("nat-123")},
+	}, nil
+}
+
+func (m *mockEC2Client) DeleteNatGateway(ctx context.Context, params *ec2.DeleteNatGatewayInput,
+	optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error) {
+	return &ec2.DeleteNatGatewayOutput{}, nil
+}
+
+func (m *mockEC2Client) DescribeNatGateways(ctx context.Context, params *ec2.DescribeNatGatewaysInput,
+	optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
+	return &ec2.DescribeNatGatewaysOutput{}, nil
+}
+
+func (m *mockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput,
+	optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error) {
+	return &ec2.ModifySubnetAttributeOutput{}, nil
+}
+
 // mockLogger creates a logger for testing.
 func mockLogger() *logger.FunLogger {
 	log := &logger.FunLogger{
@@ -412,6 +444,11 @@ type extendedMockEC2Client struct {
 	createSecurityGroupCalls    []ec2.CreateSecurityGroupInput
 	authorizeSecurityGroupCalls []ec2.AuthorizeSecurityGroupIngressInput
 
+	allocateAddressCalls  []ec2.AllocateAddressInput
+	releaseAddressCalls   []ec2.ReleaseAddressInput
+	createNatGatewayCalls []ec2.CreateNatGatewayInput
+	modifySubnetAttrCalls []ec2.ModifySubnetAttributeInput
+
 	// Error injection
 	createVpcErr              error
 	modifyVpcAttributeErr     error
@@ -423,6 +460,10 @@ type extendedMockEC2Client struct {
 	createRouteErr            error
 	createSecurityGroupErr    error
 	authorizeSecurityGroupErr error
+	allocateAddressErr        error
+	releaseAddressErr         error
+	createNatGatewayErr       error
+	modifySubnetAttrErr       error
 }
 
 func (m *extendedMockEC2Client) CreateVpc(ctx context.Context, params *ec2.CreateVpcInput,
@@ -530,6 +571,44 @@ func (m *extendedMockEC2Client) AuthorizeSecurityGroupIngress(ctx context.Contex
 		return nil, m.authorizeSecurityGroupErr
 	}
 	return &ec2.AuthorizeSecurityGroupIngressOutput{}, nil
+}
+
+func (m *extendedMockEC2Client) AllocateAddress(ctx context.Context, params *ec2.AllocateAddressInput,
+	optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error) {
+	m.allocateAddressCalls = append(m.allocateAddressCalls, *params)
+	if m.allocateAddressErr != nil {
+		return nil, m.allocateAddressErr
+	}
+	return &ec2.AllocateAddressOutput{AllocationId: aws.String("eipalloc-test-123")}, nil
+}
+
+func (m *extendedMockEC2Client) ReleaseAddress(ctx context.Context, params *ec2.ReleaseAddressInput,
+	optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
+	m.releaseAddressCalls = append(m.releaseAddressCalls, *params)
+	if m.releaseAddressErr != nil {
+		return nil, m.releaseAddressErr
+	}
+	return &ec2.ReleaseAddressOutput{}, nil
+}
+
+func (m *extendedMockEC2Client) CreateNatGateway(ctx context.Context, params *ec2.CreateNatGatewayInput,
+	optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
+	m.createNatGatewayCalls = append(m.createNatGatewayCalls, *params)
+	if m.createNatGatewayErr != nil {
+		return nil, m.createNatGatewayErr
+	}
+	return &ec2.CreateNatGatewayOutput{
+		NatGateway: &types.NatGateway{NatGatewayId: aws.String("nat-test-123")},
+	}, nil
+}
+
+func (m *extendedMockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput,
+	optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error) {
+	m.modifySubnetAttrCalls = append(m.modifySubnetAttrCalls, *params)
+	if m.modifySubnetAttrErr != nil {
+		return nil, m.modifySubnetAttrErr
+	}
+	return &ec2.ModifySubnetAttributeOutput{}, nil
 }
 
 // Helper to create a test provider
@@ -993,6 +1072,241 @@ func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
 	// Verify no VPC was created (fail-fast, no leaked resources)
 	if len(mock.createVpcCalls) != 0 {
 		t.Error("VPC was created despite unsupported instance type — resources leaked")
+	}
+}
+
+func TestCreatePublicSubnet_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createPublicSubnet(cache)
+	if err != nil {
+		t.Fatalf("createPublicSubnet failed: %v", err)
+	}
+
+	// Verify subnet was created with correct CIDR
+	if len(mock.createSubnetCalls) == 0 {
+		t.Fatal("CreateSubnet was not called")
+	}
+
+	call := mock.createSubnetCalls[0]
+	if call.CidrBlock == nil || *call.CidrBlock != "10.0.1.0/24" {
+		t.Errorf("Expected CidrBlock '10.0.1.0/24', got %v", call.CidrBlock)
+	}
+	if call.VpcId == nil || *call.VpcId != "vpc-test-123" {
+		t.Errorf("Expected VpcId 'vpc-test-123', got %v", call.VpcId)
+	}
+
+	// Verify public subnet ID was set in cache
+	if cache.PublicSubnetid != "subnet-test-123" {
+		t.Errorf("Expected PublicSubnetid 'subnet-test-123', got %q", cache.PublicSubnetid)
+	}
+
+	// ModifySubnetAttribute should NOT be called — NAT GW gets its public IP from the EIP,
+	// not from MapPublicIpOnLaunch. No instances are launched in the public subnet.
+	if len(mock.modifySubnetAttrCalls) != 0 {
+		t.Error("ModifySubnetAttribute should not be called on the public subnet")
+	}
+}
+
+func TestCreatePublicSubnet_Error(t *testing.T) {
+	expectedErr := errors.New("public subnet creation failed")
+	mock := &extendedMockEC2Client{
+		createSubnetErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid: "vpc-test-123",
+	}
+
+	err := provider.createPublicSubnet(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateSubnet fails")
+	}
+
+	if !contains(err.Error(), "error creating public subnet") {
+		t.Errorf("Expected error to contain 'error creating public subnet', got: %v", err)
+	}
+}
+
+func TestCreateNATGateway_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		PublicSubnetid: "subnet-pub-123",
+	}
+
+	err := provider.createNATGateway(cache)
+	if err != nil {
+		t.Fatalf("createNATGateway failed: %v", err)
+	}
+
+	// Verify EIP was allocated
+	if len(mock.allocateAddressCalls) == 0 {
+		t.Fatal("AllocateAddress was not called")
+	}
+
+	// Verify NAT Gateway was created in the public subnet
+	if len(mock.createNatGatewayCalls) == 0 {
+		t.Fatal("CreateNatGateway was not called")
+	}
+
+	natCall := mock.createNatGatewayCalls[0]
+	if natCall.SubnetId == nil || *natCall.SubnetId != "subnet-pub-123" {
+		t.Errorf("Expected SubnetId 'subnet-pub-123', got %v", natCall.SubnetId)
+	}
+	if natCall.AllocationId == nil || *natCall.AllocationId != "eipalloc-test-123" {
+		t.Errorf("Expected AllocationId 'eipalloc-test-123', got %v", natCall.AllocationId)
+	}
+
+	// Verify cache was updated
+	if cache.NatGatewayid != "nat-test-123" {
+		t.Errorf("Expected NatGatewayid 'nat-test-123', got %q", cache.NatGatewayid)
+	}
+	if cache.EIPAllocationid != "eipalloc-test-123" {
+		t.Errorf("Expected EIPAllocationid 'eipalloc-test-123', got %q", cache.EIPAllocationid)
+	}
+}
+
+func TestCreateNATGateway_AllocateAddressError(t *testing.T) {
+	expectedErr := errors.New("allocate address failed")
+	mock := &extendedMockEC2Client{
+		allocateAddressErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		PublicSubnetid: "subnet-pub-123",
+	}
+
+	err := provider.createNATGateway(cache)
+	if err == nil {
+		t.Fatal("Expected error when AllocateAddress fails")
+	}
+
+	if !contains(err.Error(), "error allocating EIP") {
+		t.Errorf("Expected error to contain 'error allocating EIP', got: %v", err)
+	}
+}
+
+func TestCreateNATGateway_CreateNatGatewayError_CleansUpEIP(t *testing.T) {
+	expectedErr := errors.New("NAT gateway creation failed")
+	mock := &extendedMockEC2Client{
+		createNatGatewayErr: expectedErr,
+	}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		PublicSubnetid: "subnet-pub-123",
+	}
+
+	err := provider.createNATGateway(cache)
+	if err == nil {
+		t.Fatal("Expected error when CreateNatGateway fails")
+	}
+
+	if !contains(err.Error(), "error creating NAT gateway") {
+		t.Errorf("Expected error to contain 'error creating NAT gateway', got: %v", err)
+	}
+
+	// D4: Verify EIP was released on NAT GW creation failure
+	if len(mock.releaseAddressCalls) == 0 {
+		t.Fatal("ReleaseAddress was not called after NAT gateway creation failure (D4 violated)")
+	}
+
+	releaseCall := mock.releaseAddressCalls[0]
+	if releaseCall.AllocationId == nil || *releaseCall.AllocationId != "eipalloc-test-123" {
+		t.Errorf("Expected AllocationId 'eipalloc-test-123' to be released, got %v", releaseCall.AllocationId)
+	}
+}
+
+func TestCreatePublicRouteTable_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid:          "vpc-test-123",
+		PublicSubnetid: "subnet-pub-123",
+		InternetGwid:   "igw-test-123",
+	}
+
+	err := provider.createPublicRouteTable(cache)
+	if err != nil {
+		t.Fatalf("createPublicRouteTable failed: %v", err)
+	}
+
+	// Verify Route Table was created
+	if len(mock.createRouteTableCalls) == 0 {
+		t.Fatal("CreateRouteTable was not called")
+	}
+
+	// Verify association with public subnet
+	if len(mock.associateRouteTableCalls) == 0 {
+		t.Fatal("AssociateRouteTable was not called")
+	}
+	assocCall := mock.associateRouteTableCalls[0]
+	if assocCall.SubnetId == nil || *assocCall.SubnetId != "subnet-pub-123" {
+		t.Errorf("Expected SubnetId 'subnet-pub-123', got %v", assocCall.SubnetId)
+	}
+
+	// Verify route points to IGW
+	if len(mock.createRouteCalls) == 0 {
+		t.Fatal("CreateRoute was not called")
+	}
+	routeCall := mock.createRouteCalls[0]
+	if routeCall.GatewayId == nil || *routeCall.GatewayId != "igw-test-123" {
+		t.Errorf("Expected GatewayId 'igw-test-123', got %v", routeCall.GatewayId)
+	}
+
+	// Verify cache was updated
+	if cache.PublicRouteTable != "rtb-test-123" {
+		t.Errorf("Expected PublicRouteTable 'rtb-test-123', got %q", cache.PublicRouteTable)
+	}
+}
+
+func TestCreatePrivateRouteTable_Success(t *testing.T) {
+	mock := &extendedMockEC2Client{}
+	provider := createTestProvider(mock)
+	cache := &AWS{
+		Vpcid:        "vpc-test-123",
+		Subnetid:     "subnet-priv-123",
+		NatGatewayid: "nat-test-123",
+	}
+
+	err := provider.createPrivateRouteTable(cache)
+	if err != nil {
+		t.Fatalf("createPrivateRouteTable failed: %v", err)
+	}
+
+	// Verify Route Table was created
+	if len(mock.createRouteTableCalls) == 0 {
+		t.Fatal("CreateRouteTable was not called")
+	}
+
+	// Verify association with private subnet
+	if len(mock.associateRouteTableCalls) == 0 {
+		t.Fatal("AssociateRouteTable was not called")
+	}
+	assocCall := mock.associateRouteTableCalls[0]
+	if assocCall.SubnetId == nil || *assocCall.SubnetId != "subnet-priv-123" {
+		t.Errorf("Expected SubnetId 'subnet-priv-123', got %v", assocCall.SubnetId)
+	}
+
+	// Verify route points to NAT GW (not IGW)
+	if len(mock.createRouteCalls) == 0 {
+		t.Fatal("CreateRoute was not called")
+	}
+	routeCall := mock.createRouteCalls[0]
+	if routeCall.NatGatewayId == nil || *routeCall.NatGatewayId != "nat-test-123" {
+		t.Errorf("Expected NatGatewayId 'nat-test-123', got %v", routeCall.NatGatewayId)
+	}
+	if routeCall.GatewayId != nil {
+		t.Errorf("Expected GatewayId to be nil for private route, got %v", routeCall.GatewayId)
+	}
+
+	// Verify cache was updated
+	if cache.RouteTable != "rtb-test-123" {
+		t.Errorf("Expected RouteTable 'rtb-test-123', got %q", cache.RouteTable)
 	}
 }
 
