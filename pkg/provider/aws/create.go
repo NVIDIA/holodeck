@@ -323,6 +323,7 @@ func (p *Provider) createRouteTable(cache *AWS) error {
 		GatewayId:            aws.String(cache.InternetGwid),
 	}
 	if _, err = p.ec2.CreateRoute(ctx, routeInput); err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error creating route: %w", err)
 	}
 
@@ -601,16 +602,6 @@ func (p *Provider) createPublicSubnet(cache *AWS) error {
 		return fmt.Errorf("error creating public subnet: %w", err)
 	}
 	cache.PublicSubnetid = *subnetOutput.Subnet.SubnetId
-
-	// Enable MapPublicIpOnLaunch so NAT GW gets a public IP
-	_, err = p.ec2.ModifySubnetAttribute(ctx, &ec2.ModifySubnetAttributeInput{
-		SubnetId:            subnetOutput.Subnet.SubnetId,
-		MapPublicIpOnLaunch: &types.AttributeBooleanValue{Value: &yes},
-	})
-	if err != nil {
-		cancelLoading(logger.ErrLoadingFailed)
-		return fmt.Errorf("error enabling MapPublicIpOnLaunch on public subnet: %w", err)
-	}
 
 	cancelLoading(nil)
 	return nil

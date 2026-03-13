@@ -1105,13 +1105,10 @@ func TestCreatePublicSubnet_Success(t *testing.T) {
 		t.Errorf("Expected PublicSubnetid 'subnet-test-123', got %q", cache.PublicSubnetid)
 	}
 
-	// Verify MapPublicIpOnLaunch was enabled
-	if len(mock.modifySubnetAttrCalls) == 0 {
-		t.Fatal("ModifySubnetAttribute was not called to enable MapPublicIpOnLaunch")
-	}
-	modCall := mock.modifySubnetAttrCalls[0]
-	if modCall.SubnetId == nil || *modCall.SubnetId != "subnet-test-123" {
-		t.Errorf("Expected SubnetId 'subnet-test-123', got %v", modCall.SubnetId)
+	// ModifySubnetAttribute should NOT be called — NAT GW gets its public IP from the EIP,
+	// not from MapPublicIpOnLaunch. No instances are launched in the public subnet.
+	if len(mock.modifySubnetAttrCalls) != 0 {
+		t.Error("ModifySubnetAttribute should not be called on the public subnet")
 	}
 }
 
