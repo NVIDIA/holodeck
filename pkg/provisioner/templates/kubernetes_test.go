@@ -2,11 +2,13 @@ package templates
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewKubernetes(t *testing.T) {
@@ -1194,4 +1196,60 @@ func TestKubernetes_DefaultConstants(t *testing.T) {
 	assert.NotEmpty(t, defaultCNIPluginsVersion, "defaultCNIPluginsVersion must be set")
 	assert.NotEmpty(t, defaultCRIVersion, "defaultCRIVersion must be set")
 	assert.NotEmpty(t, defaultCalicoVersion, "defaultCalicoVersion must be set")
+}
+
+func TestKubeadmInit_HA_VerifiesLocalIPBeforeNLBSwitch(t *testing.T) {
+	// HA clusters use an NLB endpoint. After kubeadm init, the API server must
+	// be verified against the local private IP BEFORE switching admin.conf to
+	// the NLB endpoint. Otherwise kubectl version hits the NLB which hasn't
+	// passed health checks yet, exhausting all retry attempts.
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Kubernetes: v1alpha1.Kubernetes{
+				KubernetesVersion: "v1.33.0",
+			},
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Name: "containerd",
+			},
+		},
+	}
+
+	cfg := &KubeadmInitConfig{
+		Environment:          &env,
+		ControlPlaneEndpoint: "my-nlb-1234567890.us-west-2.elb.amazonaws.com",
+		IsHA:                 true,
+	}
+
+	var buf bytes.Buffer
+	err := cfg.Execute(&buf)
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// The template must contain a local IP verification step
+	localVerifyMarker := `--server="https://${NODE_PRIVATE_IP}:6443" version`
+	nlbSwitchMarker := "Updating cluster config to use NLB endpoint"
+
+	assert.Contains(t, out, localVerifyMarker,
+		"HA init template must verify API server against local private IP")
+	assert.Contains(t, out, nlbSwitchMarker,
+		"HA init template must update cluster config to use NLB endpoint")
+
+	// Critical ordering: local verification MUST happen BEFORE the NLB switch
+	localVerifyPos := strings.Index(out, localVerifyMarker)
+	nlbSwitchPos := strings.Index(out, nlbSwitchMarker)
+	calicoInstallMarker := "Installing Calico"
+	calicoInstallPos := strings.Index(out, calicoInstallMarker)
+
+	assert.Greater(t, nlbSwitchPos, localVerifyPos,
+		"Local IP verification (pos %d) must happen BEFORE NLB endpoint switch (pos %d)",
+		localVerifyPos, nlbSwitchPos)
+
+	// Calico must be installed BEFORE the NLB switch — NLB health checks
+	// require a working CNI to pass.
+	assert.Greater(t, calicoInstallPos, 0,
+		"Template must contain Calico installation")
+	assert.Greater(t, nlbSwitchPos, calicoInstallPos,
+		"Calico installation (pos %d) must happen BEFORE NLB endpoint switch (pos %d)",
+		calicoInstallPos, nlbSwitchPos)
 }
