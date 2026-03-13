@@ -1238,8 +1238,18 @@ func TestKubeadmInit_HA_VerifiesLocalIPBeforeNLBSwitch(t *testing.T) {
 	// Critical ordering: local verification MUST happen BEFORE the NLB switch
 	localVerifyPos := strings.Index(out, localVerifyMarker)
 	nlbSwitchPos := strings.Index(out, nlbSwitchMarker)
+	calicoInstallMarker := "Installing Calico"
+	calicoInstallPos := strings.Index(out, calicoInstallMarker)
 
 	assert.Greater(t, nlbSwitchPos, localVerifyPos,
 		"Local IP verification (pos %d) must happen BEFORE NLB endpoint switch (pos %d)",
 		localVerifyPos, nlbSwitchPos)
+
+	// Calico must be installed BEFORE the NLB switch — NLB health checks
+	// require a working CNI to pass.
+	assert.Greater(t, calicoInstallPos, 0,
+		"Template must contain Calico installation")
+	assert.Greater(t, nlbSwitchPos, calicoInstallPos,
+		"Calico installation (pos %d) must happen BEFORE NLB endpoint switch (pos %d)",
+		calicoInstallPos, nlbSwitchPos)
 }
