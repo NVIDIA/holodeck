@@ -59,9 +59,9 @@ type NodeInfo struct {
 	Name        string
 	PublicIP    string
 	PrivateIP   string
-	Role        string // "control-plane" or "worker"
-	SSHUsername string // SSH username for this node (optional, falls back to ClusterProvisioner.UserName)
-	InstanceID  string // EC2 instance ID (used by SSMTransport for private-subnet nodes)
+	Role        string    // "control-plane" or "worker"
+	SSHUsername string    // SSH username for this node (optional, falls back to ClusterProvisioner.UserName)
+	InstanceID  string    // EC2 instance ID (used by SSMTransport for private-subnet nodes)
 	Transport   Transport // Transport controls how SSH connections are established; nil falls back to DirectTransport
 }
 
@@ -227,11 +227,18 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 	cp.log.Info("Installing K8s binaries on %s (%s)", node.Name, node.PublicIP)
 
-	client, err := connectOrDie(cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
-	defer client.Close() // nolint: errcheck
+	defer func() {
+		if provisioner.Client != nil {
+			_ = provisioner.Client.Close()
+		}
+		if provisioner.transport != nil {
+			_ = provisioner.transport.Close()
+		}
+	}()
 
 	// Generate script
 	var tpl bytes.Buffer
@@ -248,7 +255,7 @@ func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 	}
 
 	// Run the script via SSH
-	session, err := client.NewSession()
+	session, err := provisioner.Client.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
@@ -650,14 +657,36 @@ func (cp *ClusterProvisioner) GetClusterHealth(firstCPPublicIP string) (*Cluster
 			}
 		}
 	}
-	provisioner, err := New(cp.log, cp.KeyPath, username, firstCPPublicIP)
+	// Build transport options from node info in environment status
+	var transportOpts []Option
+	if cp.Environment != nil && cp.Environment.Status.Cluster != nil {
+		for _, node := range cp.Environment.Status.Cluster.Nodes {
+			if node.PublicIP == firstCPPublicIP {
+				nodeInfo := NodeInfo{
+					PublicIP:   node.PublicIP,
+					PrivateIP:  node.PrivateIP,
+					InstanceID: node.InstanceID,
+				}
+				transportOpts = cp.transportOptsForNode(nodeInfo)
+				break
+			}
+		}
+	}
+	provisioner, err := New(cp.log, cp.KeyPath, username, firstCPPublicIP, transportOpts...)
 	if err != nil {
 		return &ClusterHealth{
 			Healthy: false,
 			Message: fmt.Sprintf("Failed to connect to control-plane: %v", err),
 		}, nil
 	}
-	defer provisioner.Client.Close() // nolint: errcheck
+	defer func() {
+		if provisioner.Client != nil {
+			_ = provisioner.Client.Close()
+		}
+		if provisioner.transport != nil {
+			_ = provisioner.transport.Close()
+		}
+	}()
 
 	health := &ClusterHealth{
 		Nodes: []NodeHealth{},

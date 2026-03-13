@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,7 +89,7 @@ func New(log *logger.FunLogger, keyPath, userName, hostUrl string, opts ...Optio
 		p.transport = NewDirectTransport(hostUrl)
 	}
 
-	client, err := connectOrDie(keyPath, userName, hostUrl)
+	client, err := connectOrDie(keyPath, userName, hostUrl, p.transport)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", hostUrl, err)
 	}
@@ -125,7 +126,7 @@ func (p *Provisioner) waitForNodeReboot() error {
 		time.Sleep(retryInterval)
 
 		// Try to establish a new connection
-		client, err := connectOrDie(p.KeyPath, p.UserName, p.HostUrl)
+		client, err := connectOrDie(p.KeyPath, p.UserName, p.HostUrl, p.transport)
 		if err == nil {
 			p.Client = client
 			p.log.Info("Node is back online, continuing with provisioning...")
@@ -243,7 +244,7 @@ func (p *Provisioner) provision() error {
 	}
 
 	// Create a new ssh connection
-	p.Client, err = connectOrDie(p.KeyPath, p.UserName, p.HostUrl)
+	p.Client, err = connectOrDie(p.KeyPath, p.UserName, p.HostUrl, p.transport)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", p.HostUrl, err)
 	}
@@ -465,8 +466,11 @@ func addScriptHeader(tpl *bytes.Buffer) error {
 	return nil
 }
 
-// createSshClient creates a ssh client, and retries if it fails to connect
-func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
+// createSshClient creates a ssh client, and retries if it fails to connect.
+// When transport is non-nil, it uses transport.Dial() to get a net.Conn and
+// creates the SSH client via ssh.NewClientConn. When transport is nil, it
+// falls back to direct ssh.Dial("tcp", ...) behavior.
+func connectOrDie(keyPath, userName, hostUrl string, transport Transport) (*ssh.Client, error) {
 	var client *ssh.Client
 	var err error
 	if strings.HasPrefix(keyPath, "~") {
@@ -496,10 +500,29 @@ func connectOrDie(keyPath, userName, hostUrl string) (*ssh.Client, error) {
 		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
 	}
 
+	addr := hostUrl + ":22"
 	for range sshMaxRetries {
-		client, err = ssh.Dial("tcp", hostUrl+":22", sshConfig)
-		if err == nil {
-			return client, nil
+		if transport != nil {
+			// Use transport to establish the underlying connection
+			var conn net.Conn
+			conn, err = transport.Dial()
+			if err == nil {
+				var sshConn ssh.Conn
+				var chans <-chan ssh.NewChannel
+				var reqs <-chan *ssh.Request
+				sshConn, chans, reqs, err = ssh.NewClientConn(conn, addr, sshConfig)
+				if err == nil {
+					client = ssh.NewClient(sshConn, chans, reqs)
+					return client, nil
+				}
+				_ = conn.Close()
+			}
+		} else {
+			// Fall back to direct SSH dial
+			client, err = ssh.Dial("tcp", addr, sshConfig)
+			if err == nil {
+				return client, nil
+			}
 		}
 		time.Sleep(sshRetryDelay)
 	}

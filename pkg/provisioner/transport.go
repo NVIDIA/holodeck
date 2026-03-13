@@ -17,6 +17,7 @@
 package provisioner
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os/exec"
@@ -31,6 +32,8 @@ type Transport interface {
 	Dial() (net.Conn, error)
 	// Target returns a human-readable identifier for the target (hostname or instance ID).
 	Target() string
+	// Close releases any resources held by the transport (e.g., SSM tunnel processes).
+	Close() error
 }
 
 // DirectTransport establishes SSH connections via direct TCP to host:22.
@@ -51,6 +54,11 @@ func (d *DirectTransport) Dial() (net.Conn, error) {
 		return nil, fmt.Errorf("direct transport dial %s: %w", d.host, err)
 	}
 	return conn, nil
+}
+
+// Close is a no-op for DirectTransport since there are no resources to release.
+func (d *DirectTransport) Close() error {
+	return nil
 }
 
 // Target returns the host (without port) for display purposes.
@@ -87,11 +95,19 @@ type SSMTransport struct {
 	// cmd holds the running SSM session process so it can be cleaned up.
 	cmd       *exec.Cmd
 	localPort string
+	// stderrBuf captures stderr from the SSM process for diagnostics.
+	stderrBuf bytes.Buffer
 }
 
 // Dial starts an SSM port-forwarding session and connects to the local tunnel endpoint.
 // Uses retry-based dial with exponential backoff (D1) instead of a fixed sleep.
+// Idempotent: if a previous session exists, it is closed before starting a new one.
 func (s *SSMTransport) Dial() (net.Conn, error) {
+	// R1: Close any existing SSM session before starting a new one (idempotency guard)
+	if s.cmd != nil {
+		_ = s.Close()
+	}
+
 	// Find a free local port
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -116,16 +132,22 @@ func (s *SSMTransport) Dial() (net.Conn, error) {
 	}
 
 	s.cmd = exec.Command("aws", args...) //nolint:gosec // args are constructed from validated fields
+	s.stderrBuf.Reset()
+	s.cmd.Stderr = &s.stderrBuf
 	if err := s.cmd.Start(); err != nil {
-		return nil, fmt.Errorf("ssm transport: start session for %s: %w", s.InstanceID, err)
+		return nil, fmt.Errorf("ssm transport: start session for %s (stderr: %s): %w", s.InstanceID, s.stderrBuf.String(), err)
 	}
 
 	// Retry-based dial with exponential backoff (D1)
 	addr := fmt.Sprintf("127.0.0.1:%s", s.localPort)
 	conn, err := retryDial(addr, ssmDialMaxRetries, ssmDialBaseDelay)
 	if err != nil {
+		stderrOutput := s.stderrBuf.String()
 		// Clean up the SSM process on dial failure
 		_ = s.Close()
+		if stderrOutput != "" {
+			return nil, fmt.Errorf("ssm transport: dial tunnel for %s (stderr: %s): %w", s.InstanceID, stderrOutput, err)
+		}
 		return nil, fmt.Errorf("ssm transport: dial tunnel for %s: %w", s.InstanceID, err)
 	}
 
@@ -141,11 +163,13 @@ func (s *SSMTransport) Target() string {
 func (s *SSMTransport) Close() error {
 	if s.cmd != nil && s.cmd.Process != nil {
 		if err := s.cmd.Process.Kill(); err != nil {
+			s.cmd = nil
 			return fmt.Errorf("ssm transport: kill session: %w", err)
 		}
 		// Wait to reap the process and avoid zombies
 		_ = s.cmd.Wait()
 	}
+	s.cmd = nil
 	return nil
 }
 
