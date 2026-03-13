@@ -34,7 +34,7 @@ func TestDirectTransport_Dial_Success(t *testing.T) {
 	// Start a TCP listener to simulate a reachable host
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	// Accept connections in background
 	go func() {
@@ -43,7 +43,7 @@ func TestDirectTransport_Dial_Success(t *testing.T) {
 			if err != nil {
 				return
 			}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -57,7 +57,7 @@ func TestDirectTransport_Dial_Success(t *testing.T) {
 	conn, err := dt.Dial()
 	require.NoError(t, err)
 	assert.NotNil(t, conn)
-	conn.Close()
+	_ = conn.Close()
 }
 
 func TestDirectTransport_Dial_Failure(t *testing.T) {
@@ -81,7 +81,7 @@ func TestSSMTransport_RetryDial_Success(t *testing.T) {
 	// Start a TCP listener after a short delay to simulate SSM port forwarding startup
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	// Accept connections
 	go func() {
@@ -90,7 +90,7 @@ func TestSSMTransport_RetryDial_Success(t *testing.T) {
 			if err != nil {
 				return
 			}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -100,7 +100,7 @@ func TestSSMTransport_RetryDial_Success(t *testing.T) {
 	conn, err := retryDial(addr, 5, 50*time.Millisecond)
 	require.NoError(t, err)
 	assert.NotNil(t, conn)
-	conn.Close()
+	_ = conn.Close()
 }
 
 func TestSSMTransport_RetryDial_AllAttemptsFail(t *testing.T) {
