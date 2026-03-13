@@ -186,22 +186,9 @@ if [[ ! -f /etc/kubernetes/admin.conf ]]; then
     holodeck_log "INFO" "$COMPONENT" "Running kubeadm init with args: ${INIT_ARGS[*]}"
     holodeck_retry 3 "$COMPONENT" sudo kubeadm init "${INIT_ARGS[@]}"
 
-    # For HA with NLB: after init succeeds, update the cluster config to use NLB DNS
-    # so that join tokens reference the NLB endpoint (reachable by other nodes).
-    if [[ "$IS_HA" == "true" ]] && [[ "$INIT_ENDPOINT" != "$CONTROL_PLANE_ENDPOINT" ]]; then
-        holodeck_log "INFO" "$COMPONENT" "Updating cluster config to use NLB endpoint: ${CONTROL_PLANE_ENDPOINT}:6443"
-        # Update the kubeadm-config ConfigMap
-        sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system get configmap kubeadm-config -o yaml | \
-            sed "s|controlPlaneEndpoint: ${INIT_ENDPOINT}:6443|controlPlaneEndpoint: ${CONTROL_PLANE_ENDPOINT}:6443|g" | \
-            sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f - || \
-            holodeck_log "WARN" "$COMPONENT" "Could not update kubeadm-config, join may need manual endpoint"
-        # Also update admin.conf kubeconfig to use the NLB
-        sudo sed -i "s|server: https://${INIT_ENDPOINT}:6443|server: https://${CONTROL_PLANE_ENDPOINT}:6443|g" \
-            /etc/kubernetes/admin.conf
-    fi
 fi
 
-# Setup kubeconfig
+# Setup kubeconfig (still points at local IP for HA; NLB switch happens after verification)
 mkdir -p "$HOME/.kube"
 sudo cp -f /etc/kubernetes/admin.conf "$HOME/.kube/config"
 sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
@@ -209,7 +196,29 @@ export KUBECONFIG="${HOME}/.kube/config"
 
 holodeck_progress "$COMPONENT" 6 8 "Waiting for API server"
 
-holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" version
+# Verify API server against local private IP first. For HA clusters, admin.conf
+# still points at the local IP at this stage. For non-HA clusters this is a no-op
+# since KUBECONFIG already targets the right endpoint.
+holodeck_retry 10 "$COMPONENT" kubectl --kubeconfig "$KUBECONFIG" \
+    --server="https://${NODE_PRIVATE_IP}:6443" version
+
+# For HA with NLB: now that the API server is verified locally, switch the cluster
+# config to use the NLB DNS so that join tokens reference the NLB endpoint
+# (reachable by other nodes).
+if [[ "$IS_HA" == "true" ]] && [[ "$INIT_ENDPOINT" != "$CONTROL_PLANE_ENDPOINT" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Updating cluster config to use NLB endpoint: ${CONTROL_PLANE_ENDPOINT}:6443"
+    # Update the kubeadm-config ConfigMap
+    sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system get configmap kubeadm-config -o yaml | \
+        sed "s|controlPlaneEndpoint: ${INIT_ENDPOINT}:6443|controlPlaneEndpoint: ${CONTROL_PLANE_ENDPOINT}:6443|g" | \
+        sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f - || \
+        holodeck_log "WARN" "$COMPONENT" "Could not update kubeadm-config, join may need manual endpoint"
+    # Update admin.conf kubeconfig to use the NLB
+    sudo sed -i "s|server: https://${INIT_ENDPOINT}:6443|server: https://${CONTROL_PLANE_ENDPOINT}:6443|g" \
+        /etc/kubernetes/admin.conf
+    # Re-copy the updated admin.conf to user kubeconfig
+    sudo cp -f /etc/kubernetes/admin.conf "$HOME/.kube/config"
+    sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+fi
 
 holodeck_progress "$COMPONENT" 7 8 "Installing Calico CNI"
 
