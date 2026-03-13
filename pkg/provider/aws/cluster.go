@@ -83,6 +83,14 @@ const (
 	portCalicoVXLAN    int32 = 4789
 	portCalicoBGP      int32 = 179
 	portCalicoTypha    int32 = 5473
+	portNodePortStart  int32 = 30000
+	portNodePortEnd    int32 = 32767
+)
+
+// VPC and subnet CIDRs used in security group rules
+const (
+	vpcCIDR       = "10.0.0.0/16"
+	nlbSubnetCIDR = "10.0.1.0/24"
 )
 
 // ec2APITimeout is the timeout for EC2 API calls
@@ -133,12 +141,18 @@ func (p *Provider) CreateCluster() error {
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Route Table created")
 
-	// Phase 2: Create enhanced security group for multinode
-	if err := p.createClusterSecurityGroup(cache); err != nil {
-		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating cluster security group")
-		return fmt.Errorf("error creating cluster security group: %w", err)
+	// Phase 2: Create separate CP and Worker security groups
+	if err := p.createControlPlaneSecurityGroup(cache); err != nil {
+		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating control-plane security group")
+		return fmt.Errorf("error creating control-plane security group: %w", err)
 	}
-	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Cluster Security Group created")
+	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Control-plane Security Group created")
+
+	if err := p.createWorkerSecurityGroup(cache); err != nil {
+		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating worker security group")
+		return fmt.Errorf("error creating worker security group: %w", err)
+	}
+	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Worker Security Group created")
 
 	// Phase 3: Create load balancer for HA (if enabled)
 	if p.isHAEnabled() {
@@ -195,13 +209,23 @@ func (p *Provider) isHAEnabled() bool {
 		p.Spec.Cluster.HighAvailability.Enabled
 }
 
-// createClusterSecurityGroup creates a security group with rules for multinode cluster
-func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
-	cancelLoading := p.log.Loading("Creating cluster security group")
+// getCallerIPRanges returns IP ranges for the caller's public IP (for SSH/API access)
+func (p *Provider) getCallerIPRanges() ([]types.IpRange, error) {
+	ip, err := utils.GetIPAddress()
+	if err != nil {
+		return nil, fmt.Errorf("error getting IP address: %w", err)
+	}
+	return []types.IpRange{{CidrIp: &ip}}, nil
+}
+
+// createControlPlaneSecurityGroup creates a security group for control-plane nodes
+// with least-privilege rules: etcd restricted to CP, scheduler/controller-manager self-only
+func (p *Provider) createControlPlaneSecurityGroup(cache *ClusterCache) error {
+	cancelLoading := p.log.Loading("Creating control-plane security group")
 
 	sgInput := &ec2.CreateSecurityGroupInput{
-		GroupName:   aws.String(fmt.Sprintf("%s-cluster", p.ObjectMeta.Name)),
-		Description: aws.String("Holodeck managed multinode cluster security group"),
+		GroupName:   aws.String(fmt.Sprintf("%s-cp", p.ObjectMeta.Name)),
+		Description: aws.String("Holodeck managed control-plane security group"),
 		VpcId:       aws.String(cache.Vpcid),
 		TagSpecifications: []types.TagSpecification{
 			{
@@ -216,141 +240,98 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 	sgOutput, err := p.ec2.CreateSecurityGroup(ctx, sgInput)
 	if err != nil {
 		cancelLoading(logger.ErrLoadingFailed)
-		return fmt.Errorf("error creating security group: %w", err)
+		return fmt.Errorf("error creating control-plane security group: %w", err)
 	}
-	cache.SecurityGroupid = *sgOutput.GroupId
+	cache.CPSecurityGroupid = *sgOutput.GroupId
+	// Keep SecurityGroupid set for backward compatibility with single-node code paths
+	cache.SecurityGroupid = cache.CPSecurityGroupid
 
-	// Build IP ranges for external access
-	ipRangeMap := make(map[string]bool)
-	ipRanges := []types.IpRange{}
-
-	ip, err := utils.GetIPAddress()
+	callerRanges, err := p.getCallerIPRanges()
 	if err != nil {
 		cancelLoading(logger.ErrLoadingFailed)
-		return fmt.Errorf("error getting IP address: %w", err)
+		return err
 	}
-	ipRangeMap[ip] = true
-	ipRanges = append(ipRanges, types.IpRange{CidrIp: &ip})
 
-	// VPC CIDR for inter-node communication
-	vpcCIDR := "10.0.0.0/16"
+	cpSGRef := []types.UserIdGroupPair{{GroupId: aws.String(cache.CPSecurityGroupid)}}
 
-	// Define security group rules
+	// CP SG rules — worker SG cross-references are added after worker SG is created
 	permissions := []types.IpPermission{
-		// SSH from user IP
+		// SSH from caller IP
 		{
 			FromPort:   aws.Int32(portSSH),
 			ToPort:     aws.Int32(portSSH),
 			IpProtocol: aws.String("tcp"),
-			IpRanges:   ipRanges,
+			IpRanges:   callerRanges,
 		},
-		// HTTPS from user IP
-		{
-			FromPort:   aws.Int32(portHTTPS),
-			ToPort:     aws.Int32(portHTTPS),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   ipRanges,
-		},
-		// K8s API from user IP
+		// K8s API from NLB subnet CIDR + caller IP (worker SG added later)
 		{
 			FromPort:   aws.Int32(portK8sAPI),
 			ToPort:     aws.Int32(portK8sAPI),
 			IpProtocol: aws.String("tcp"),
-			IpRanges:   ipRanges,
+			IpRanges: append(callerRanges,
+				types.IpRange{CidrIp: aws.String(nlbSubnetCIDR)},
+			),
 		},
-		// Kubelet API between nodes (VPC internal)
+		// etcd client+peer: CP self only
 		{
-			FromPort:   aws.Int32(portKubelet),
-			ToPort:     aws.Int32(portKubelet),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+			FromPort:         aws.Int32(portEtcdClient),
+			ToPort:           aws.Int32(portEtcdPeer),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: cpSGRef,
 		},
-		// kube-scheduler between nodes
+		// kubelet: CP self (worker SG added later)
 		{
-			FromPort:   aws.Int32(portKubeScheduler),
-			ToPort:     aws.Int32(portKubeScheduler),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+			FromPort:         aws.Int32(portKubelet),
+			ToPort:           aws.Int32(portKubelet),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: cpSGRef,
 		},
-		// kube-controller-manager between nodes
+		// kube-controller-manager: CP self only
 		{
-			FromPort:   aws.Int32(portKubeController),
-			ToPort:     aws.Int32(portKubeController),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+			FromPort:         aws.Int32(portKubeController),
+			ToPort:           aws.Int32(portKubeController),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: cpSGRef,
 		},
-		// etcd client between control-plane nodes
+		// kube-scheduler: CP self only
 		{
-			FromPort:   aws.Int32(portEtcdClient),
-			ToPort:     aws.Int32(portEtcdClient),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+			FromPort:         aws.Int32(portKubeScheduler),
+			ToPort:           aws.Int32(portKubeScheduler),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: cpSGRef,
 		},
-		// etcd peer between control-plane nodes
+		// Calico VXLAN: CP self (worker SG added later)
 		{
-			FromPort:   aws.Int32(portEtcdPeer),
-			ToPort:     aws.Int32(portEtcdPeer),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+			FromPort:         aws.Int32(portCalicoVXLAN),
+			ToPort:           aws.Int32(portCalicoVXLAN),
+			IpProtocol:       aws.String("udp"),
+			UserIdGroupPairs: cpSGRef,
 		},
-		// Calico VXLAN between nodes
+		// Calico BGP: CP self (worker SG added later)
 		{
-			FromPort:   aws.Int32(portCalicoVXLAN),
-			ToPort:     aws.Int32(portCalicoVXLAN),
-			IpProtocol: aws.String("udp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+			FromPort:         aws.Int32(portCalicoBGP),
+			ToPort:           aws.Int32(portCalicoBGP),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: cpSGRef,
 		},
-		// Calico BGP between nodes
+		// Calico Typha: CP self (worker SG added later)
 		{
-			FromPort:   aws.Int32(portCalicoBGP),
-			ToPort:     aws.Int32(portCalicoBGP),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+			FromPort:         aws.Int32(portCalicoTypha),
+			ToPort:           aws.Int32(portCalicoTypha),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: cpSGRef,
 		},
-		// Calico Typha between nodes
+		// ICMP from VPC CIDR
 		{
-			FromPort:   aws.Int32(portCalicoTypha),
-			ToPort:     aws.Int32(portCalicoTypha),
-			IpProtocol: aws.String("tcp"),
-			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
-		},
-		// K8s API between nodes (for internal communication)
-		{
-			FromPort:   aws.Int32(portK8sAPI),
-			ToPort:     aws.Int32(portK8sAPI),
-			IpProtocol: aws.String("tcp"),
+			FromPort:   aws.Int32(-1),
+			ToPort:     aws.Int32(-1),
+			IpProtocol: aws.String("icmp"),
 			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
 		},
 	}
 
-	// Self-referencing rules: allow all traffic between instances in this SG.
-	// Covers webhooks (dynamic ports), NodePort (30000-32767), IPIP (Calico),
-	// and any future K8s inter-node communication.
-	// Uses explicit TCP+UDP+ICMP (not protocol -1) for stricter compliance.
-	sgRef := []types.UserIdGroupPair{{GroupId: sgOutput.GroupId}}
-	permissions = append(permissions,
-		types.IpPermission{
-			FromPort:         aws.Int32(0),
-			ToPort:           aws.Int32(65535),
-			IpProtocol:       aws.String("tcp"),
-			UserIdGroupPairs: sgRef,
-		},
-		types.IpPermission{
-			FromPort:         aws.Int32(0),
-			ToPort:           aws.Int32(65535),
-			IpProtocol:       aws.String("udp"),
-			UserIdGroupPairs: sgRef,
-		},
-		types.IpPermission{
-			FromPort:         aws.Int32(-1),
-			ToPort:           aws.Int32(-1),
-			IpProtocol:       aws.String("icmp"),
-			UserIdGroupPairs: sgRef,
-		},
-	)
-
 	irInput := &ec2.AuthorizeSecurityGroupIngressInput{
-		GroupId:       sgOutput.GroupId,
+		GroupId:       aws.String(cache.CPSecurityGroupid),
 		IpPermissions: permissions,
 	}
 
@@ -358,7 +339,180 @@ func (p *Provider) createClusterSecurityGroup(cache *ClusterCache) error {
 	defer cancelIngress()
 	if _, err = p.ec2.AuthorizeSecurityGroupIngress(ctxIngress, irInput); err != nil {
 		cancelLoading(logger.ErrLoadingFailed)
-		return fmt.Errorf("error authorizing security group ingress: %w", err)
+		return fmt.Errorf("error authorizing control-plane security group ingress: %w", err)
+	}
+
+	cancelLoading(nil)
+	return nil
+}
+
+// createWorkerSecurityGroup creates a security group for worker nodes
+// with least-privilege rules: kubelet from CP only, NodePort open to all
+func (p *Provider) createWorkerSecurityGroup(cache *ClusterCache) error {
+	cancelLoading := p.log.Loading("Creating worker security group")
+
+	if cache.CPSecurityGroupid == "" {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("control-plane security group must be created before worker security group")
+	}
+
+	sgInput := &ec2.CreateSecurityGroupInput{
+		GroupName:   aws.String(fmt.Sprintf("%s-worker", p.ObjectMeta.Name)),
+		Description: aws.String("Holodeck managed worker security group"),
+		VpcId:       aws.String(cache.Vpcid),
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeSecurityGroup,
+				Tags:         p.Tags,
+			},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), ec2APITimeout)
+	defer cancel()
+	sgOutput, err := p.ec2.CreateSecurityGroup(ctx, sgInput)
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error creating worker security group: %w", err)
+	}
+	cache.WorkerSecurityGroupid = *sgOutput.GroupId
+
+	callerRanges, err := p.getCallerIPRanges()
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return err
+	}
+
+	cpSGRef := []types.UserIdGroupPair{{GroupId: aws.String(cache.CPSecurityGroupid)}}
+	workerSGRef := []types.UserIdGroupPair{{GroupId: aws.String(cache.WorkerSecurityGroupid)}}
+	bothSGRefs := []types.UserIdGroupPair{
+		{GroupId: aws.String(cache.CPSecurityGroupid)},
+		{GroupId: aws.String(cache.WorkerSecurityGroupid)},
+	}
+
+	// Worker SG rules
+	workerPermissions := []types.IpPermission{
+		// SSH from caller IP
+		{
+			FromPort:   aws.Int32(portSSH),
+			ToPort:     aws.Int32(portSSH),
+			IpProtocol: aws.String("tcp"),
+			IpRanges:   callerRanges,
+		},
+		// kubelet: from CP only
+		{
+			FromPort:         aws.Int32(portKubelet),
+			ToPort:           aws.Int32(portKubelet),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: cpSGRef,
+		},
+		// NodePort TCP: open to all
+		{
+			FromPort:   aws.Int32(portNodePortStart),
+			ToPort:     aws.Int32(portNodePortEnd),
+			IpProtocol: aws.String("tcp"),
+			IpRanges:   []types.IpRange{{CidrIp: aws.String("0.0.0.0/0")}},
+		},
+		// NodePort UDP: open to all
+		{
+			FromPort:   aws.Int32(portNodePortStart),
+			ToPort:     aws.Int32(portNodePortEnd),
+			IpProtocol: aws.String("udp"),
+			IpRanges:   []types.IpRange{{CidrIp: aws.String("0.0.0.0/0")}},
+		},
+		// Calico VXLAN: from CP + Worker
+		{
+			FromPort:         aws.Int32(portCalicoVXLAN),
+			ToPort:           aws.Int32(portCalicoVXLAN),
+			IpProtocol:       aws.String("udp"),
+			UserIdGroupPairs: bothSGRefs,
+		},
+		// Calico BGP: from CP + Worker
+		{
+			FromPort:         aws.Int32(portCalicoBGP),
+			ToPort:           aws.Int32(portCalicoBGP),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: bothSGRefs,
+		},
+		// Calico Typha: from CP + Worker
+		{
+			FromPort:         aws.Int32(portCalicoTypha),
+			ToPort:           aws.Int32(portCalicoTypha),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: bothSGRefs,
+		},
+		// ICMP from VPC CIDR
+		{
+			FromPort:   aws.Int32(-1),
+			ToPort:     aws.Int32(-1),
+			IpProtocol: aws.String("icmp"),
+			IpRanges:   []types.IpRange{{CidrIp: aws.String(vpcCIDR)}},
+		},
+	}
+
+	// Authorize worker SG ingress
+	irInput := &ec2.AuthorizeSecurityGroupIngressInput{
+		GroupId:       aws.String(cache.WorkerSecurityGroupid),
+		IpPermissions: workerPermissions,
+	}
+
+	ctxIngress, cancelIngress := context.WithTimeout(context.Background(), ec2APITimeout)
+	defer cancelIngress()
+	if _, err = p.ec2.AuthorizeSecurityGroupIngress(ctxIngress, irInput); err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error authorizing worker security group ingress: %w", err)
+	}
+
+	// Now add cross-references from Worker SG back to CP SG for shared ports:
+	// K8s API, kubelet, and Calico overlay ports
+	cpCrossRefs := []types.IpPermission{
+		// K8s API from Worker SG
+		{
+			FromPort:         aws.Int32(portK8sAPI),
+			ToPort:           aws.Int32(portK8sAPI),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: workerSGRef,
+		},
+		// kubelet from Worker SG
+		{
+			FromPort:         aws.Int32(portKubelet),
+			ToPort:           aws.Int32(portKubelet),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: workerSGRef,
+		},
+		// Calico VXLAN from Worker SG
+		{
+			FromPort:         aws.Int32(portCalicoVXLAN),
+			ToPort:           aws.Int32(portCalicoVXLAN),
+			IpProtocol:       aws.String("udp"),
+			UserIdGroupPairs: workerSGRef,
+		},
+		// Calico BGP from Worker SG
+		{
+			FromPort:         aws.Int32(portCalicoBGP),
+			ToPort:           aws.Int32(portCalicoBGP),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: workerSGRef,
+		},
+		// Calico Typha from Worker SG
+		{
+			FromPort:         aws.Int32(portCalicoTypha),
+			ToPort:           aws.Int32(portCalicoTypha),
+			IpProtocol:       aws.String("tcp"),
+			UserIdGroupPairs: workerSGRef,
+		},
+	}
+
+	cpCrossInput := &ec2.AuthorizeSecurityGroupIngressInput{
+		GroupId:       aws.String(cache.CPSecurityGroupid),
+		IpPermissions: cpCrossRefs,
+	}
+
+	ctxCross, cancelCross := context.WithTimeout(context.Background(), ec2APITimeout)
+	defer cancelCross()
+	if _, err = p.ec2.AuthorizeSecurityGroupIngress(ctxCross, cpCrossInput); err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error adding worker cross-references to control-plane security group: %w", err)
 	}
 
 	cancelLoading(nil)
@@ -498,6 +652,14 @@ func (p *Provider) createInstances(
 				types.Tag{Key: aws.String("Name"), Value: aws.String(instanceName)},
 			)
 
+			// Select security group based on node role
+			sgID := cache.SecurityGroupid // fallback for single-node
+			if role == NodeRoleControlPlane && cache.CPSecurityGroupid != "" {
+				sgID = cache.CPSecurityGroupid
+			} else if role == NodeRoleWorker && cache.WorkerSecurityGroupid != "" {
+				sgID = cache.WorkerSecurityGroupid
+			}
+
 			instanceIn := &ec2.RunInstancesInput{
 				ImageId:                           aws.String(imageID),
 				InstanceType:                      types.InstanceType(instanceType),
@@ -518,7 +680,7 @@ func (p *Provider) createInstances(
 						AssociatePublicIpAddress: aws.Bool(true),
 						DeleteOnTermination:      aws.Bool(true),
 						DeviceIndex:              aws.Int32(0),
-						Groups:                   []string{cache.SecurityGroupid},
+						Groups:                   []string{sgID},
 						SubnetId:                 aws.String(cache.Subnetid),
 					},
 				},
