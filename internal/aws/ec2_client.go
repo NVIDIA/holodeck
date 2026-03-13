@@ -126,6 +126,24 @@ type EC2Client interface {
 		optFns ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error)
 	DescribeTags(ctx context.Context, params *ec2.DescribeTagsInput,
 		optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error)
+
+	// Elastic IP operations
+	AllocateAddress(ctx context.Context, params *ec2.AllocateAddressInput,
+		optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error)
+	ReleaseAddress(ctx context.Context, params *ec2.ReleaseAddressInput,
+		optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error)
+
+	// NAT Gateway operations
+	CreateNatGateway(ctx context.Context, params *ec2.CreateNatGatewayInput,
+		optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error)
+	DeleteNatGateway(ctx context.Context, params *ec2.DeleteNatGatewayInput,
+		optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error)
+	DescribeNatGateways(ctx context.Context, params *ec2.DescribeNatGatewaysInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error)
+
+	// Subnet attribute operations
+	ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput,
+		optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error)
 }
 
 // Ensure *ec2.Client implements EC2Client at compile time.

@@ -37,6 +37,7 @@ const (
 	defaultSecurityGroupTimeout = 2 * time.Minute
 	defaultEC2Timeout           = 10 * time.Minute
 	defaultWaiterTimeout        = 15 * time.Minute
+	defaultNATGatewayTimeout    = 5 * time.Minute
 )
 
 type cleanupFunc func() error
@@ -557,6 +558,216 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 	if err != nil {
 		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error disabling source/dest check: %w", err)
+	}
+
+	cancelLoading(nil)
+	return nil
+}
+
+// createPublicSubnet creates a public subnet (10.0.1.0/24) for NAT gateway and NLB.
+// The subnet is configured with MapPublicIpOnLaunch enabled.
+func (p *Provider) createPublicSubnet(cache *AWS) error {
+	cancelLoading := p.log.Loading("Creating public subnet")
+
+	// Build tags with a public-specific Name tag
+	publicTags := make([]types.Tag, 0, len(p.Tags))
+	for _, tag := range p.Tags {
+		if tag.Key != nil && *tag.Key == "Name" {
+			publicTags = append(publicTags, types.Tag{
+				Key:   aws.String("Name"),
+				Value: aws.String(*tag.Value + "-public"),
+			})
+		} else {
+			publicTags = append(publicTags, tag)
+		}
+	}
+
+	subnetInput := &ec2.CreateSubnetInput{
+		VpcId:     aws.String(cache.Vpcid),
+		CidrBlock: aws.String("10.0.1.0/24"),
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeSubnet,
+				Tags:         publicTags,
+			},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultSubnetTimeout)
+	defer cancel()
+
+	subnetOutput, err := p.ec2.CreateSubnet(ctx, subnetInput)
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error creating public subnet: %w", err)
+	}
+	cache.PublicSubnetid = *subnetOutput.Subnet.SubnetId
+
+	// Enable MapPublicIpOnLaunch so NAT GW gets a public IP
+	_, err = p.ec2.ModifySubnetAttribute(ctx, &ec2.ModifySubnetAttributeInput{
+		SubnetId:            subnetOutput.Subnet.SubnetId,
+		MapPublicIpOnLaunch: &types.AttributeBooleanValue{Value: &yes},
+	})
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error enabling MapPublicIpOnLaunch on public subnet: %w", err)
+	}
+
+	cancelLoading(nil)
+	return nil
+}
+
+// createNATGateway allocates an EIP and creates a NAT Gateway in the public subnet.
+// CRITICAL (D4): If NAT Gateway creation fails, the EIP is released.
+func (p *Provider) createNATGateway(cache *AWS) error {
+	cancelLoading := p.log.Loading("Creating NAT Gateway")
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultNATGatewayTimeout)
+	defer cancel()
+
+	// Allocate Elastic IP for the NAT Gateway
+	eipOutput, err := p.ec2.AllocateAddress(ctx, &ec2.AllocateAddressInput{
+		Domain: types.DomainTypeVpc,
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeElasticIp,
+				Tags:         p.Tags,
+			},
+		},
+	})
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error allocating EIP for NAT gateway: %w", err)
+	}
+	cache.EIPAllocationid = *eipOutput.AllocationId
+
+	// Create NAT Gateway in the public subnet
+	natOutput, err := p.ec2.CreateNatGateway(ctx, &ec2.CreateNatGatewayInput{
+		SubnetId:     aws.String(cache.PublicSubnetid),
+		AllocationId: eipOutput.AllocationId,
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeNatgateway,
+				Tags:         p.Tags,
+			},
+		},
+	})
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		// D4: Clean up EIP if NAT Gateway creation fails
+		p.log.Warning("NAT gateway creation failed, releasing EIP %s", *eipOutput.AllocationId)
+		if releaseErr := p.releaseEIP(*eipOutput.AllocationId); releaseErr != nil {
+			p.log.Warning("Failed to release EIP %s: %v", *eipOutput.AllocationId, releaseErr)
+		}
+		cache.EIPAllocationid = ""
+		return fmt.Errorf("error creating NAT gateway: %w", err)
+	}
+	cache.NatGatewayid = *natOutput.NatGateway.NatGatewayId
+
+	cancelLoading(nil)
+	return nil
+}
+
+// releaseEIP releases an Elastic IP by allocation ID.
+func (p *Provider) releaseEIP(allocationID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultSubnetTimeout)
+	defer cancel()
+
+	_, err := p.ec2.ReleaseAddress(ctx, &ec2.ReleaseAddressInput{
+		AllocationId: aws.String(allocationID),
+	})
+	return err
+}
+
+// createPublicRouteTable creates a route table for the public subnet with a route to the IGW.
+func (p *Provider) createPublicRouteTable(cache *AWS) error {
+	cancelLoading := p.log.Loading("Creating public route table")
+
+	rtInput := &ec2.CreateRouteTableInput{
+		VpcId: aws.String(cache.Vpcid),
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeRouteTable,
+				Tags:         p.Tags,
+			},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRouteTableTimeout)
+	defer cancel()
+
+	rtOutput, err := p.ec2.CreateRouteTable(ctx, rtInput)
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error creating public route table: %w", err)
+	}
+	cache.PublicRouteTable = *rtOutput.RouteTable.RouteTableId
+
+	// Associate the route table with the public subnet
+	assocInput := &ec2.AssociateRouteTableInput{
+		RouteTableId: rtOutput.RouteTable.RouteTableId,
+		SubnetId:     aws.String(cache.PublicSubnetid),
+	}
+	if _, err = p.ec2.AssociateRouteTable(ctx, assocInput); err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error associating public route table: %w", err)
+	}
+
+	// Route 0.0.0.0/0 to Internet Gateway
+	routeInput := &ec2.CreateRouteInput{
+		RouteTableId:         rtOutput.RouteTable.RouteTableId,
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+		GatewayId:            aws.String(cache.InternetGwid),
+	}
+	if _, err = p.ec2.CreateRoute(ctx, routeInput); err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error creating public route: %w", err)
+	}
+
+	cancelLoading(nil)
+	return nil
+}
+
+// createPrivateRouteTable creates a route table for the private subnet with a route to the NAT GW.
+func (p *Provider) createPrivateRouteTable(cache *AWS) error {
+	cancelLoading := p.log.Loading("Creating private route table")
+
+	rtInput := &ec2.CreateRouteTableInput{
+		VpcId: aws.String(cache.Vpcid),
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeRouteTable,
+				Tags:         p.Tags,
+			},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRouteTableTimeout)
+	defer cancel()
+
+	rtOutput, err := p.ec2.CreateRouteTable(ctx, rtInput)
+	if err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error creating private route table: %w", err)
+	}
+	cache.RouteTable = *rtOutput.RouteTable.RouteTableId
+
+	// Associate the route table with the private subnet
+	assocInput := &ec2.AssociateRouteTableInput{
+		RouteTableId: rtOutput.RouteTable.RouteTableId,
+		SubnetId:     aws.String(cache.Subnetid),
+	}
+	if _, err = p.ec2.AssociateRouteTable(ctx, assocInput); err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error associating private route table: %w", err)
+	}
+
+	// Route 0.0.0.0/0 to NAT Gateway
+	routeInput := &ec2.CreateRouteInput{
+		RouteTableId:         rtOutput.RouteTable.RouteTableId,
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+		NatGatewayId:         aws.String(cache.NatGatewayid),
+	}
+	if _, err = p.ec2.CreateRoute(ctx, routeInput); err != nil {
+		cancelLoading(logger.ErrLoadingFailed)
+		return fmt.Errorf("error creating private route: %w", err)
 	}
 
 	cancelLoading(nil)
