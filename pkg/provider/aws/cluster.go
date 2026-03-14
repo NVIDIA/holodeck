@@ -135,13 +135,12 @@ func (p *Provider) CreateCluster() error {
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Internet Gateway created")
 
-	if err := p.createRouteTable(&cache.AWS); err != nil {
-		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating route table")
-		return fmt.Errorf("error creating route table: %w", err)
-	}
-	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Route Table created")
-
 	// Phase 1b: Create cluster networking (public subnet, NAT GW, route tables)
+	// Note: We skip createRouteTable() here — in single-node mode it creates an
+	// IGW-routed table for the (only) subnet. In cluster mode the private subnet
+	// gets a NAT-routed table (createPrivateRouteTable) and the public subnet
+	// gets an IGW-routed table (createPublicRouteTable). Calling createRouteTable
+	// would create an orphaned IGW table associated with the private subnet.
 	if err := p.createPublicSubnet(&cache.AWS); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating public subnet")
 		return fmt.Errorf("error creating public subnet: %w", err)

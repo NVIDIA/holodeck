@@ -95,6 +95,16 @@ func (cp *ClusterProvisioner) transportOptsForNode(node NodeInfo) []Option {
 	return nil
 }
 
+// hostForNode returns the SSH host address for a node. Nodes with a Transport
+// (e.g., SSM for private-subnet instances) use PrivateIP since the transport
+// handles connectivity. Nodes without a transport use PublicIP for direct SSH.
+func hostForNode(node NodeInfo) string {
+	if node.Transport != nil {
+		return node.PrivateIP
+	}
+	return node.PublicIP
+}
+
 // ProvisionCluster provisions a multinode Kubernetes cluster
 // It follows the order: init first CP → join additional CPs → join workers
 func (cp *ClusterProvisioner) ProvisionCluster(nodes []NodeInfo) error {
@@ -185,7 +195,7 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 		g.Go(func() error {
 			cp.log.Info("Provisioning base dependencies on %s (%s)", node.Name, node.PublicIP)
 
-			provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
+			provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), hostForNode(node), cp.transportOptsForNode(node)...)
 			if err != nil {
 				return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 			}
@@ -227,7 +237,7 @@ func (cp *ClusterProvisioner) provisionBaseOnAllNodes(nodes []NodeInfo) error {
 func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 	cp.log.Info("Installing K8s binaries on %s (%s)", node.Name, node.PublicIP)
 
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), hostForNode(node), cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -291,7 +301,7 @@ func (cp *ClusterProvisioner) installK8sPrereqs(node NodeInfo) error {
 
 // initFirstControlPlane initializes the first control-plane node with kubeadm init
 func (cp *ClusterProvisioner) initFirstControlPlane(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), hostForNode(node), cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -383,7 +393,7 @@ printf '%s\n%s\n%s' "$TOKEN" "$HASH" "$CERTKEY"
 
 // joinControlPlane joins an additional control-plane node to the cluster
 func (cp *ClusterProvisioner) joinControlPlane(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), hostForNode(node), cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -418,7 +428,7 @@ func (cp *ClusterProvisioner) joinControlPlane(node NodeInfo) error {
 
 // joinWorker joins a worker node to the cluster
 func (cp *ClusterProvisioner) joinWorker(node NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), node.PublicIP, cp.transportOptsForNode(node)...)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(node), hostForNode(node), cp.transportOptsForNode(node)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
@@ -460,7 +470,7 @@ func (cp *ClusterProvisioner) isHAEnabled() bool {
 // configureNodes applies labels, taints, and roles to all cluster nodes
 // This is run from the first control-plane node after all nodes have joined
 func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo) error {
-	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(firstCP), firstCP.PublicIP, cp.transportOptsForNode(firstCP)...)
+	provisioner, err := New(cp.log, cp.KeyPath, cp.getUsernameForNode(firstCP), hostForNode(firstCP), cp.transportOptsForNode(firstCP)...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", firstCP.Name, err)
 	}
@@ -643,15 +653,16 @@ type NodeHealth struct {
 	InternalIP string
 }
 
-// GetClusterHealth checks the health of a multinode cluster by querying the first control-plane
-func (cp *ClusterProvisioner) GetClusterHealth(firstCPPublicIP string) (*ClusterHealth, error) {
+// GetClusterHealth checks the health of a multinode cluster by querying the first control-plane.
+// firstCPHost is the SSH-reachable address — PublicIP for direct SSH, PrivateIP for SSM transport.
+func (cp *ClusterProvisioner) GetClusterHealth(firstCPHost string) (*ClusterHealth, error) {
 	// Resolve SSH username: check per-node username from cluster status first,
 	// then fall back to global username. This handles OS-based provisioning
 	// where the provider resolves the SSH username per node.
 	username := cp.UserName
 	if cp.Environment != nil && cp.Environment.Status.Cluster != nil {
 		for _, node := range cp.Environment.Status.Cluster.Nodes {
-			if node.PublicIP == firstCPPublicIP && node.SSHUsername != "" {
+			if (node.PublicIP == firstCPHost || node.PrivateIP == firstCPHost) && node.SSHUsername != "" {
 				username = node.SSHUsername
 				break
 			}
@@ -661,7 +672,7 @@ func (cp *ClusterProvisioner) GetClusterHealth(firstCPPublicIP string) (*Cluster
 	var transportOpts []Option
 	if cp.Environment != nil && cp.Environment.Status.Cluster != nil {
 		for _, node := range cp.Environment.Status.Cluster.Nodes {
-			if node.PublicIP == firstCPPublicIP {
+			if node.PublicIP == firstCPHost || node.PrivateIP == firstCPHost {
 				nodeInfo := NodeInfo{
 					PublicIP:   node.PublicIP,
 					PrivateIP:  node.PrivateIP,
@@ -672,7 +683,7 @@ func (cp *ClusterProvisioner) GetClusterHealth(firstCPPublicIP string) (*Cluster
 			}
 		}
 	}
-	provisioner, err := New(cp.log, cp.KeyPath, username, firstCPPublicIP, transportOpts...)
+	provisioner, err := New(cp.log, cp.KeyPath, username, firstCPHost, transportOpts...)
 	if err != nil {
 		return &ClusterHealth{
 			Healthy: false,
@@ -782,20 +793,25 @@ func GetClusterHealthFromEnv(log *logger.FunLogger, env *v1alpha1.Environment) (
 		return nil, fmt.Errorf("not a multinode cluster")
 	}
 
-	// Find first control-plane node
-	var firstCPIP string
+	// Find first control-plane node — prefer PublicIP for direct SSH,
+	// fall back to PrivateIP for SSM transport (private subnet nodes).
+	var firstCPHost string
 	for _, node := range env.Status.Cluster.Nodes {
 		if node.Role == "control-plane" {
-			firstCPIP = node.PublicIP
+			if node.PublicIP != "" {
+				firstCPHost = node.PublicIP
+			} else {
+				firstCPHost = node.PrivateIP
+			}
 			break
 		}
 	}
-	if firstCPIP == "" {
+	if firstCPHost == "" {
 		return nil, fmt.Errorf("no control-plane node found")
 	}
 
 	cp := NewClusterProvisioner(log, env.Spec.PrivateKey, env.Spec.Username, env)
-	return cp.GetClusterHealth(firstCPIP)
+	return cp.GetClusterHealth(firstCPHost)
 }
 
 // Note: addScriptHeader is defined in provisioner.go
