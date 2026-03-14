@@ -141,6 +141,31 @@ func (p *Provider) CreateCluster() error {
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Route Table created")
 
+	// Phase 1b: Create cluster networking (public subnet, NAT GW, route tables)
+	if err := p.createPublicSubnet(&cache.AWS); err != nil {
+		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating public subnet")
+		return fmt.Errorf("error creating public subnet: %w", err)
+	}
+	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Public subnet created")
+
+	if err := p.createPublicRouteTable(&cache.AWS); err != nil {
+		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating public route table")
+		return fmt.Errorf("error creating public route table: %w", err)
+	}
+	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Public route table created")
+
+	if err := p.createNATGateway(&cache.AWS); err != nil {
+		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating NAT Gateway")
+		return fmt.Errorf("error creating NAT Gateway: %w", err)
+	}
+	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "NAT Gateway created")
+
+	if err := p.createPrivateRouteTable(&cache.AWS); err != nil {
+		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating private route table")
+		return fmt.Errorf("error creating private route table: %w", err)
+	}
+	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Private route table created")
+
 	// Phase 2: Create separate CP and Worker security groups
 	if err := p.createControlPlaneSecurityGroup(cache); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating control-plane security group")
@@ -677,7 +702,7 @@ func (p *Provider) createInstances(
 				},
 				NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
 					{
-						AssociatePublicIpAddress: aws.Bool(true),
+						AssociatePublicIpAddress: aws.Bool(false),
 						DeleteOnTermination:      aws.Bool(true),
 						DeviceIndex:              aws.Int32(0),
 						Groups:                   []string{sgID},
