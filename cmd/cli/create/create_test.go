@@ -25,6 +25,7 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+	"github.com/NVIDIA/holodeck/pkg/provisioner"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -425,6 +426,115 @@ func TestRunProvision(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestBuildClusterNodeInfoList(t *testing.T) {
+	tests := []struct {
+		name           string
+		nodes          []v1alpha1.NodeStatus
+		region         string
+		expectedCount  int
+		checkTransport func(t *testing.T, nodes []provisioner.NodeInfo)
+	}{
+		{
+			name: "public IP nodes get no SSM transport",
+			nodes: []v1alpha1.NodeStatus{
+				{
+					Name:        "cp-1",
+					Role:        "control-plane",
+					InstanceID:  "i-cp1",
+					PublicIP:    "1.2.3.4",
+					PrivateIP:   "10.0.1.10",
+					SSHUsername: "ubuntu",
+				},
+			},
+			region:        "us-west-2",
+			expectedCount: 1,
+			checkTransport: func(t *testing.T, nodes []provisioner.NodeInfo) {
+				assert.Nil(t, nodes[0].Transport, "node with public IP should not have SSM transport")
+				assert.Equal(t, "i-cp1", nodes[0].InstanceID)
+			},
+		},
+		{
+			name: "private-only node gets SSM transport",
+			nodes: []v1alpha1.NodeStatus{
+				{
+					Name:        "worker-1",
+					Role:        "worker",
+					InstanceID:  "i-w1",
+					PublicIP:    "",
+					PrivateIP:   "10.0.2.20",
+					SSHUsername: "ubuntu",
+				},
+			},
+			region:        "us-east-1",
+			expectedCount: 1,
+			checkTransport: func(t *testing.T, nodes []provisioner.NodeInfo) {
+				require.NotNil(t, nodes[0].Transport, "node without public IP should have SSM transport")
+				ssm, ok := nodes[0].Transport.(*provisioner.SSMTransport)
+				require.True(t, ok, "transport should be SSMTransport")
+				assert.Equal(t, "i-w1", ssm.InstanceID)
+				assert.Equal(t, "us-east-1", ssm.Region)
+			},
+		},
+		{
+			name: "mixed cluster: public CP and private worker",
+			nodes: []v1alpha1.NodeStatus{
+				{
+					Name:        "cp-1",
+					Role:        "control-plane",
+					InstanceID:  "i-cp1",
+					PublicIP:    "1.2.3.4",
+					PrivateIP:   "10.0.1.10",
+					SSHUsername: "ubuntu",
+				},
+				{
+					Name:        "worker-1",
+					Role:        "worker",
+					InstanceID:  "i-w1",
+					PublicIP:    "",
+					PrivateIP:   "10.0.2.20",
+					SSHUsername: "ubuntu",
+				},
+			},
+			region:        "us-west-2",
+			expectedCount: 2,
+			checkTransport: func(t *testing.T, nodes []provisioner.NodeInfo) {
+				assert.Nil(t, nodes[0].Transport, "CP with public IP should not have SSM transport")
+				require.NotNil(t, nodes[1].Transport, "worker without public IP should have SSM transport")
+				ssm, ok := nodes[1].Transport.(*provisioner.SSMTransport)
+				require.True(t, ok)
+				assert.Equal(t, "i-w1", ssm.InstanceID)
+				assert.Equal(t, "us-west-2", ssm.Region)
+			},
+		},
+		{
+			name: "no instance ID and no public IP: no SSM transport",
+			nodes: []v1alpha1.NodeStatus{
+				{
+					Name:      "worker-1",
+					Role:      "worker",
+					PublicIP:  "",
+					PrivateIP: "10.0.2.20",
+				},
+			},
+			region:        "us-west-2",
+			expectedCount: 1,
+			checkTransport: func(t *testing.T, nodes []provisioner.NodeInfo) {
+				assert.Nil(t, nodes[0].Transport, "node without instance ID should not get SSM transport")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildClusterNodeInfoList(tt.nodes, tt.region)
+			assert.Len(t, result, tt.expectedCount)
+			if tt.checkTransport != nil {
+				tt.checkTransport(t, result)
 			}
 		})
 	}

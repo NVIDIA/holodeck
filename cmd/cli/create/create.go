@@ -496,17 +496,12 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
 	log.Info("Provisioning multinode cluster...")
 
-	// Build node list from cluster status
-	var nodes []provisioner.NodeInfo
-	for _, node := range opts.cache.Status.Cluster.Nodes {
-		nodes = append(nodes, provisioner.NodeInfo{
-			Name:        node.Name,
-			PublicIP:    node.PublicIP,
-			PrivateIP:   node.PrivateIP,
-			Role:        node.Role,
-			SSHUsername: node.SSHUsername,
-		})
+	// Build node list from cluster status, wiring SSM transport for private-subnet nodes
+	region := ""
+	if opts.cfg.Spec.Cluster != nil {
+		region = opts.cfg.Spec.Cluster.Region
 	}
+	nodes := buildClusterNodeInfoList(opts.cache.Status.Cluster.Nodes, region)
 
 	if len(nodes) == 0 {
 		return fmt.Errorf("no nodes found in cluster status")
@@ -570,6 +565,34 @@ func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
 	}
 
 	return nil
+}
+
+// buildClusterNodeInfoList converts NodeStatus entries from cluster status into
+// provisioner.NodeInfo, wiring SSMTransport for nodes in private subnets
+// (no public IP but valid instance ID).
+func buildClusterNodeInfoList(statusNodes []v1alpha1.NodeStatus, region string) []provisioner.NodeInfo {
+	nodes := make([]provisioner.NodeInfo, 0, len(statusNodes))
+	for _, node := range statusNodes {
+		info := provisioner.NodeInfo{
+			Name:        node.Name,
+			PublicIP:    node.PublicIP,
+			PrivateIP:   node.PrivateIP,
+			Role:        node.Role,
+			SSHUsername: node.SSHUsername,
+			InstanceID:  node.InstanceID,
+		}
+
+		// Private subnet nodes: use SSM port-forwarding transport
+		if node.PublicIP == "" && node.InstanceID != "" {
+			info.Transport = &provisioner.SSMTransport{
+				InstanceID: node.InstanceID,
+				Region:     region,
+			}
+		}
+
+		nodes = append(nodes, info)
+	}
+	return nodes
 }
 
 // isNonInteractive checks if we should skip interactive prompts
