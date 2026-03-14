@@ -63,8 +63,8 @@ func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
 						{
 							InstanceId:       aws.String("i-test-12345"),
 							State:            &types.InstanceState{Name: types.InstanceStateNameRunning},
-							PublicDnsName:     aws.String(""),
-							PublicIpAddress:   nil,
+							PublicDnsName:    aws.String(""),
+							PublicIpAddress:  nil,
 							PrivateIpAddress: aws.String("10.0.0.10"),
 							NetworkInterfaces: []types.InstanceNetworkInterface{
 								{NetworkInterfaceId: aws.String("eni-test-12345")},
@@ -92,8 +92,8 @@ func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
 	provider := newTestProvider(mock)
 	cache := &ClusterCache{
 		AWS: AWS{
-			Subnetid:            "subnet-private",
-			CPSecurityGroupid:   "sg-cp",
+			Subnetid:              "subnet-private",
+			CPSecurityGroupid:     "sg-cp",
 			WorkerSecurityGroupid: "sg-worker",
 		},
 	}
@@ -140,9 +140,9 @@ func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
 // the correct security group based on the node role.
 func TestCreateInstancesUsesRoleSecurityGroup(t *testing.T) {
 	tests := []struct {
-		name     string
-		role     NodeRole
-		wantSG   string
+		name   string
+		role   NodeRole
+		wantSG string
 	}{
 		{"control-plane uses CP SG", NodeRoleControlPlane, "sg-cp"},
 		{"worker uses Worker SG", NodeRoleWorker, "sg-worker"},
