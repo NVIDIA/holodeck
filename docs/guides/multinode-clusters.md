@@ -216,50 +216,145 @@ Example files are available in `examples/`:
 - `aws_cluster_ha.yaml` - HA cluster with 3 CPs
 - `aws_cluster_minimal.yaml` - Minimal cluster without GPU
 
-## Networking
+## Network Architecture
 
-Holodeck configures:
+Cluster mode creates a production-grade VPC topology with public and private
+subnets, a NAT gateway for outbound internet, and an NLB for API server access.
 
-- **VPC**: 10.0.0.0/16
-- **Subnet**: 10.0.0.0/24
-- **Pod Network**: 192.168.0.0/16 (Calico)
-- **Security Groups**: SSH, K8s API, inter-node communication
+```text
+┌──────────────────────────────── VPC 10.0.0.0/16 ────────────────────────────────┐
+│                                                                                  │
+│  ┌─── Public Subnet 10.0.1.0/24 ───┐    ┌─── Private Subnet 10.0.0.0/24 ───┐  │
+│  │                                   │    │                                   │  │
+│  │  NAT Gateway ──── Elastic IP      │    │  CP nodes (no public IP)          │  │
+│  │  NLB ─────────── :6443            │    │  Worker nodes (no public IP)      │  │
+│  │                                   │    │                                   │  │
+│  │  Route: 0.0.0.0/0 → IGW          │    │  Route: 0.0.0.0/0 → NAT GW       │  │
+│  └───────────────────────────────────┘    └───────────────────────────────────┘  │
+│                                                                                  │
+│  Internet Gateway                                                                │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
 
-For Calico networking, Source/Destination Check is automatically disabled
-on all EC2 network interfaces.
+**Key properties:**
+
+- All nodes run in the private subnet with no public IP addresses
+- Outbound internet (for package installs, container pulls) goes through the NAT
+  gateway
+- The Kubernetes API server is exposed via an NLB in the public subnet on port
+  6443
+- SSH access to nodes uses AWS SSM port forwarding (no open SSH port to the
+  internet)
+
+### Single-Node vs Cluster Networking
+
+| Feature | Single-node | Cluster |
+|---------|-------------|---------|
+| Subnets | 1 (public) | 2 (public + private) |
+| Node public IPs | Yes | No |
+| Internet route | IGW direct | NAT gateway |
+| SSH access | Direct SSH | SSM port forwarding |
+| API server | Direct to instance | NLB |
+| Security groups | 1 shared | CP + Worker (least-privilege) |
+
+## Security Groups
+
+Cluster mode creates separate security groups for control-plane and worker nodes,
+enforcing least-privilege access.
+
+### Control-Plane Security Group
+
+| Port | Protocol | Source | Purpose |
+|------|----------|--------|---------|
+| 22 | TCP | 0.0.0.0/0 | SSH (via SSM) |
+| 6443 | TCP | NLB subnet CIDR + Worker SG | Kubernetes API |
+| 2379-2380 | TCP | CP SG (self) | etcd peer/client |
+| 10250 | TCP | CP SG (self) | kubelet |
+| 10259 | TCP | CP SG (self) | kube-scheduler |
+| 10257 | TCP | CP SG (self) | kube-controller-manager |
+| 4789 | UDP | CP SG + Worker SG | Calico VXLAN |
+| 4240 | TCP | CP SG + Worker SG | Calico Typha |
+
+### Worker Security Group
+
+| Port | Protocol | Source | Purpose |
+|------|----------|--------|---------|
+| 22 | TCP | 0.0.0.0/0 | SSH (via SSM) |
+| 10250 | TCP | CP SG | kubelet (from control-plane only) |
+| 30000-32767 | TCP | 0.0.0.0/0 | NodePort services |
+| 4789 | UDP | CP SG + Worker SG | Calico VXLAN |
+| 4240 | TCP | CP SG + Worker SG | Calico Typha |
+
+## SSH Access via SSM
+
+Since cluster nodes have no public IPs, Holodeck uses AWS Systems Manager (SSM)
+port forwarding for SSH access during provisioning. This is handled automatically.
+
+To manually SSH to a node after creation:
+
+```bash
+# Get node details
+holodeck status <id>
+
+# SSH via SSM port forwarding
+aws ssm start-session \
+  --target <instance-id> \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["22"],"localPortNumber":["2222"]}' &
+
+ssh -i key.pem -p 2222 ubuntu@localhost
+```
+
+**Prerequisites for SSM:**
+
+- The EC2 instances must have an IAM instance profile with the
+  `AmazonSSMManagedInstanceCore` policy
+- The SSM agent must be installed on the AMI (pre-installed on Ubuntu 22.04+,
+  Amazon Linux 2023, and Rocky Linux 9)
+- The AWS CLI v2 and Session Manager plugin must be installed on the client
+
+## Calico Networking
+
+- **Pod Network CIDR**: 192.168.0.0/16
+- Source/Destination Check is automatically disabled on all EC2 network
+  interfaces to allow Calico VXLAN encapsulation
 
 ## Troubleshooting
 
 ### Nodes not joining
 
-Check that all security group rules are in place:
-
-- Port 6443 (API server)
-- Port 10250 (kubelet)
-- Port 2379-2380 (etcd)
-- Port 4789/udp (Calico VXLAN)
+1. Check security group rules allow inter-node communication (see tables above)
+1. Verify the NAT gateway is active — nodes need outbound internet to pull
+   container images and join the cluster
+1. Check that the NLB health check on port 6443 is healthy
 
 ### SSH to debug
 
 ```bash
-# Get node IPs
+# Get node instance IDs
 holodeck status <id>
 
-# SSH to control plane
-ssh -i key.pem ubuntu@<control-plane-ip>
+# SSH via SSM (automatic in holodeck, manual below)
+aws ssm start-session --target <instance-id>
 
-# Check nodes
+# Once connected, check nodes
 sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
 ```
 
 ### View provisioning logs
 
-During creation, logs stream to stdout. For post-creation debugging:
+```bash
+# SSH to a node via SSM, then:
+sudo journalctl -u kubelet -f
+sudo kubeadm token list
+```
+
+### NAT gateway issues
+
+If nodes cannot pull images or reach the internet:
 
 ```bash
-# SSH and check kubelet
-sudo journalctl -u kubelet -f
-
-# Check kubeadm
-sudo kubeadm token list
+# Check the NAT gateway state in AWS console
+# Verify the private route table has 0.0.0.0/0 → NAT GW
+# Check that the NAT gateway's Elastic IP is allocated
 ```
