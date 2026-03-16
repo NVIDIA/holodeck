@@ -221,7 +221,7 @@ Example files are available in `examples/`:
 Cluster mode creates a production-grade VPC topology with public and private
 subnets, a NAT gateway for outbound internet, and an NLB for API server access.
 
-```
+```text
 ┌──────────────────────────────── VPC 10.0.0.0/16 ────────────────────────────────┐
 │                                                                                  │
 │  ┌─── Public Subnet 10.0.1.0/24 ───┐    ┌─── Private Subnet 10.0.0.0/24 ───┐  │
@@ -324,9 +324,9 @@ ssh -i key.pem -p 2222 ubuntu@localhost
 ### Nodes not joining
 
 1. Check security group rules allow inter-node communication (see tables above)
-2. Verify the NAT gateway is active — nodes need outbound internet to pull
+1. Verify the NAT gateway is active — nodes need outbound internet to pull
    container images and join the cluster
-3. Check that the NLB health check on port 6443 is healthy
+1. Check that the NLB health check on port 6443 is healthy
 
 ### SSH to debug
 
