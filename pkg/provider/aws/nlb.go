@@ -54,8 +54,8 @@ func (p *Provider) createNLB(cache *ClusterCache) error {
 	}
 	lbName := nlbBaseName + nlbSuffix
 
-	// Determine subnet IDs (use the same subnet for NLB)
-	subnetIDs := []string{cache.Subnetid}
+	// Use the public subnet for the internet-facing NLB
+	subnetIDs := []string{cache.PublicSubnetid}
 
 	// Create load balancer
 	createLBInput := &elasticloadbalancingv2.CreateLoadBalancerInput{

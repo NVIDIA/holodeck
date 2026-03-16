@@ -182,18 +182,23 @@ var _ = DescribeTable("AWS Cluster E2E",
 		Expect(cp.ProvisionCluster(nodes)).To(Succeed(), "Failed to provision cluster")
 
 		By("Verifying cluster health")
-		// Get first control-plane IP for health check
-		var firstCPIP string
+		// Get first control-plane host for health check — prefer PublicIP,
+		// fall back to PrivateIP for SSM transport (private subnet nodes).
+		var firstCPHost string
 		for _, node := range env.Status.Cluster.Nodes {
 			if node.Role == "control-plane" {
-				firstCPIP = node.PublicIP
+				if node.PublicIP != "" {
+					firstCPHost = node.PublicIP
+				} else {
+					firstCPHost = node.PrivateIP
+				}
 				break
 			}
 		}
-		Expect(firstCPIP).NotTo(BeEmpty(), "First control plane IP should not be empty")
+		Expect(firstCPHost).NotTo(BeEmpty(), "First control plane host should not be empty")
 
 		// Check cluster health
-		health, err := cp.GetClusterHealth(firstCPIP)
+		health, err := cp.GetClusterHealth(firstCPHost)
 		Expect(err).NotTo(HaveOccurred(), "Failed to get cluster health")
 		Expect(health).NotTo(BeNil(), "Cluster health should not be nil")
 		Expect(health.APIServerStatus).To(Equal("Running"), "API server should be running")
