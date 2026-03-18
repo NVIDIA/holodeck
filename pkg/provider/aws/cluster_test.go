@@ -29,9 +29,9 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
-// TestCreateInstancesSetsNoPublicIP verifies that createInstances sets
-// AssociatePublicIpAddress=false in the RunInstancesInput for cluster mode.
-func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
+// TestCreateInstancesSetsPublicIP verifies that createInstances sets
+// AssociatePublicIpAddress=true in the RunInstancesInput for cluster mode.
+func TestCreateInstancesSetsPublicIP(t *testing.T) {
 	var mu sync.Mutex
 	var captured []*ec2.RunInstancesInput
 
@@ -94,6 +94,7 @@ func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
 	cache := &ClusterCache{
 		AWS: AWS{
 			Subnetid:              "subnet-private",
+			PublicSubnetid:        "subnet-public",
 			CPSecurityGroupid:     "sg-cp",
 			WorkerSecurityGroupid: "sg-worker",
 		},
@@ -127,13 +128,13 @@ func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
 	if len(nis) == 0 {
 		t.Fatal("expected NetworkInterfaces in RunInstancesInput")
 	}
-	if nis[0].AssociatePublicIpAddress == nil || *nis[0].AssociatePublicIpAddress != false {
-		t.Error("AssociatePublicIpAddress should be false for cluster instances")
+	if nis[0].AssociatePublicIpAddress == nil || *nis[0].AssociatePublicIpAddress != true {
+		t.Error("AssociatePublicIpAddress should be true for cluster instances")
 	}
 
-	// Verify instance uses private subnet
-	if aws.ToString(nis[0].SubnetId) != "subnet-private" {
-		t.Errorf("SubnetId = %q, want %q", aws.ToString(nis[0].SubnetId), "subnet-private")
+	// Verify instance uses public subnet
+	if aws.ToString(nis[0].SubnetId) != "subnet-public" {
+		t.Errorf("SubnetId = %q, want %q", aws.ToString(nis[0].SubnetId), "subnet-public")
 	}
 }
 

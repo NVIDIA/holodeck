@@ -701,11 +701,11 @@ func (p *Provider) createInstances(
 				},
 				NetworkInterfaces: []types.InstanceNetworkInterfaceSpecification{
 					{
-						AssociatePublicIpAddress: aws.Bool(false),
+						AssociatePublicIpAddress: aws.Bool(true),
 						DeleteOnTermination:      aws.Bool(true),
 						DeviceIndex:              aws.Int32(0),
 						Groups:                   []string{sgID},
-						SubnetId:                 aws.String(cache.Subnetid),
+						SubnetId:                 aws.String(cache.PublicSubnetid),
 					},
 				},
 				KeyName: aws.String(p.Spec.KeyName),

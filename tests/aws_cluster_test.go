@@ -148,8 +148,7 @@ var _ = DescribeTable("AWS Cluster E2E",
 			case "worker":
 				workerNodes++
 			}
-			// In production cluster topology all nodes are in the private subnet
-			// and may not have public IPs. Only PrivateIP is guaranteed.
+			Expect(node.PublicIP).NotTo(BeEmpty(), "Node public IP should not be empty")
 			Expect(node.PrivateIP).NotTo(BeEmpty(), "Node private IP should not be empty")
 			Expect(node.InstanceID).NotTo(BeEmpty(), "Node instance ID should not be empty")
 		}
@@ -159,26 +158,16 @@ var _ = DescribeTable("AWS Cluster E2E",
 		}
 
 		By("Provisioning the cluster")
-		// Build nodes list for provisioner, wiring SSM transport for private-subnet nodes
-		region := state.opts.cfg.Spec.Cluster.Region
+		// Build nodes list for provisioner
 		var nodes []provisioner.NodeInfo
 		for _, node := range env.Status.Cluster.Nodes {
-			info := provisioner.NodeInfo{
+			nodes = append(nodes, provisioner.NodeInfo{
 				Name:        node.Name,
 				PublicIP:    node.PublicIP,
 				PrivateIP:   node.PrivateIP,
 				Role:        node.Role,
 				SSHUsername: node.SSHUsername,
-				InstanceID:  node.InstanceID,
-			}
-			// Private-subnet nodes have no public IP — use SSM port-forwarding
-			if node.PublicIP == "" && node.InstanceID != "" {
-				info.Transport = &provisioner.SSMTransport{
-					InstanceID: node.InstanceID,
-					Region:     region,
-				}
-			}
-			nodes = append(nodes, info)
+			})
 		}
 
 		// Create cluster provisioner
