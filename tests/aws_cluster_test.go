@@ -148,7 +148,8 @@ var _ = DescribeTable("AWS Cluster E2E",
 			case "worker":
 				workerNodes++
 			}
-			Expect(node.PublicIP).NotTo(BeEmpty(), "Node public IP should not be empty")
+			// In production cluster topology all nodes are in the private subnet
+			// and may not have public IPs. Only PrivateIP is guaranteed.
 			Expect(node.PrivateIP).NotTo(BeEmpty(), "Node private IP should not be empty")
 			Expect(node.InstanceID).NotTo(BeEmpty(), "Node instance ID should not be empty")
 		}
