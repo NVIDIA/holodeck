@@ -668,15 +668,27 @@ func (cp *ClusterProvisioner) GetClusterHealth(firstCPHost string) (*ClusterHeal
 			}
 		}
 	}
-	// Build transport options from node info in environment status
+	// Build transport options from node info in environment status.
+	// Private-subnet nodes (no public IP) need SSM port-forwarding.
 	var transportOpts []Option
 	if cp.Environment != nil && cp.Environment.Status.Cluster != nil {
+		region := ""
+		if cp.Environment.Spec.Cluster != nil {
+			region = cp.Environment.Spec.Cluster.Region
+		}
 		for _, node := range cp.Environment.Status.Cluster.Nodes {
 			if node.PublicIP == firstCPHost || node.PrivateIP == firstCPHost {
 				nodeInfo := NodeInfo{
 					PublicIP:   node.PublicIP,
 					PrivateIP:  node.PrivateIP,
 					InstanceID: node.InstanceID,
+				}
+				// Wire SSM transport for private-subnet nodes
+				if node.PublicIP == "" && node.InstanceID != "" && region != "" {
+					nodeInfo.Transport = &SSMTransport{
+						InstanceID: node.InstanceID,
+						Region:     region,
+					}
 				}
 				transportOpts = cp.transportOptsForNode(nodeInfo)
 				break

@@ -159,16 +159,26 @@ var _ = DescribeTable("AWS Cluster E2E",
 		}
 
 		By("Provisioning the cluster")
-		// Build nodes list for provisioner
+		// Build nodes list for provisioner, wiring SSM transport for private-subnet nodes
+		region := state.opts.cfg.Spec.Cluster.Region
 		var nodes []provisioner.NodeInfo
 		for _, node := range env.Status.Cluster.Nodes {
-			nodes = append(nodes, provisioner.NodeInfo{
+			info := provisioner.NodeInfo{
 				Name:        node.Name,
 				PublicIP:    node.PublicIP,
 				PrivateIP:   node.PrivateIP,
 				Role:        node.Role,
 				SSHUsername: node.SSHUsername,
-			})
+				InstanceID:  node.InstanceID,
+			}
+			// Private-subnet nodes have no public IP — use SSM port-forwarding
+			if node.PublicIP == "" && node.InstanceID != "" {
+				info.Transport = &provisioner.SSMTransport{
+					InstanceID: node.InstanceID,
+					Region:     region,
+				}
+			}
+			nodes = append(nodes, info)
 		}
 
 		// Create cluster provisioner
