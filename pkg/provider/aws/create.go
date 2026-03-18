@@ -654,8 +654,35 @@ func (p *Provider) createNATGateway(cache *AWS) error {
 	}
 	cache.NatGatewayid = *natOutput.NatGateway.NatGatewayId
 
-	cancelLoading(nil)
-	return nil
+	// Wait for NAT Gateway to reach "available" state before returning.
+	// CreateNatGateway returns immediately with state "pending"; using the
+	// NAT GW ID in a CreateRoute call before it is available causes
+	// InvalidNatGatewayID.NotFound errors.
+	p.log.Info("Waiting for NAT Gateway %s to become available", cache.NatGatewayid)
+	for i := 0; i < 60; i++ { // 60 × 5s = 5 minutes max
+		time.Sleep(5 * time.Second)
+		dCtx, dCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		out, err := p.ec2.DescribeNatGateways(dCtx, &ec2.DescribeNatGatewaysInput{
+			NatGatewayIds: []string{cache.NatGatewayid},
+		})
+		dCancel()
+		if err != nil {
+			p.log.Warning("Error checking NAT Gateway state: %v", err)
+			continue
+		}
+		if len(out.NatGateways) > 0 && out.NatGateways[0].State == types.NatGatewayStateAvailable {
+			p.log.Info("NAT Gateway %s is available", cache.NatGatewayid)
+			cancelLoading(nil)
+			return nil
+		}
+		if len(out.NatGateways) > 0 && out.NatGateways[0].State == types.NatGatewayStateFailed {
+			cancelLoading(logger.ErrLoadingFailed)
+			return fmt.Errorf("NAT Gateway %s reached failed state", cache.NatGatewayid)
+		}
+	}
+
+	cancelLoading(logger.ErrLoadingFailed)
+	return fmt.Errorf("NAT Gateway %s did not become available within timeout", cache.NatGatewayid)
 }
 
 // releaseEIP releases an Elastic IP by allocation ID.
