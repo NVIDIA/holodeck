@@ -293,6 +293,11 @@ func (p *Provider) deleteSecurityGroup(sgID, label string) error {
 		return nil
 	}
 
+	// Revoke all rules first to break cross-SG dependencies
+	if err := p.revokeSecurityGroupRules(sgID); err != nil {
+		p.log.Warning("Error revoking rules for %s SG %s (continuing): %v", label, sgID, err)
+	}
+
 	err := p.retryWithBackoff(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
 		defer cancel()
@@ -690,6 +695,70 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 }
 
 // Helper functions
+
+// revokeSecurityGroupRules removes all ingress and egress rules from a security
+// group before deletion. This prevents DependencyViolation errors caused by
+// cross-SG references (e.g., worker SG referencing control-plane SG).
+func (p *Provider) revokeSecurityGroupRules(sgID string) error {
+	if sgID == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+	defer cancel()
+
+	result, err := p.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+		GroupIds: []string{sgID},
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "InvalidGroup.NotFound") {
+			return nil
+		}
+		return fmt.Errorf("error describing security group %s: %w", sgID, err)
+	}
+
+	if len(result.SecurityGroups) == 0 {
+		return nil
+	}
+
+	sg := result.SecurityGroups[0]
+
+	// Revoke all ingress rules
+	if len(sg.IpPermissions) > 0 {
+		p.log.Info("Revoking %d ingress rule(s) from security group %s", len(sg.IpPermissions), sgID)
+		rCtx, rCancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer rCancel()
+		_, err := p.ec2.RevokeSecurityGroupIngress(rCtx, &ec2.RevokeSecurityGroupIngressInput{
+			GroupId:       &sgID,
+			IpPermissions: sg.IpPermissions,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "InvalidGroup.NotFound") {
+				return nil
+			}
+			return fmt.Errorf("error revoking ingress rules for %s: %w", sgID, err)
+		}
+	}
+
+	// Revoke all egress rules
+	if len(sg.IpPermissionsEgress) > 0 {
+		p.log.Info("Revoking %d egress rule(s) from security group %s", len(sg.IpPermissionsEgress), sgID)
+		rCtx, rCancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer rCancel()
+		_, err := p.ec2.RevokeSecurityGroupEgress(rCtx, &ec2.RevokeSecurityGroupEgressInput{
+			GroupId:       &sgID,
+			IpPermissions: sg.IpPermissionsEgress,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "InvalidGroup.NotFound") {
+				return nil
+			}
+			return fmt.Errorf("error revoking egress rules for %s: %w", sgID, err)
+		}
+	}
+
+	return nil
+}
 
 func (p *Provider) retryWithBackoff(operation func() error) error {
 	delay := retryDelay

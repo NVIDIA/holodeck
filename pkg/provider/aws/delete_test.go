@@ -519,3 +519,136 @@ func TestDeleteSecurityGroups_SharedSameAsCP(t *testing.T) {
 		t.Errorf("second delete should be CP SG (same as shared), got %s", deletedSGs[1])
 	}
 }
+
+func TestRevokeSecurityGroupRules_RevokesIngressAndEgress(t *testing.T) {
+	var ingressCalls []ec2.RevokeSecurityGroupIngressInput
+	var egressCalls []ec2.RevokeSecurityGroupEgressInput
+
+	mock := NewMockEC2Client()
+	mock.DescribeSGsFunc = func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+		return &ec2.DescribeSecurityGroupsOutput{
+			SecurityGroups: []types.SecurityGroup{
+				{
+					GroupId: aws.String("sg-worker"),
+					IpPermissions: []types.IpPermission{
+						{
+							IpProtocol: aws.String("-1"),
+							UserIdGroupPairs: []types.UserIdGroupPair{
+								{GroupId: aws.String("sg-cp")},
+							},
+						},
+					},
+					IpPermissionsEgress: []types.IpPermission{
+						{
+							IpProtocol: aws.String("-1"),
+							IpRanges: []types.IpRange{
+								{CidrIp: aws.String("0.0.0.0/0")},
+							},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+	mock.RevokeSGIngressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+		ingressCalls = append(ingressCalls, *params)
+		return &ec2.RevokeSecurityGroupIngressOutput{}, nil
+	}
+	mock.RevokeSGEgressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+		egressCalls = append(egressCalls, *params)
+		return &ec2.RevokeSecurityGroupEgressOutput{}, nil
+	}
+
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	err := provider.revokeSecurityGroupRules("sg-worker")
+	if err != nil {
+		t.Fatalf("revokeSecurityGroupRules failed: %v", err)
+	}
+
+	if len(ingressCalls) != 1 {
+		t.Fatalf("Expected 1 RevokeSecurityGroupIngress call, got %d", len(ingressCalls))
+	}
+	if *ingressCalls[0].GroupId != "sg-worker" {
+		t.Errorf("Expected GroupId 'sg-worker', got %q", *ingressCalls[0].GroupId)
+	}
+
+	if len(egressCalls) != 1 {
+		t.Fatalf("Expected 1 RevokeSecurityGroupEgress call, got %d", len(egressCalls))
+	}
+	if *egressCalls[0].GroupId != "sg-worker" {
+		t.Errorf("Expected GroupId 'sg-worker', got %q", *egressCalls[0].GroupId)
+	}
+}
+
+func TestRevokeSecurityGroupRules_SkipsEmptyRules(t *testing.T) {
+	var ingressCalls []ec2.RevokeSecurityGroupIngressInput
+	var egressCalls []ec2.RevokeSecurityGroupEgressInput
+
+	mock := NewMockEC2Client()
+	mock.DescribeSGsFunc = func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+		return &ec2.DescribeSecurityGroupsOutput{
+			SecurityGroups: []types.SecurityGroup{
+				{
+					GroupId:             aws.String("sg-empty"),
+					IpPermissions:       nil,
+					IpPermissionsEgress: nil,
+				},
+			},
+		}, nil
+	}
+	mock.RevokeSGIngressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+		ingressCalls = append(ingressCalls, *params)
+		return &ec2.RevokeSecurityGroupIngressOutput{}, nil
+	}
+	mock.RevokeSGEgressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+		egressCalls = append(egressCalls, *params)
+		return &ec2.RevokeSecurityGroupEgressOutput{}, nil
+	}
+
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	err := provider.revokeSecurityGroupRules("sg-empty")
+	if err != nil {
+		t.Fatalf("revokeSecurityGroupRules failed: %v", err)
+	}
+
+	if len(ingressCalls) != 0 {
+		t.Errorf("Expected no RevokeSecurityGroupIngress calls for empty rules, got %d", len(ingressCalls))
+	}
+	if len(egressCalls) != 0 {
+		t.Errorf("Expected no RevokeSecurityGroupEgress calls for empty rules, got %d", len(egressCalls))
+	}
+}
+
+func TestRevokeSecurityGroupRules_SkipsEmptyID(t *testing.T) {
+	mock := NewMockEC2Client()
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	err := provider.revokeSecurityGroupRules("")
+	if err != nil {
+		t.Fatalf("revokeSecurityGroupRules should skip empty SG ID, got: %v", err)
+	}
+}
+
+func TestRevokeSecurityGroupRules_DescribeError(t *testing.T) {
+	mock := NewMockEC2Client()
+	mock.DescribeSGsFunc = func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+		return nil, fmt.Errorf("InvalidGroup.NotFound")
+	}
+
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	// NotFound is not an error — SG is already gone
+	err := provider.revokeSecurityGroupRules("sg-gone")
+	if err != nil {
+		t.Fatalf("revokeSecurityGroupRules should handle NotFound gracefully, got: %v", err)
+	}
+}
