@@ -59,7 +59,9 @@ type MockEC2Client struct {
 	CreateSGFunc    func(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)
 	AuthorizeSGFunc func(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
 	DeleteSGFunc    func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)
-	DescribeSGsFunc func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+	DescribeSGsFunc     func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+	RevokeSGIngressFunc func(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error)
+	RevokeSGEgressFunc  func(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error)
 
 	// Instance
 	RunInstancesFunc      func(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error)
@@ -260,6 +262,24 @@ func (m *MockEC2Client) DescribeSecurityGroups(ctx context.Context, params *ec2.
 		return m.DescribeSGsFunc(ctx, params, optFns...)
 	}
 	return &ec2.DescribeSecurityGroupsOutput{}, nil
+}
+
+func (m *MockEC2Client) RevokeSecurityGroupIngress(ctx context.Context,
+	params *ec2.RevokeSecurityGroupIngressInput,
+	optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+	if m.RevokeSGIngressFunc != nil {
+		return m.RevokeSGIngressFunc(ctx, params, optFns...)
+	}
+	return &ec2.RevokeSecurityGroupIngressOutput{}, nil
+}
+
+func (m *MockEC2Client) RevokeSecurityGroupEgress(ctx context.Context,
+	params *ec2.RevokeSecurityGroupEgressInput,
+	optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+	if m.RevokeSGEgressFunc != nil {
+		return m.RevokeSGEgressFunc(ctx, params, optFns...)
+	}
+	return &ec2.RevokeSecurityGroupEgressOutput{}, nil
 }
 
 // Instance operations

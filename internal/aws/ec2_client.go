@@ -96,6 +96,14 @@ type EC2Client interface {
 	DescribeSecurityGroups(ctx context.Context,
 		params *ec2.DescribeSecurityGroupsInput,
 		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+	RevokeSecurityGroupIngress(ctx context.Context,
+		params *ec2.RevokeSecurityGroupIngressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput,
+		error)
+	RevokeSecurityGroupEgress(ctx context.Context,
+		params *ec2.RevokeSecurityGroupEgressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput,
+		error)
 
 	// Instance operations
 	RunInstances(ctx context.Context, params *ec2.RunInstancesInput,

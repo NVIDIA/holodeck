@@ -185,6 +185,18 @@ func (m *mockEC2Client) DescribeSecurityGroups(ctx context.Context,
 	return &ec2.DescribeSecurityGroupsOutput{}, nil
 }
 
+func (m *mockEC2Client) RevokeSecurityGroupIngress(ctx context.Context,
+	params *ec2.RevokeSecurityGroupIngressInput,
+	optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+	return &ec2.RevokeSecurityGroupIngressOutput{}, nil
+}
+
+func (m *mockEC2Client) RevokeSecurityGroupEgress(ctx context.Context,
+	params *ec2.RevokeSecurityGroupEgressInput,
+	optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+	return &ec2.RevokeSecurityGroupEgressOutput{}, nil
+}
+
 func (m *mockEC2Client) RunInstances(ctx context.Context, params *ec2.RunInstancesInput,
 	optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
 	m.runInstancesCalls = append(m.runInstancesCalls, *params)
