@@ -135,12 +135,12 @@ func (p *Provider) CreateCluster() error {
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Internet Gateway created")
 
-	// Phase 1b: Create cluster networking (public subnet, NAT GW, route tables)
-	// Note: We skip createRouteTable() here — in single-node mode it creates an
-	// IGW-routed table for the (only) subnet. In cluster mode the private subnet
-	// gets a NAT-routed table (createPrivateRouteTable) and the public subnet
-	// gets an IGW-routed table (createPublicRouteTable). Calling createRouteTable
-	// would create an orphaned IGW table associated with the private subnet.
+	// Phase 1b: Create public subnet and route table for cluster instances.
+	// Cluster instances are placed in the public subnet with AssociatePublicIpAddress=true,
+	// so they have direct internet access via the IGW. NAT Gateway and private route table
+	// are NOT needed — skipping them avoids consuming scarce EIP quota (AWS limit: 5 per
+	// region), which caused CI failures when multiple jobs ran concurrently.
+	// The private subnet (created above) is retained for future SSM endpoint use.
 	if err := p.createPublicSubnet(&cache.AWS); err != nil {
 		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating public subnet")
 		return fmt.Errorf("error creating public subnet: %w", err)
@@ -152,18 +152,6 @@ func (p *Provider) CreateCluster() error {
 		return fmt.Errorf("error creating public route table: %w", err)
 	}
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Public route table created")
-
-	if err := p.createNATGateway(&cache.AWS); err != nil {
-		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating NAT Gateway")
-		return fmt.Errorf("error creating NAT Gateway: %w", err)
-	}
-	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "NAT Gateway created")
-
-	if err := p.createPrivateRouteTable(&cache.AWS); err != nil {
-		_ = p.updateDegradedCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Error creating private route table")
-		return fmt.Errorf("error creating private route table: %w", err)
-	}
-	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Private route table created")
 
 	// Phase 2: Create separate CP and Worker security groups
 	if err := p.createControlPlaneSecurityGroup(cache); err != nil {
