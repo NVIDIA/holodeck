@@ -51,8 +51,8 @@ func TestDeleteConstants(t *testing.T) {
 		constant time.Duration
 		expected time.Duration
 	}{
-		{"maxRetries", time.Duration(maxRetries), 5},
-		{"retryDelay", retryDelay, 5 * time.Second},
+		{"maxRetries", time.Duration(maxRetries), 10},
+		{"retryDelay", retryDelay, 10 * time.Second},
 		{"maxRetryDelay", maxRetryDelay, 30 * time.Second},
 		{"verificationDelay", verificationDelay, 2 * time.Second},
 		{"apiCallTimeout", apiCallTimeout, 30 * time.Second},

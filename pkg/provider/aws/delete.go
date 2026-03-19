@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	maxRetries        = 5
-	retryDelay        = 5 * time.Second
+	maxRetries        = 10
+	retryDelay        = 10 * time.Second
 	maxRetryDelay     = 30 * time.Second
 	deletionTimeout   = 15 * time.Minute
 	verificationDelay = 2 * time.Second
