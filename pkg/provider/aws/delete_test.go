@@ -652,3 +652,90 @@ func TestRevokeSecurityGroupRules_DescribeError(t *testing.T) {
 		t.Fatalf("revokeSecurityGroupRules should handle NotFound gracefully, got: %v", err)
 	}
 }
+
+func TestWaitForENIsDrained_NoENIs(t *testing.T) {
+	mock := NewMockEC2Client()
+	mock.DescribeNIsFunc = func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+		return &ec2.DescribeNetworkInterfacesOutput{
+			NetworkInterfaces: []types.NetworkInterface{},
+		}, nil
+	}
+
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	err := provider.waitForENIsDrained("vpc-123")
+	if err != nil {
+		t.Fatalf("waitForENIsDrained should succeed with no ENIs, got: %v", err)
+	}
+}
+
+func TestWaitForENIsDrained_SkipsEmptyVPC(t *testing.T) {
+	mock := NewMockEC2Client()
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	err := provider.waitForENIsDrained("")
+	if err != nil {
+		t.Fatalf("waitForENIsDrained should skip empty VPC ID, got: %v", err)
+	}
+}
+
+func TestWaitForENIsDrained_ENIsDrainOnSecondPoll(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping: poll loop sleeps 10s between calls")
+	}
+	callCount := 0
+	mock := NewMockEC2Client()
+	mock.DescribeNIsFunc = func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+		callCount++
+		if callCount == 1 {
+			// First call: ENI still in-use
+			return &ec2.DescribeNetworkInterfacesOutput{
+				NetworkInterfaces: []types.NetworkInterface{
+					{
+						NetworkInterfaceId: aws.String("eni-123"),
+						Status:             types.NetworkInterfaceStatusInUse,
+					},
+				},
+			}, nil
+		}
+		// Second call: all drained
+		return &ec2.DescribeNetworkInterfacesOutput{
+			NetworkInterfaces: []types.NetworkInterface{},
+		}, nil
+	}
+
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	err := provider.waitForENIsDrained("vpc-123")
+	if err != nil {
+		t.Fatalf("waitForENIsDrained should succeed after ENIs drain, got: %v", err)
+	}
+	if callCount < 2 {
+		t.Errorf("Expected at least 2 DescribeNetworkInterfaces calls, got %d", callCount)
+	}
+}
+
+func TestWaitForENIsDrained_AvailableENIsIgnored(t *testing.T) {
+	mock := NewMockEC2Client()
+	mock.DescribeNIsFunc = func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+		// ENI exists but is in "available" state (detached) — not blocking
+		return &ec2.DescribeNetworkInterfacesOutput{
+			NetworkInterfaces: []types.NetworkInterface{
+				{
+					NetworkInterfaceId: aws.String("eni-avail"),
+					Status:             types.NetworkInterfaceStatusAvailable,
+				},
+			},
+		}, nil
+	}
+
+	provider := &Provider{ec2: mock, log: mockLogger()}
+
+	err := provider.waitForENIsDrained("vpc-123")
+	if err != nil {
+		t.Fatalf("waitForENIsDrained should ignore 'available' ENIs, got: %v", err)
+	}
+}

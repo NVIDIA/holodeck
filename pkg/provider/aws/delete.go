@@ -115,6 +115,14 @@ func (p *Provider) delete(cache *AWS) error {
 		return fmt.Errorf("failed to delete EC2 instances: %w", err)
 	}
 
+	// Phase 1.5: Wait for ENIs to detach after instance termination.
+	// AWS ENIs can linger for 2-5 minutes after termination, blocking SG deletion.
+	if cache.Vpcid != "" {
+		if err := p.waitForENIsDrained(cache.Vpcid); err != nil {
+			p.log.Warning("ENI drain wait failed (continuing): %v", err)
+		}
+	}
+
 	// Phase 2: Delete Security Groups
 	if err := p.deleteSecurityGroups(cache); err != nil {
 		return fmt.Errorf("failed to delete security groups: %w", err)
@@ -695,6 +703,56 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 }
 
 // Helper functions
+
+// waitForENIsDrained polls DescribeNetworkInterfaces until all non-available
+// ENIs in the VPC are detached or deleted. This prevents DependencyViolation
+// errors when deleting security groups, since AWS ENIs can linger for 2-5
+// minutes after instance termination.
+func (p *Provider) waitForENIsDrained(vpcID string) error {
+	if vpcID == "" {
+		return nil
+	}
+
+	const (
+		eniPollInterval = 10 * time.Second
+		eniPollTimeout  = 5 * time.Minute
+	)
+
+	deadline := time.Now().Add(eniPollTimeout)
+
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		result, err := p.ec2.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{
+			Filters: []types.Filter{
+				{Name: aws.String("vpc-id"), Values: []string{vpcID}},
+			},
+		})
+		cancel()
+
+		if err != nil {
+			p.log.Warning("Error checking ENIs in VPC %s: %v", vpcID, err)
+		} else {
+			// Count non-available ENIs (in-use ENIs block SG deletion)
+			var blocking int
+			for _, eni := range result.NetworkInterfaces {
+				if eni.Status != types.NetworkInterfaceStatusAvailable {
+					blocking++
+				}
+			}
+			if blocking == 0 {
+				p.log.Info("All ENIs in VPC %s are drained", vpcID)
+				return nil
+			}
+			p.log.Info("Waiting for %d in-use ENI(s) in VPC %s to detach...", blocking, vpcID)
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for ENIs to drain in VPC %s", vpcID)
+		}
+
+		time.Sleep(eniPollInterval)
+	}
+}
 
 // revokeSecurityGroupRules removes all ingress and egress rules from a security
 // group before deletion. This prevents DependencyViolation errors caused by
