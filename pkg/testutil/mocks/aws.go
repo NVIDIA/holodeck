@@ -83,6 +83,13 @@ type EC2Client interface {
 		params *ec2.DescribeSecurityGroupsInput,
 		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
 
+	RevokeSecurityGroupIngress(ctx context.Context,
+		params *ec2.RevokeSecurityGroupIngressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error)
+	RevokeSecurityGroupEgress(ctx context.Context,
+		params *ec2.RevokeSecurityGroupEgressInput,
+		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error)
+
 	RunInstances(ctx context.Context, params *ec2.RunInstancesInput,
 		optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error)
 	TerminateInstances(ctx context.Context,
@@ -475,4 +482,14 @@ func (m *MockEC2Client) DescribeNatGateways(ctx context.Context, params *ec2.Des
 
 func (m *MockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput, optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error) {
 	return &ec2.ModifySubnetAttributeOutput{}, nil
+}
+
+// Security Group Revoke operations
+
+func (m *MockEC2Client) RevokeSecurityGroupIngress(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+	return &ec2.RevokeSecurityGroupIngressOutput{}, nil
+}
+
+func (m *MockEC2Client) RevokeSecurityGroupEgress(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+	return &ec2.RevokeSecurityGroupEgressOutput{}, nil
 }
