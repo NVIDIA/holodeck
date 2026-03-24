@@ -295,10 +295,37 @@ func TestDeletePublicRouteTable_Empty(t *testing.T) {
 	}
 }
 
-func TestDeletePublicRouteTable_Success(t *testing.T) {
+func TestDeletePublicRouteTable_DisassociatesBeforeDelete(t *testing.T) {
+	var disassociated bool
 	var deletedID string
 	mock := &MockEC2Client{
+		DescribeRTsFunc: func(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+			return &ec2.DescribeRouteTablesOutput{
+				RouteTables: []types.RouteTable{
+					{
+						RouteTableId: aws.String("rtb-public-123"),
+						Associations: []types.RouteTableAssociation{
+							{
+								RouteTableAssociationId: aws.String("rtbassoc-123"),
+								SubnetId:                aws.String("subnet-public-123"),
+								Main:                    aws.Bool(false),
+							},
+						},
+					},
+				},
+			}, nil
+		},
+		DisassociateRTFunc: func(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error) {
+			if aws.ToString(params.AssociationId) != "rtbassoc-123" {
+				t.Errorf("expected disassociation of rtbassoc-123, got %s", aws.ToString(params.AssociationId))
+			}
+			disassociated = true
+			return &ec2.DisassociateRouteTableOutput{}, nil
+		},
 		DeleteRTFunc: func(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error) {
+			if !disassociated {
+				return nil, fmt.Errorf("DependencyViolation: route table has dependencies")
+			}
 			deletedID = aws.ToString(params.RouteTableId)
 			return &ec2.DeleteRouteTableOutput{}, nil
 		},
@@ -308,8 +335,47 @@ func TestDeletePublicRouteTable_Success(t *testing.T) {
 	if err := provider.deletePublicRouteTable(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if !disassociated {
+		t.Error("expected DisassociateRouteTable to be called before deletion")
+	}
 	if deletedID != "rtb-public-123" {
 		t.Errorf("expected deletion of rtb-public-123, got %s", deletedID)
+	}
+}
+
+func TestDeletePublicRouteTable_SkipsMainAssociation(t *testing.T) {
+	var disassociateCalled bool
+	mock := &MockEC2Client{
+		DescribeRTsFunc: func(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+			return &ec2.DescribeRouteTablesOutput{
+				RouteTables: []types.RouteTable{
+					{
+						RouteTableId: aws.String("rtb-public-123"),
+						Associations: []types.RouteTableAssociation{
+							{
+								RouteTableAssociationId: aws.String("rtbassoc-main"),
+								Main:                    aws.Bool(true),
+							},
+						},
+					},
+				},
+			}, nil
+		},
+		DisassociateRTFunc: func(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error) {
+			disassociateCalled = true
+			return &ec2.DisassociateRouteTableOutput{}, nil
+		},
+		DeleteRTFunc: func(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error) {
+			return &ec2.DeleteRouteTableOutput{}, nil
+		},
+	}
+	provider := &Provider{ec2: mock, log: mockLogger()}
+	cache := &AWS{PublicRouteTable: "rtb-public-123"}
+	if err := provider.deletePublicRouteTable(cache); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if disassociateCalled {
+		t.Error("should not disassociate main route table association")
 	}
 }
 

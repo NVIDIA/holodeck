@@ -261,6 +261,19 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))
 	}
 
+	// Break cross-SG ingress references before deletion.
+	// Worker SG has ingress rules referencing CP SG, and CP SG has ingress
+	// rules referencing Worker SG. Both must be cleared to avoid
+	// DependencyViolation errors on DeleteSecurityGroup.
+	if cache.WorkerSecurityGroupid != "" && cache.CPSecurityGroupid != "" {
+		if err := p.revokeSecurityGroupRules(cache.CPSecurityGroupid); err != nil {
+			p.log.Warning("Error revoking CP SG %s rules (continuing): %v", cache.CPSecurityGroupid, err)
+		}
+		if err := p.revokeSecurityGroupRules(cache.WorkerSecurityGroupid); err != nil {
+			p.log.Warning("Error revoking Worker SG %s rules (continuing): %v", cache.WorkerSecurityGroupid, err)
+		}
+	}
+
 	// Delete Worker SG first — it references CP SG, so CP SG can't be deleted
 	// while Worker SG still exists.
 	if err := p.deleteSecurityGroup(cache.WorkerSecurityGroupid, "worker"); err != nil {
@@ -299,11 +312,6 @@ func (p *Provider) deleteSecurityGroup(sgID, label string) error {
 	if sgID == "" {
 		p.log.Info("No %s security group to delete", label)
 		return nil
-	}
-
-	// Revoke all rules first to break cross-SG dependencies
-	if err := p.revokeSecurityGroupRules(sgID); err != nil {
-		p.log.Warning("Error revoking rules for %s SG %s (continuing): %v", label, sgID, err)
 	}
 
 	err := p.retryWithBackoff(func() error {
@@ -470,6 +478,11 @@ func (p *Provider) deletePublicRouteTable(cache *AWS) error {
 		return nil
 	}
 
+	// Disassociate subnet associations before deletion to avoid DependencyViolation.
+	if err := p.disassociateRouteTableSubnets(cache.PublicRouteTable); err != nil {
+		p.log.Warning("Error disassociating public route table %s (continuing): %v", cache.PublicRouteTable, err)
+	}
+
 	p.log.Info("Deleting public route table %s", cache.PublicRouteTable)
 	err := p.retryWithBackoff(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
@@ -573,6 +586,11 @@ func (p *Provider) deleteRouteTable(cache *AWS) error {
 	if isMain {
 		p.log.Info("Skipping deletion of main route table %s", cache.RouteTable)
 		return nil
+	}
+
+	// Disassociate subnet associations before deletion to avoid DependencyViolation.
+	if err := p.disassociateRouteTableSubnets(cache.RouteTable); err != nil {
+		p.log.Warning("Error disassociating route table %s (continuing): %v", cache.RouteTable, err)
 	}
 
 	err = p.retryWithBackoff(func() error {
@@ -798,22 +816,10 @@ func (p *Provider) revokeSecurityGroupRules(sgID string) error {
 		}
 	}
 
-	// Revoke all egress rules
-	if len(sg.IpPermissionsEgress) > 0 {
-		p.log.Info("Revoking %d egress rule(s) from security group %s", len(sg.IpPermissionsEgress), sgID)
-		rCtx, rCancel := context.WithTimeout(context.Background(), apiCallTimeout)
-		defer rCancel()
-		_, err := p.ec2.RevokeSecurityGroupEgress(rCtx, &ec2.RevokeSecurityGroupEgressInput{
-			GroupId:       &sgID,
-			IpPermissions: sg.IpPermissionsEgress,
-		})
-		if err != nil {
-			if strings.Contains(err.Error(), "InvalidGroup.NotFound") {
-				return nil
-			}
-			return fmt.Errorf("error revoking egress rules for %s: %w", sgID, err)
-		}
-	}
+	// Note: egress rule revocation is intentionally skipped.
+	// The CI IAM user (cnt-ci) lacks ec2:RevokeSecurityGroupEgress permission,
+	// and the default egress rule (0.0.0.0/0) does not create cross-SG
+	// dependencies that would block DeleteSecurityGroup.
 
 	return nil
 }
@@ -876,6 +882,48 @@ func (p *Provider) vpcExists(vpcID string) bool {
 		VpcIds: []string{vpcID},
 	})
 	return err == nil
+}
+
+// disassociateRouteTableSubnets removes non-main subnet associations from a
+// route table so it can be deleted without DependencyViolation errors.
+func (p *Provider) disassociateRouteTableSubnets(rtID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+	defer cancel()
+
+	result, err := p.ec2.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
+		RouteTableIds: []string{rtID},
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "InvalidRouteTableID.NotFound") {
+			return nil
+		}
+		return fmt.Errorf("error describing route table %s: %w", rtID, err)
+	}
+
+	if len(result.RouteTables) == 0 {
+		return nil
+	}
+
+	for _, assoc := range result.RouteTables[0].Associations {
+		if assoc.Main != nil && *assoc.Main {
+			continue // Cannot disassociate the main route table association
+		}
+		if assoc.RouteTableAssociationId == nil {
+			continue
+		}
+		assocID := *assoc.RouteTableAssociationId
+		p.log.Info("Disassociating route table association %s from %s", assocID, rtID)
+		dCtx, dCancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		_, dErr := p.ec2.DisassociateRouteTable(dCtx, &ec2.DisassociateRouteTableInput{
+			AssociationId: &assocID,
+		})
+		dCancel()
+		if dErr != nil {
+			p.log.Warning("Error disassociating %s (continuing): %v", assocID, dErr)
+		}
+	}
+
+	return nil
 }
 
 func (p *Provider) isMainRouteTable(rtID, vpcID string) (bool, error) {
