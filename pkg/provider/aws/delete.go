@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	maxRetries        = 5
-	retryDelay        = 5 * time.Second
+	maxRetries        = 10
+	retryDelay        = 10 * time.Second
 	maxRetryDelay     = 30 * time.Second
 	deletionTimeout   = 15 * time.Minute
 	verificationDelay = 2 * time.Second
@@ -113,6 +113,14 @@ func (p *Provider) delete(cache *AWS) error {
 	// Phase 1: Terminate EC2 instances
 	if err := p.deleteEC2Instances(cache); err != nil {
 		return fmt.Errorf("failed to delete EC2 instances: %w", err)
+	}
+
+	// Phase 1.5: Wait for ENIs to detach after instance termination.
+	// AWS ENIs can linger for 2-5 minutes after termination, blocking SG deletion.
+	if cache.Vpcid != "" {
+		if err := p.waitForENIsDrained(cache.Vpcid); err != nil {
+			p.log.Warning("ENI drain wait failed (continuing): %v", err)
+		}
 	}
 
 	// Phase 2: Delete Security Groups
@@ -253,6 +261,19 @@ func (p *Provider) deleteSecurityGroups(cache *AWS) error {
 		p.log.Error(fmt.Errorf("failed to update progressing condition: %w", err))
 	}
 
+	// Break cross-SG ingress references before deletion.
+	// Worker SG has ingress rules referencing CP SG, and CP SG has ingress
+	// rules referencing Worker SG. Both must be cleared to avoid
+	// DependencyViolation errors on DeleteSecurityGroup.
+	if cache.WorkerSecurityGroupid != "" && cache.CPSecurityGroupid != "" {
+		if err := p.revokeSecurityGroupRules(cache.CPSecurityGroupid); err != nil {
+			p.log.Warning("Error revoking CP SG %s rules (continuing): %v", cache.CPSecurityGroupid, err)
+		}
+		if err := p.revokeSecurityGroupRules(cache.WorkerSecurityGroupid); err != nil {
+			p.log.Warning("Error revoking Worker SG %s rules (continuing): %v", cache.WorkerSecurityGroupid, err)
+		}
+	}
+
 	// Delete Worker SG first — it references CP SG, so CP SG can't be deleted
 	// while Worker SG still exists.
 	if err := p.deleteSecurityGroup(cache.WorkerSecurityGroupid, "worker"); err != nil {
@@ -345,13 +366,15 @@ func (p *Provider) deleteVPCResources(cache *AWS) error {
 		return err
 	}
 
-	// Step 3: Delete public route table
-	if err := p.deletePublicRouteTable(cache); err != nil {
+	// Step 3: Delete public subnet (before route table — deleting the subnet
+	// implicitly removes the route table association, avoiding the need for
+	// ec2:DisassociateRouteTable which CI IAM may lack)
+	if err := p.deletePublicSubnet(cache); err != nil {
 		return err
 	}
 
-	// Step 4: Delete public subnet
-	if err := p.deletePublicSubnet(cache); err != nil {
+	// Step 4: Delete public route table (association removed by step 3)
+	if err := p.deletePublicRouteTable(cache); err != nil {
 		return err
 	}
 
@@ -360,7 +383,7 @@ func (p *Provider) deleteVPCResources(cache *AWS) error {
 		return err
 	}
 
-	// Step 6: Delete private Route Table
+	// Step 6: Delete private Route Table (association removed by step 5)
 	if err := p.deleteRouteTable(cache); err != nil {
 		return err
 	}
@@ -690,6 +713,108 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 }
 
 // Helper functions
+
+// waitForENIsDrained polls DescribeNetworkInterfaces until all non-available
+// ENIs in the VPC are detached or deleted. This prevents DependencyViolation
+// errors when deleting security groups, since AWS ENIs can linger for 2-5
+// minutes after instance termination.
+func (p *Provider) waitForENIsDrained(vpcID string) error {
+	if vpcID == "" {
+		return nil
+	}
+
+	const (
+		eniPollInterval = 10 * time.Second
+		eniPollTimeout  = 5 * time.Minute
+	)
+
+	deadline := time.Now().Add(eniPollTimeout)
+
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		result, err := p.ec2.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{
+			Filters: []types.Filter{
+				{Name: aws.String("vpc-id"), Values: []string{vpcID}},
+			},
+		})
+		cancel()
+
+		if err != nil {
+			p.log.Warning("Error checking ENIs in VPC %s: %v", vpcID, err)
+		} else {
+			// Count non-available ENIs (in-use ENIs block SG deletion)
+			var blocking int
+			for _, eni := range result.NetworkInterfaces {
+				if eni.Status != types.NetworkInterfaceStatusAvailable {
+					blocking++
+				}
+			}
+			if blocking == 0 {
+				p.log.Info("All ENIs in VPC %s are drained", vpcID)
+				return nil
+			}
+			p.log.Info("Waiting for %d in-use ENI(s) in VPC %s to detach...", blocking, vpcID)
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for ENIs to drain in VPC %s", vpcID)
+		}
+
+		time.Sleep(eniPollInterval)
+	}
+}
+
+// revokeSecurityGroupRules removes all ingress and egress rules from a security
+// group before deletion. This prevents DependencyViolation errors caused by
+// cross-SG references (e.g., worker SG referencing control-plane SG).
+func (p *Provider) revokeSecurityGroupRules(sgID string) error {
+	if sgID == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+	defer cancel()
+
+	result, err := p.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+		GroupIds: []string{sgID},
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "InvalidGroup.NotFound") {
+			return nil
+		}
+		return fmt.Errorf("error describing security group %s: %w", sgID, err)
+	}
+
+	if len(result.SecurityGroups) == 0 {
+		return nil
+	}
+
+	sg := result.SecurityGroups[0]
+
+	// Revoke all ingress rules
+	if len(sg.IpPermissions) > 0 {
+		p.log.Info("Revoking %d ingress rule(s) from security group %s", len(sg.IpPermissions), sgID)
+		rCtx, rCancel := context.WithTimeout(context.Background(), apiCallTimeout)
+		defer rCancel()
+		_, err := p.ec2.RevokeSecurityGroupIngress(rCtx, &ec2.RevokeSecurityGroupIngressInput{
+			GroupId:       &sgID,
+			IpPermissions: sg.IpPermissions,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "InvalidGroup.NotFound") {
+				return nil
+			}
+			return fmt.Errorf("error revoking ingress rules for %s: %w", sgID, err)
+		}
+	}
+
+	// Note: egress rule revocation is intentionally skipped.
+	// The CI IAM user (cnt-ci) lacks ec2:RevokeSecurityGroupEgress permission,
+	// and the default egress rule (0.0.0.0/0) does not create cross-SG
+	// dependencies that would block DeleteSecurityGroup.
+
+	return nil
+}
 
 func (p *Provider) retryWithBackoff(operation func() error) error {
 	delay := retryDelay

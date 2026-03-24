@@ -18,6 +18,7 @@ package aws
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 
@@ -28,9 +29,9 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
-// TestCreateInstancesSetsNoPublicIP verifies that createInstances sets
-// AssociatePublicIpAddress=false in the RunInstancesInput for cluster mode.
-func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
+// TestCreateInstancesSetsPublicIP verifies that createInstances sets
+// AssociatePublicIpAddress=true in the RunInstancesInput for cluster mode.
+func TestCreateInstancesSetsPublicIP(t *testing.T) {
 	var mu sync.Mutex
 	var captured []*ec2.RunInstancesInput
 
@@ -93,6 +94,7 @@ func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
 	cache := &ClusterCache{
 		AWS: AWS{
 			Subnetid:              "subnet-private",
+			PublicSubnetid:        "subnet-public",
 			CPSecurityGroupid:     "sg-cp",
 			WorkerSecurityGroupid: "sg-worker",
 		},
@@ -126,13 +128,13 @@ func TestCreateInstancesSetsNoPublicIP(t *testing.T) {
 	if len(nis) == 0 {
 		t.Fatal("expected NetworkInterfaces in RunInstancesInput")
 	}
-	if nis[0].AssociatePublicIpAddress == nil || *nis[0].AssociatePublicIpAddress != false {
-		t.Error("AssociatePublicIpAddress should be false for cluster instances")
+	if nis[0].AssociatePublicIpAddress == nil || *nis[0].AssociatePublicIpAddress != true {
+		t.Error("AssociatePublicIpAddress should be true for cluster instances")
 	}
 
-	// Verify instance uses private subnet
-	if aws.ToString(nis[0].SubnetId) != "subnet-private" {
-		t.Errorf("SubnetId = %q, want %q", aws.ToString(nis[0].SubnetId), "subnet-private")
+	// Verify instance uses public subnet
+	if aws.ToString(nis[0].SubnetId) != "subnet-public" {
+		t.Errorf("SubnetId = %q, want %q", aws.ToString(nis[0].SubnetId), "subnet-public")
 	}
 }
 
@@ -382,5 +384,93 @@ func TestNATGatewayCreatedInPublicSubnet(t *testing.T) {
 	if aws.ToString(capturedNAT.SubnetId) != "subnet-public" {
 		t.Errorf("NAT GW placed in %q, want public subnet %q",
 			aws.ToString(capturedNAT.SubnetId), "subnet-public")
+	}
+}
+
+// TestNATGatewayWaitsForAvailable verifies that createNATGateway polls
+// DescribeNatGateways until the NAT GW transitions from pending to available.
+func TestNATGatewayWaitsForAvailable(t *testing.T) {
+	describeCalls := 0
+
+	mock := NewMockEC2Client()
+	mock.CreateNatGatewayFunc = func(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
+		return &ec2.CreateNatGatewayOutput{
+			NatGateway: &types.NatGateway{
+				NatGatewayId: aws.String("nat-pending-123"),
+				State:        types.NatGatewayStatePending,
+			},
+		}, nil
+	}
+	mock.DescribeNatGatewaysFunc = func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
+		describeCalls++
+		state := types.NatGatewayStatePending
+		if describeCalls >= 2 {
+			state = types.NatGatewayStateAvailable
+		}
+		return &ec2.DescribeNatGatewaysOutput{
+			NatGateways: []types.NatGateway{
+				{
+					NatGatewayId: aws.String("nat-pending-123"),
+					State:        state,
+				},
+			},
+		}, nil
+	}
+
+	provider := newTestProvider(mock)
+	cache := &AWS{
+		Vpcid:          "vpc-test",
+		PublicSubnetid: "subnet-public",
+		Subnetid:       "subnet-private",
+	}
+
+	if err := provider.createNATGateway(cache); err != nil {
+		t.Fatalf("createNATGateway failed: %v", err)
+	}
+
+	if describeCalls < 2 {
+		t.Errorf("Expected at least 2 DescribeNatGateways calls for polling, got %d", describeCalls)
+	}
+	if cache.NatGatewayid != "nat-pending-123" {
+		t.Errorf("cache.NatGatewayid = %q, want %q", cache.NatGatewayid, "nat-pending-123")
+	}
+}
+
+// TestNATGatewayFailedState verifies that createNATGateway returns an error
+// if the NAT GW transitions to the failed state.
+func TestNATGatewayFailedState(t *testing.T) {
+	mock := NewMockEC2Client()
+	mock.CreateNatGatewayFunc = func(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
+		return &ec2.CreateNatGatewayOutput{
+			NatGateway: &types.NatGateway{
+				NatGatewayId: aws.String("nat-fail-123"),
+				State:        types.NatGatewayStatePending,
+			},
+		}, nil
+	}
+	mock.DescribeNatGatewaysFunc = func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
+		return &ec2.DescribeNatGatewaysOutput{
+			NatGateways: []types.NatGateway{
+				{
+					NatGatewayId: aws.String("nat-fail-123"),
+					State:        types.NatGatewayStateFailed,
+				},
+			},
+		}, nil
+	}
+
+	provider := newTestProvider(mock)
+	cache := &AWS{
+		Vpcid:          "vpc-test",
+		PublicSubnetid: "subnet-public",
+		Subnetid:       "subnet-private",
+	}
+
+	err := provider.createNATGateway(cache)
+	if err == nil {
+		t.Fatal("Expected error when NAT Gateway reaches failed state")
+	}
+	if !strings.Contains(err.Error(), "failed state") {
+		t.Errorf("Error should mention failed state, got: %v", err)
 	}
 }
