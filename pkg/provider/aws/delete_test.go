@@ -586,7 +586,7 @@ func TestDeleteSecurityGroups_SharedSameAsCP(t *testing.T) {
 	}
 }
 
-func TestRevokeSecurityGroupRules_RevokesIngressAndEgress(t *testing.T) {
+func TestRevokeSecurityGroupRules_RevokesIngressOnly(t *testing.T) {
 	var ingressCalls []ec2.RevokeSecurityGroupIngressInput
 	var egressCalls []ec2.RevokeSecurityGroupEgressInput
 
@@ -642,11 +642,11 @@ func TestRevokeSecurityGroupRules_RevokesIngressAndEgress(t *testing.T) {
 		t.Errorf("Expected GroupId 'sg-worker', got %q", *ingressCalls[0].GroupId)
 	}
 
-	if len(egressCalls) != 1 {
-		t.Fatalf("Expected 1 RevokeSecurityGroupEgress call, got %d", len(egressCalls))
-	}
-	if *egressCalls[0].GroupId != "sg-worker" {
-		t.Errorf("Expected GroupId 'sg-worker', got %q", *egressCalls[0].GroupId)
+	// Egress revocation is intentionally skipped — CI IAM user lacks
+	// ec2:RevokeSecurityGroupEgress, and the default egress rule does not
+	// create cross-SG dependencies that block DeleteSecurityGroup.
+	if len(egressCalls) != 0 {
+		t.Errorf("Expected 0 RevokeSecurityGroupEgress calls (egress skipped), got %d", len(egressCalls))
 	}
 }
 
