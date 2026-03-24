@@ -366,13 +366,15 @@ func (p *Provider) deleteVPCResources(cache *AWS) error {
 		return err
 	}
 
-	// Step 3: Delete public route table
-	if err := p.deletePublicRouteTable(cache); err != nil {
+	// Step 3: Delete public subnet (before route table — deleting the subnet
+	// implicitly removes the route table association, avoiding the need for
+	// ec2:DisassociateRouteTable which CI IAM may lack)
+	if err := p.deletePublicSubnet(cache); err != nil {
 		return err
 	}
 
-	// Step 4: Delete public subnet
-	if err := p.deletePublicSubnet(cache); err != nil {
+	// Step 4: Delete public route table (association removed by step 3)
+	if err := p.deletePublicRouteTable(cache); err != nil {
 		return err
 	}
 
@@ -381,7 +383,7 @@ func (p *Provider) deleteVPCResources(cache *AWS) error {
 		return err
 	}
 
-	// Step 6: Delete private Route Table
+	// Step 6: Delete private Route Table (association removed by step 5)
 	if err := p.deleteRouteTable(cache); err != nil {
 		return err
 	}
@@ -476,11 +478,6 @@ func (p *Provider) releaseElasticIP(cache *AWS) error {
 func (p *Provider) deletePublicRouteTable(cache *AWS) error {
 	if cache.PublicRouteTable == "" {
 		return nil
-	}
-
-	// Disassociate subnet associations before deletion to avoid DependencyViolation.
-	if err := p.disassociateRouteTableSubnets(cache.PublicRouteTable); err != nil {
-		p.log.Warning("Error disassociating public route table %s (continuing): %v", cache.PublicRouteTable, err)
 	}
 
 	p.log.Info("Deleting public route table %s", cache.PublicRouteTable)
@@ -586,11 +583,6 @@ func (p *Provider) deleteRouteTable(cache *AWS) error {
 	if isMain {
 		p.log.Info("Skipping deletion of main route table %s", cache.RouteTable)
 		return nil
-	}
-
-	// Disassociate subnet associations before deletion to avoid DependencyViolation.
-	if err := p.disassociateRouteTableSubnets(cache.RouteTable); err != nil {
-		p.log.Warning("Error disassociating route table %s (continuing): %v", cache.RouteTable, err)
 	}
 
 	err = p.retryWithBackoff(func() error {
@@ -882,48 +874,6 @@ func (p *Provider) vpcExists(vpcID string) bool {
 		VpcIds: []string{vpcID},
 	})
 	return err == nil
-}
-
-// disassociateRouteTableSubnets removes non-main subnet associations from a
-// route table so it can be deleted without DependencyViolation errors.
-func (p *Provider) disassociateRouteTableSubnets(rtID string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
-	defer cancel()
-
-	result, err := p.ec2.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
-		RouteTableIds: []string{rtID},
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "InvalidRouteTableID.NotFound") {
-			return nil
-		}
-		return fmt.Errorf("error describing route table %s: %w", rtID, err)
-	}
-
-	if len(result.RouteTables) == 0 {
-		return nil
-	}
-
-	for _, assoc := range result.RouteTables[0].Associations {
-		if assoc.Main != nil && *assoc.Main {
-			continue // Cannot disassociate the main route table association
-		}
-		if assoc.RouteTableAssociationId == nil {
-			continue
-		}
-		assocID := *assoc.RouteTableAssociationId
-		p.log.Info("Disassociating route table association %s from %s", assocID, rtID)
-		dCtx, dCancel := context.WithTimeout(context.Background(), apiCallTimeout)
-		_, dErr := p.ec2.DisassociateRouteTable(dCtx, &ec2.DisassociateRouteTableInput{
-			AssociationId: &assocID,
-		})
-		dCancel()
-		if dErr != nil {
-			p.log.Warning("Error disassociating %s (continuing): %v", assocID, dErr)
-		}
-	}
-
-	return nil
 }
 
 func (p *Provider) isMainRouteTable(rtID, vpcID string) (bool, error) {

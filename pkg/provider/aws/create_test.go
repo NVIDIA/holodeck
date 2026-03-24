@@ -155,11 +155,6 @@ func (m *mockEC2Client) DescribeRouteTables(ctx context.Context, params *ec2.Des
 	return &ec2.DescribeRouteTablesOutput{}, nil
 }
 
-func (m *mockEC2Client) DisassociateRouteTable(ctx context.Context, params *ec2.DisassociateRouteTableInput,
-	optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error) {
-	return &ec2.DisassociateRouteTableOutput{}, nil
-}
-
 func (m *mockEC2Client) ReplaceRouteTableAssociation(ctx context.Context,
 	params *ec2.ReplaceRouteTableAssociationInput,
 	optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error) {

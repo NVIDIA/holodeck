@@ -77,8 +77,6 @@ type EC2Client interface {
 		optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error)
 	DescribeRouteTables(ctx context.Context, params *ec2.DescribeRouteTablesInput,
 		optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)
-	DisassociateRouteTable(ctx context.Context, params *ec2.DisassociateRouteTableInput,
-		optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error)
 	ReplaceRouteTableAssociation(ctx context.Context,
 		params *ec2.ReplaceRouteTableAssociationInput,
 		optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput,

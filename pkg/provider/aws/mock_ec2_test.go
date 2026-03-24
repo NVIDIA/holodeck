@@ -53,7 +53,6 @@ type MockEC2Client struct {
 	CreateRouteFunc    func(ctx context.Context, params *ec2.CreateRouteInput, optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error)
 	DeleteRTFunc       func(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error)
 	DescribeRTsFunc    func(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)
-	DisassociateRTFunc func(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error)
 	ReplaceRTAssocFunc func(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error)
 
 	// Security Group
@@ -225,13 +224,6 @@ func (m *MockEC2Client) DescribeRouteTables(ctx context.Context, params *ec2.Des
 		return m.DescribeRTsFunc(ctx, params, optFns...)
 	}
 	return &ec2.DescribeRouteTablesOutput{}, nil
-}
-
-func (m *MockEC2Client) DisassociateRouteTable(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error) {
-	if m.DisassociateRTFunc != nil {
-		return m.DisassociateRTFunc(ctx, params, optFns...)
-	}
-	return &ec2.DisassociateRouteTableOutput{}, nil
 }
 
 func (m *MockEC2Client) ReplaceRouteTableAssociation(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error) {

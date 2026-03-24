@@ -69,9 +69,6 @@ type EC2Client interface {
 	DescribeRouteTables(ctx context.Context,
 		params *ec2.DescribeRouteTablesInput,
 		optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)
-	DisassociateRouteTable(ctx context.Context,
-		params *ec2.DisassociateRouteTableInput,
-		optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error)
 
 	CreateSecurityGroup(ctx context.Context,
 		params *ec2.CreateSecurityGroupInput,
@@ -131,12 +128,11 @@ type MockEC2Client struct {
 	DeleteInternetGatewayFunc func(ctx context.Context, params *ec2.DeleteInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error)
 
 	// Route Table operations
-	CreateRouteTableFunc       func(ctx context.Context, params *ec2.CreateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error)
-	AssociateRouteTableFunc    func(ctx context.Context, params *ec2.AssociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error)
-	CreateRouteFunc            func(ctx context.Context, params *ec2.CreateRouteInput, optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error)
-	DeleteRouteTableFunc       func(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error)
-	DescribeRouteTablesFunc    func(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)
-	DisassociateRouteTableFunc func(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error)
+	CreateRouteTableFunc    func(ctx context.Context, params *ec2.CreateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error)
+	AssociateRouteTableFunc func(ctx context.Context, params *ec2.AssociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error)
+	CreateRouteFunc         func(ctx context.Context, params *ec2.CreateRouteInput, optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error)
+	DeleteRouteTableFunc    func(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error)
+	DescribeRouteTablesFunc func(ctx context.Context, params *ec2.DescribeRouteTablesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error)
 
 	// Security Group operations
 	CreateSecurityGroupFunc           func(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)
@@ -300,13 +296,6 @@ func (m *MockEC2Client) DescribeRouteTables(ctx context.Context, params *ec2.Des
 		return m.DescribeRouteTablesFunc(ctx, params, optFns...)
 	}
 	return &ec2.DescribeRouteTablesOutput{}, nil
-}
-
-func (m *MockEC2Client) DisassociateRouteTable(ctx context.Context, params *ec2.DisassociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DisassociateRouteTableOutput, error) {
-	if m.DisassociateRouteTableFunc != nil {
-		return m.DisassociateRouteTableFunc(ctx, params, optFns...)
-	}
-	return &ec2.DisassociateRouteTableOutput{}, nil
 }
 
 // Security Group operations
