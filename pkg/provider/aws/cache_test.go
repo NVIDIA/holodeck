@@ -54,6 +54,7 @@ func TestCacheRoundTrip(t *testing.T) {
 		cacheFile:   cacheFile,
 		Environment: &env,
 		log:         log,
+		sleep: noopSleep,
 	}
 
 	original := &AWS{
@@ -142,6 +143,7 @@ func TestCacheRoundTripSingleNode(t *testing.T) {
 		cacheFile:   cacheFile,
 		Environment: &env,
 		log:         log,
+		sleep: noopSleep,
 	}
 
 	// Only set the original single-node fields

@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -398,7 +399,7 @@ status:
 					},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(provider).NotTo(BeNil())
 				Expect(provider.Name()).To(Equal("aws"))
@@ -424,7 +425,7 @@ status:
 					},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(provider).NotTo(BeNil())
 			})
@@ -462,7 +463,7 @@ status:
 					}
 
 					provider, err := aws.New(log, env, tmpFile,
-						aws.WithEC2Client(mockClient))
+						aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(provider).NotTo(BeNil())
 				})
@@ -485,7 +486,7 @@ status:
 				},
 			}
 
-			provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+			provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -578,7 +579,7 @@ status:
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				conditions, err := provider.Status()
@@ -607,7 +608,7 @@ status:
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				conditions, err := provider.Status()
@@ -622,7 +623,7 @@ status:
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, "/nonexistent/cache.yaml", aws.WithEC2Client(mockClient))
+				provider, err := aws.New(log, env, "/nonexistent/cache.yaml", aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				_, err = provider.Status()
@@ -639,7 +640,7 @@ status:
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				_, err = provider.Status()
@@ -810,7 +811,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -843,7 +844,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -878,7 +879,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -913,7 +914,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -947,7 +948,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -983,7 +984,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1016,7 +1017,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1049,7 +1050,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1084,7 +1085,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1120,7 +1121,7 @@ spec:
 
 					var err error
 					provider, err = aws.New(log, env, tmpFile,
-						aws.WithEC2Client(mockClient))
+						aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 					Expect(err).NotTo(HaveOccurred())
 
 					err = provider.Create()
@@ -1156,7 +1157,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1191,7 +1192,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1253,7 +1254,7 @@ spec:
 			}
 
 			provider, err := aws.New(log, env, tmpFile,
-				aws.WithEC2Client(mockClient))
+				aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -1303,7 +1304,7 @@ spec:
 			}
 
 			provider, err := aws.New(log, env, tmpFile,
-				aws.WithEC2Client(mockClient))
+				aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -1338,7 +1339,7 @@ spec:
 			}
 
 			provider, err := aws.New(log, env, tmpFile,
-				aws.WithEC2Client(mockClient))
+				aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -1369,7 +1370,7 @@ spec:
 				}
 
 				provider, err := aws.New(log, env, nonExistentCache,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Delete()
@@ -1400,7 +1401,7 @@ spec:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Delete()
@@ -1442,7 +1443,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Delete()
@@ -1503,7 +1504,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1556,7 +1557,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1583,7 +1584,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1640,7 +1641,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1682,7 +1683,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1749,7 +1750,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient))
+					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration){}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()

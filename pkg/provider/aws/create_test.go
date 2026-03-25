@@ -354,8 +354,9 @@ func TestCreateEC2Instance_DisablesSourceDestCheck(t *testing.T) {
 	log := mockLogger()
 
 	provider := &Provider{
-		ec2: mock,
-		log: log,
+		ec2:   mock,
+		log:   log,
+		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
 			Spec: v1alpha1.EnvironmentSpec{
 				Auth: v1alpha1.Auth{
@@ -413,8 +414,9 @@ func TestCreateEC2Instance_SourceDestCheckError(t *testing.T) {
 	log := mockLogger()
 
 	provider := &Provider{
-		ec2: mock,
-		log: log,
+		ec2:   mock,
+		log:   log,
+		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
 			Spec: v1alpha1.EnvironmentSpec{
 				Auth: v1alpha1.Auth{
@@ -635,8 +637,9 @@ func (m *extendedMockEC2Client) ModifySubnetAttribute(ctx context.Context, param
 // Helper to create a test provider
 func createTestProvider(mock internalaws.EC2Client) *Provider {
 	return &Provider{
-		ec2: mock,
-		log: mockLogger(),
+		ec2:   mock,
+		log:   mockLogger(),
+		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "test-env",
@@ -1053,8 +1056,9 @@ func TestCreateSecurityGroup_AuthorizeError(t *testing.T) {
 func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
 	mock := &extendedMockEC2Client{}
 	provider := &Provider{
-		ec2: mock,
-		log: mockLogger(),
+		ec2:   mock,
+		log:   mockLogger(),
+		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "test-env",

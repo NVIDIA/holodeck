@@ -70,6 +70,7 @@ func newTestProvider(mock *MockEC2Client) *Provider {
 		ec2:         mock,
 		Environment: &env,
 		log:         mockLogger(),
+		sleep:       noopSleep,
 		Tags: []types.Tag{
 			{Key: aws.String("Name"), Value: aws.String("test-cluster")},
 		},

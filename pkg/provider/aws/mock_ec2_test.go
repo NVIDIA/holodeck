@@ -19,6 +19,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -26,6 +27,9 @@ import (
 
 	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 )
+
+// noopSleep is a no-op sleep function used in tests to skip real delays.
+var noopSleep = func(time.Duration) {}
 
 // MockEC2Client is a mock implementation of EC2Client for testing.
 type MockEC2Client struct {
