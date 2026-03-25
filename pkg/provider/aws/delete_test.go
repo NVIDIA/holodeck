@@ -103,7 +103,7 @@ func TestDeleteRetryBackoffSuccess(t *testing.T) {
 	attempts := 0
 
 	provider := &Provider{
-		log: mockLogger(),
+		log:   mockLogger(),
 		sleep: noopSleep,
 	}
 
@@ -413,7 +413,7 @@ func TestDeleteSecurityGroups_DualSG_DeleteOrder(t *testing.T) {
 		ec2:         mock,
 		log:         mockLogger(),
 		Environment: env,
-		sleep: noopSleep,
+		sleep:       noopSleep,
 	}
 	cache := &AWS{
 		SecurityGroupid:       "sg-shared",
@@ -458,7 +458,7 @@ func TestDeleteSecurityGroups_SingleNode_EmptyCPAndWorker(t *testing.T) {
 		ec2:         mock,
 		log:         mockLogger(),
 		Environment: env,
-		sleep: noopSleep,
+		sleep:       noopSleep,
 	}
 	cache := &AWS{
 		SecurityGroupid:       "sg-shared",
@@ -483,7 +483,7 @@ func TestDeleteSecurityGroups_AllEmpty(t *testing.T) {
 	provider := &Provider{
 		log:         mockLogger(),
 		Environment: env,
-		sleep: noopSleep,
+		sleep:       noopSleep,
 	}
 	cache := &AWS{}
 
@@ -511,7 +511,7 @@ func TestDeleteSecurityGroups_SharedSameAsCP(t *testing.T) {
 		ec2:         mock,
 		log:         mockLogger(),
 		Environment: env,
-		sleep: noopSleep,
+		sleep:       noopSleep,
 	}
 
 	cache := &AWS{

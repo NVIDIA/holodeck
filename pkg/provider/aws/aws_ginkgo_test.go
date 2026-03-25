@@ -152,7 +152,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
-				sleep: noopSleep,
+					sleep:       noopSleep,
 				}
 
 				aws, err := p.unmarsalCache()
@@ -197,7 +197,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
-				sleep: noopSleep,
+					sleep:       noopSleep,
 				}
 
 				aws, err := p.unmarsalCache()
@@ -232,7 +232,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
-				sleep: noopSleep,
+					sleep:       noopSleep,
 				}
 
 				aws, err := p.unmarsalCache()
@@ -251,7 +251,7 @@ status:
 					cacheFile:   "/nonexistent/path/cache.yaml",
 					log:         log,
 					Environment: &env,
-				sleep: noopSleep,
+					sleep:       noopSleep,
 				}
 
 				_, err := p.unmarsalCache()
@@ -274,7 +274,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
-				sleep: noopSleep,
+					sleep:       noopSleep,
 				}
 
 				_, err := p.unmarsalCache()
