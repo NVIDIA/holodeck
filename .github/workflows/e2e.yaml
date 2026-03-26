@@ -75,10 +75,7 @@ jobs:
         echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
         chmod 600 "$e2e_ssh_key"
         export E2E_SSH_KEY="$e2e_ssh_key"
-        EXTRA_ARGS=""
-        if [ "${{ matrix.label }}" = "default" ]; then
-          EXTRA_ARGS="--json-report ginkgo.json"
-        fi
+        EXTRA_ARGS="--json-report ginkgo.json"
         # RPM suites run both single-node and cluster tests (~60min total);
         # increase timeout from the 1h default to avoid cleanup timeouts.
         case "${{ matrix.label }}" in
