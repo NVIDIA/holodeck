@@ -37,7 +37,13 @@ jobs:
       needs: [golang, code-scanning]
       secrets: inherit
 
+    e2e-smoke:
+      needs: golang
+      secrets: inherit
+      uses: ./.github/workflows/e2e-smoke.yaml
+
     e2e-test:
       needs: golang
+      if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release-')
       secrets: inherit
       uses: ./.github/workflows/e2e.yaml

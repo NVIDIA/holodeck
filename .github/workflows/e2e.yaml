@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: End-to-end Tests
+name: E2E Full Tests
 
 on:
   workflow_call:
@@ -24,13 +24,29 @@ on:
       AWS_SSH_KEY:
         required: true
 
+permissions:
+  issues: write
+
 jobs:
   e2e-test:
     runs-on: linux-amd64-cpu4
-    if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     strategy:
+      fail-fast: false
       matrix:
-        label: [default, legacy, dra, kernel, rpm-rocky, rpm-al2023, rpm-fedora]
+        label:
+          - legacy
+          - dra
+          - kernel
+          - ctk-git
+          - k8s-git
+          - k8s-kind-git
+          - k8s-latest
+          - "cluster && gpu && !minimal && !ha && !dedicated"
+          - "cluster && dedicated"
+          - "cluster && ha"
+          - rpm-rocky
+          - rpm-al2023
+          - rpm-fedora
     name: E2E Test (${{ matrix.label }})
 
     steps:
@@ -59,10 +75,7 @@ jobs:
         echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
         chmod 600 "$e2e_ssh_key"
         export E2E_SSH_KEY="$e2e_ssh_key"
-        EXTRA_ARGS=""
-        if [ "${{ matrix.label }}" = "default" ]; then
-          EXTRA_ARGS="--json-report ginkgo.json"
-        fi
+        EXTRA_ARGS="--json-report ginkgo.json"
         # RPM suites run both single-node and cluster tests (~60min total);
         # increase timeout from the 1h default to avoid cleanup timeouts.
         case "${{ matrix.label }}" in
@@ -71,9 +84,10 @@ jobs:
         make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}' $EXTRA_ARGS"
 
     - name: Archive Ginkgo logs
+      if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ginkgo-logs-${{ matrix.label }}
+        name: ginkgo-full-logs-${{ strategy.job-index }}
         path: ginkgo.json
         retention-days: 15
 
@@ -113,7 +127,6 @@ jobs:
 
   integration-test:
     runs-on: linux-amd64-cpu4
-    if: ${{ github.event.workflow_run.conclusion == 'success' }} && ${{ github.event.workflow_run.event == 'push' }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
@@ -124,3 +137,44 @@ jobs:
         aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws_ssh_key: ${{ secrets.AWS_SSH_KEY }}
         holodeck_config: "tests/data/test_aws.yml"
+
+  create-issue:
+    runs-on: ubuntu-latest
+    needs: [e2e-test, e2e-test-arm64, integration-test]
+    if: failure()
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Create or update failure issue
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        SHA_SHORT="${GITHUB_SHA:0:8}"
+        TITLE="E2E failure on ${SHA_SHORT}"
+        BODY=$(cat <<EOF
+        ## E2E Post-merge Failure
+
+        **Commit:** ${GITHUB_SHA}
+        **Actor:** ${GITHUB_ACTOR}
+        **Branch:** ${GITHUB_REF_NAME}
+        **Run:** ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+        Check the workflow run for details on which test(s) failed.
+        EOF
+        )
+
+        # Check for existing open issue
+        EXISTING=$(gh issue list --label e2e-failure --label automated --state open --json number --jq '.[0].number // empty')
+
+        if [ -n "$EXISTING" ]; then
+          echo "Adding comment to existing issue #${EXISTING}"
+          gh issue comment "$EXISTING" --body "$BODY"
+        else
+          echo "Creating new issue"
+          gh issue create \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --label "e2e-failure" \
+            --label "automated"
+        fi
