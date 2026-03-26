@@ -339,7 +339,7 @@ func (p *Provider) deleteSecurityGroup(sgID, label string) error {
 	}
 
 	// Verify deletion
-	time.Sleep(verificationDelay)
+	p.sleep(verificationDelay)
 	if p.securityGroupExists(sgID) {
 		return fmt.Errorf("security group %s (%s) still exists after deletion", sgID, label)
 	}
@@ -430,7 +430,7 @@ func (p *Provider) deleteNATGateway(cache *AWS) error {
 	// NAT Gateway deletion is async — wait for deleted state before releasing EIP
 	p.log.Info("Waiting for NAT Gateway %s to reach deleted state", cache.NatGatewayid)
 	for i := 0; i < 36; i++ { // 36 × 5s = 3 minutes max
-		time.Sleep(5 * time.Second)
+		p.sleep(5 * time.Second)
 		dCtx, dCancel := context.WithTimeout(context.Background(), apiCallTimeout)
 		out, err := p.ec2.DescribeNatGateways(dCtx, &ec2.DescribeNatGatewaysInput{
 			NatGatewayIds: []string{cache.NatGatewayid},
@@ -560,7 +560,7 @@ func (p *Provider) deleteSubnet(cache *AWS) error {
 	}
 
 	// Verify deletion
-	time.Sleep(verificationDelay)
+	p.sleep(verificationDelay)
 	if p.subnetExists(cache.Subnetid) {
 		return fmt.Errorf("subnet %s still exists after deletion", cache.Subnetid)
 	}
@@ -639,7 +639,7 @@ func (p *Provider) deleteInternetGateway(cache *AWS) error {
 		}
 
 		// Wait a bit after detachment
-		time.Sleep(verificationDelay)
+		p.sleep(verificationDelay)
 	}
 
 	// Step 2: Delete Internet Gateway
@@ -674,7 +674,7 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 	}
 
 	// Wait a bit before attempting VPC deletion to ensure dependencies are cleared
-	time.Sleep(verificationDelay * 2)
+	p.sleep(verificationDelay * 2)
 
 	err := p.retryWithBackoff(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
@@ -703,7 +703,7 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 	}
 
 	// Verify deletion
-	time.Sleep(verificationDelay)
+	p.sleep(verificationDelay)
 	if p.vpcExists(cache.Vpcid) {
 		return fmt.Errorf("VPC %s still exists after deletion", cache.Vpcid)
 	}
@@ -760,7 +760,7 @@ func (p *Provider) waitForENIsDrained(vpcID string) error {
 			return fmt.Errorf("timed out waiting for ENIs to drain in VPC %s", vpcID)
 		}
 
-		time.Sleep(eniPollInterval)
+		p.sleep(eniPollInterval)
 	}
 }
 
@@ -829,7 +829,7 @@ func (p *Provider) retryWithBackoff(operation func() error) error {
 		}
 
 		p.log.Info("Operation failed (attempt %d/%d): %v. Retrying in %v...", i+1, maxRetries, err, delay)
-		time.Sleep(delay)
+		p.sleep(delay)
 
 		// Exponential backoff
 		delay *= 2

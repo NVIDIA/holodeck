@@ -19,6 +19,7 @@ package aws
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/ami"
@@ -99,6 +100,7 @@ type Provider struct {
 	elbv2       internalaws.ELBv2Client
 	amiResolver *ami.Resolver
 	cacheFile   string
+	sleep       func(time.Duration)
 
 	*v1alpha1.Environment
 	log *logger.FunLogger
@@ -106,6 +108,14 @@ type Provider struct {
 
 // Option is a functional option for configuring the Provider.
 type Option func(*Provider)
+
+// WithSleep sets a custom sleep function for the Provider.
+// This is used in tests to eliminate real wall-clock delays.
+func WithSleep(fn func(time.Duration)) Option {
+	return func(p *Provider) {
+		p.sleep = fn
+	}
+}
 
 // WithEC2Client sets a custom EC2 client for the Provider.
 // This is primarily used for testing to inject mock clients.
@@ -184,6 +194,7 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string,
 			{Key: aws.String("GitHubRunAttempt"), Value: aws.String(gitHubRunAttempt)},
 		},
 		cacheFile:   cacheFile,
+		sleep:       time.Sleep,
 		Environment: &env,
 		log:         log,
 	}

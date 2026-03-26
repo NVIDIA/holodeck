@@ -67,7 +67,7 @@ var _ = Describe("AWS Provider", func() {
 
 			cacheFile := filepath.Join(tmpDir, "cache.yaml")
 
-			provider, err := New(log, env, cacheFile, WithEC2Client(mockClient))
+			provider, err := New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(provider).NotTo(BeNil())
 			Expect(provider.ec2).To(Equal(mockClient))
@@ -89,7 +89,7 @@ var _ = Describe("AWS Provider", func() {
 
 	Describe("Provider.Name", func() {
 		It("should return the provider name", func() {
-			p := &Provider{}
+			p := &Provider{sleep: noopSleep}
 			Expect(p.Name()).To(Equal("aws"))
 		})
 	})
@@ -152,6 +152,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
+					sleep:       noopSleep,
 				}
 
 				aws, err := p.unmarsalCache()
@@ -196,6 +197,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
+					sleep:       noopSleep,
 				}
 
 				aws, err := p.unmarsalCache()
@@ -230,6 +232,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
+					sleep:       noopSleep,
 				}
 
 				aws, err := p.unmarsalCache()
@@ -248,6 +251,7 @@ status:
 					cacheFile:   "/nonexistent/path/cache.yaml",
 					log:         log,
 					Environment: &env,
+					sleep:       noopSleep,
 				}
 
 				_, err := p.unmarsalCache()
@@ -270,6 +274,7 @@ status:
 					cacheFile:   cacheFile,
 					log:         log,
 					Environment: &env,
+					sleep:       noopSleep,
 				}
 
 				_, err := p.unmarsalCache()
@@ -326,7 +331,7 @@ status:
 				},
 			}
 
-			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -415,7 +420,7 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -457,7 +462,7 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -519,7 +524,7 @@ status:
 				},
 			}
 
-			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -641,7 +646,7 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 
 				mockClient.DescribeImagesFunc = func(ctx context.Context,
@@ -679,7 +684,7 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 
 				mockClient.DescribeImagesFunc = func(ctx context.Context,
@@ -721,7 +726,7 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 
 				mockClient.DescribeImagesFunc = func(ctx context.Context,
@@ -763,7 +768,7 @@ status:
 				},
 			}
 
-			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient))
+			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 		})
 

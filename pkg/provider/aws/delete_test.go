@@ -71,8 +71,10 @@ func TestDeleteRetryBackoff(t *testing.T) {
 	attempts := 0
 	expectedError := fmt.Errorf("test error")
 
+	var sleepCalls []time.Duration
 	provider := &Provider{
-		log: mockLogger(),
+		log:   mockLogger(),
+		sleep: func(d time.Duration) { sleepCalls = append(sleepCalls, d) },
 	}
 
 	err := provider.retryWithBackoff(func() error {
@@ -87,13 +89,22 @@ func TestDeleteRetryBackoff(t *testing.T) {
 	if attempts != maxRetries {
 		t.Errorf("expected %d retry attempts, got %d", maxRetries, attempts)
 	}
+
+	// Verify exponential backoff delays were passed to sleep
+	if len(sleepCalls) != maxRetries-1 {
+		t.Fatalf("expected %d sleep calls, got %d", maxRetries-1, len(sleepCalls))
+	}
+	if sleepCalls[0] != retryDelay {
+		t.Errorf("first sleep should be %v, got %v", retryDelay, sleepCalls[0])
+	}
 }
 
 func TestDeleteRetryBackoffSuccess(t *testing.T) {
 	attempts := 0
 
 	provider := &Provider{
-		log: mockLogger(),
+		log:   mockLogger(),
+		sleep: noopSleep,
 	}
 
 	err := provider.retryWithBackoff(func() error {
@@ -170,7 +181,8 @@ func TestSecurityGroupExists(t *testing.T) {
 				ec2: &MockEC2Client{
 					DescribeSGsFunc: tt.mock,
 				},
-				log: mockLogger(),
+				log:   mockLogger(),
+				sleep: noopSleep,
 			}
 			if got := provider.securityGroupExists(tt.sgId); got != tt.expected {
 				t.Errorf("securityGroupExists(%s) = %v, want %v", tt.sgId, got, tt.expected)
@@ -182,7 +194,7 @@ func TestSecurityGroupExists(t *testing.T) {
 // Test individual delete helpers for new NAT/public resources
 
 func TestDeleteNATGateway_Empty(t *testing.T) {
-	provider := &Provider{log: mockLogger()}
+	provider := &Provider{log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{NatGatewayid: ""}
 	if err := provider.deleteNATGateway(cache); err != nil {
 		t.Fatalf("expected no error for empty NatGatewayid, got: %v", err)
@@ -195,7 +207,7 @@ func TestDeleteNATGateway_AlreadyDeleted(t *testing.T) {
 			return nil, fmt.Errorf("NatGatewayNotFound: nat-gone")
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{NatGatewayid: "nat-gone"}
 	if err := provider.deleteNATGateway(cache); err != nil {
 		t.Fatalf("expected no error for NatGatewayNotFound, got: %v", err)
@@ -221,7 +233,7 @@ func TestDeleteNATGateway_WaitsForDeletedState(t *testing.T) {
 			}, nil
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{NatGatewayid: "nat-123"}
 	if err := provider.deleteNATGateway(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -241,7 +253,7 @@ func TestDeleteNATGateway_EmptyDescribeBreaksLoop(t *testing.T) {
 			return &ec2.DescribeNatGatewaysOutput{}, nil
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{NatGatewayid: "nat-123"}
 	if err := provider.deleteNATGateway(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -249,7 +261,7 @@ func TestDeleteNATGateway_EmptyDescribeBreaksLoop(t *testing.T) {
 }
 
 func TestReleaseElasticIP_Empty(t *testing.T) {
-	provider := &Provider{log: mockLogger()}
+	provider := &Provider{log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{EIPAllocationid: ""}
 	if err := provider.releaseElasticIP(cache); err != nil {
 		t.Fatalf("expected no error for empty EIPAllocationid, got: %v", err)
@@ -264,7 +276,7 @@ func TestReleaseElasticIP_Success(t *testing.T) {
 			return &ec2.ReleaseAddressOutput{}, nil
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{EIPAllocationid: "eipalloc-test-123"}
 	if err := provider.releaseElasticIP(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -280,7 +292,7 @@ func TestReleaseElasticIP_AlreadyReleased(t *testing.T) {
 			return nil, fmt.Errorf("InvalidAllocationID.NotFound")
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{EIPAllocationid: "eipalloc-gone"}
 	if err := provider.releaseElasticIP(cache); err != nil {
 		t.Fatalf("expected no error for already-released EIP, got: %v", err)
@@ -288,7 +300,7 @@ func TestReleaseElasticIP_AlreadyReleased(t *testing.T) {
 }
 
 func TestDeletePublicRouteTable_Empty(t *testing.T) {
-	provider := &Provider{log: mockLogger()}
+	provider := &Provider{log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{PublicRouteTable: ""}
 	if err := provider.deletePublicRouteTable(cache); err != nil {
 		t.Fatalf("expected no error for empty PublicRouteTable, got: %v", err)
@@ -303,7 +315,7 @@ func TestDeletePublicRouteTable_Success(t *testing.T) {
 			return &ec2.DeleteRouteTableOutput{}, nil
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{PublicRouteTable: "rtb-public-123"}
 	if err := provider.deletePublicRouteTable(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -314,7 +326,7 @@ func TestDeletePublicRouteTable_Success(t *testing.T) {
 }
 
 func TestDeletePublicSubnet_Empty(t *testing.T) {
-	provider := &Provider{log: mockLogger()}
+	provider := &Provider{log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{PublicSubnetid: ""}
 	if err := provider.deletePublicSubnet(cache); err != nil {
 		t.Fatalf("expected no error for empty PublicSubnetid, got: %v", err)
@@ -329,7 +341,7 @@ func TestDeletePublicSubnet_Success(t *testing.T) {
 			return &ec2.DeleteSubnetOutput{}, nil
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{PublicSubnetid: "subnet-public-123"}
 	if err := provider.deletePublicSubnet(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -342,7 +354,7 @@ func TestDeletePublicSubnet_Success(t *testing.T) {
 // Tests for dual security group cleanup
 
 func TestDeleteSecurityGroup_EmptyID(t *testing.T) {
-	provider := &Provider{log: mockLogger()}
+	provider := &Provider{log: mockLogger(), sleep: noopSleep}
 	if err := provider.deleteSecurityGroup("", "worker"); err != nil {
 		t.Fatalf("expected no error for empty SG ID, got: %v", err)
 	}
@@ -357,7 +369,7 @@ func TestDeleteSecurityGroup_AlreadyDeleted(t *testing.T) {
 			return nil, fmt.Errorf("InvalidGroup.NotFound")
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	if err := provider.deleteSecurityGroup("sg-gone", "control-plane"); err != nil {
 		t.Fatalf("expected no error for InvalidGroup.NotFound, got: %v", err)
 	}
@@ -374,7 +386,7 @@ func TestDeleteSecurityGroup_Success(t *testing.T) {
 			return nil, fmt.Errorf("InvalidGroup.NotFound")
 		},
 	}
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 	if err := provider.deleteSecurityGroup("sg-cp-123", "control-plane"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -401,6 +413,7 @@ func TestDeleteSecurityGroups_DualSG_DeleteOrder(t *testing.T) {
 		ec2:         mock,
 		log:         mockLogger(),
 		Environment: env,
+		sleep:       noopSleep,
 	}
 	cache := &AWS{
 		SecurityGroupid:       "sg-shared",
@@ -445,6 +458,7 @@ func TestDeleteSecurityGroups_SingleNode_EmptyCPAndWorker(t *testing.T) {
 		ec2:         mock,
 		log:         mockLogger(),
 		Environment: env,
+		sleep:       noopSleep,
 	}
 	cache := &AWS{
 		SecurityGroupid:       "sg-shared",
@@ -469,6 +483,7 @@ func TestDeleteSecurityGroups_AllEmpty(t *testing.T) {
 	provider := &Provider{
 		log:         mockLogger(),
 		Environment: env,
+		sleep:       noopSleep,
 	}
 	cache := &AWS{}
 
@@ -496,6 +511,7 @@ func TestDeleteSecurityGroups_SharedSameAsCP(t *testing.T) {
 		ec2:         mock,
 		log:         mockLogger(),
 		Environment: env,
+		sleep:       noopSleep,
 	}
 
 	cache := &AWS{
@@ -562,7 +578,7 @@ func TestRevokeSecurityGroupRules_RevokesIngressOnly(t *testing.T) {
 		return &ec2.RevokeSecurityGroupEgressOutput{}, nil
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.revokeSecurityGroupRules("sg-worker")
 	if err != nil {
@@ -612,7 +628,7 @@ func TestRevokeSecurityGroupRules_SkipsEmptyRules(t *testing.T) {
 		return &ec2.RevokeSecurityGroupEgressOutput{}, nil
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.revokeSecurityGroupRules("sg-empty")
 	if err != nil {
@@ -629,7 +645,7 @@ func TestRevokeSecurityGroupRules_SkipsEmptyRules(t *testing.T) {
 
 func TestRevokeSecurityGroupRules_SkipsEmptyID(t *testing.T) {
 	mock := NewMockEC2Client()
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.revokeSecurityGroupRules("")
 	if err != nil {
@@ -644,7 +660,7 @@ func TestRevokeSecurityGroupRules_DescribeError(t *testing.T) {
 		return nil, fmt.Errorf("InvalidGroup.NotFound")
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	// NotFound is not an error — SG is already gone
 	err := provider.revokeSecurityGroupRules("sg-gone")
@@ -662,7 +678,7 @@ func TestWaitForENIsDrained_NoENIs(t *testing.T) {
 		}, nil
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("vpc-123")
 	if err != nil {
@@ -672,7 +688,7 @@ func TestWaitForENIsDrained_NoENIs(t *testing.T) {
 
 func TestWaitForENIsDrained_SkipsEmptyVPC(t *testing.T) {
 	mock := NewMockEC2Client()
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("")
 	if err != nil {
@@ -706,7 +722,7 @@ func TestWaitForENIsDrained_ENIsDrainOnSecondPoll(t *testing.T) {
 		}, nil
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("vpc-123")
 	if err != nil {
@@ -732,7 +748,7 @@ func TestWaitForENIsDrained_AvailableENIsIgnored(t *testing.T) {
 		}, nil
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger()}
+	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("vpc-123")
 	if err != nil {
