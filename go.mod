@@ -3,7 +3,7 @@ module github.com/NVIDIA/holodeck
 go 1.25.0
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.41.4
+	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.12
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.296.0
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.9
