@@ -94,7 +94,7 @@ Examples:
 
   # Use a custom cache directory
   holodeck --cachepath /path/to/cache create -f env.yaml`
-	c.Version = "0.2.18"
+	c.Version = "0.3.0"
 	c.EnableBashCompletion = true
 
 	// Setup the flags for this command
