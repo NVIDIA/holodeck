@@ -300,7 +300,7 @@ scale.
 |------|----------|--------|---------|
 | 22 | TCP | Caller public IP | SSH access |
 | 10250 | TCP | CP SG | kubelet (from control-plane only) |
-| 30000-32767 | TCP/UDP | 0.0.0.0/0 | NodePort services |
+| 30000-32767 | TCP | 0.0.0.0/0 | NodePort services |
 | 4789 | UDP | CP SG + Worker SG | Calico VXLAN |
 | 179 | TCP | CP SG + Worker SG | Calico BGP |
 | 5473 | TCP | CP SG + Worker SG | Calico Typha |
