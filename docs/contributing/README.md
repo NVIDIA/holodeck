@@ -124,10 +124,9 @@ Each job takes roughly 20 minutes, giving fast feedback before merge.
 
 **Full tier (post-merge)** — `.github/workflows/e2e.yaml`
 
-Runs only when a commit lands on `main`
-(`github.ref == 'refs/heads/main'`). Covers 13 label filters plus an
-arm64 job and an integration-test job that exercises holodeck as a
-GitHub Action.
+Runs only when a commit lands on `main` or a `release-*` branch.
+Covers 13 label filters plus a separate arm64 job and an
+integration-test job that exercises holodeck as a GitHub Action.
 
 | Label filter | What it covers |
 |---|---|
@@ -144,7 +143,10 @@ GitHub Action.
 | `rpm-rocky` | Rocky Linux 9 — multiple container runtimes |
 | `rpm-al2023` | Amazon Linux 2023 — multiple container runtimes |
 | `rpm-fedora` | Fedora 42 — multiple container runtimes |
-| `arm64` | ARM64 GPU instance (g5g) — run separately |
+
+The `arm64` job is a separate workflow job (not a matrix entry) that only
+runs on `main`. It uses `--label-filter='arm64'` — a test must carry
+`Label("arm64")` to be selected.
 
 ### Label Taxonomy
 
@@ -246,8 +248,8 @@ export AWS_SECRET_ACCESS_KEY=<your-secret>
 export E2E_SSH_KEY=<path-to-ssh-private-key>
 ```
 
-See [Memory: no push without local E2E validation](../../.claude/memory/) for
-the project policy on validating E2E tests before opening a PR.
+> **Important:** Always validate E2E tests locally before pushing. CI E2E
+> runs provision real GPU instances on AWS, and unnecessary runs are expensive.
 
 ## Documentation
 
