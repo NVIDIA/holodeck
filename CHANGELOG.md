@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v0.3.0] - 2026-03-30
+## [v0.3.0] - Unreleased
 
 ### Features
 
@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 A complete overhaul of multi-node cluster networking for production workloads:
 
 - Add cluster networking cache constants and struct fields (#720, @ArangoGutierrez)
-- Add public subnet and NAT gateway for cluster mode (#723, @ArangoGutierrez)
+- Add public subnet for cluster mode (#723, @ArangoGutierrez)
 - Add Transport abstraction for SSH connections (#724, @ArangoGutierrez)
 - Separate control-plane and worker security groups (#725, @ArangoGutierrez)
 - Cleanup dual security groups on cluster delete (#726, @ArangoGutierrez)
