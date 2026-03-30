@@ -24,6 +24,8 @@ This section is for in-depth guides and tutorials related to Holodeck.
     Rocky Linux 9 and Amazon Linux 2023, including RPM-specific considerations.
 - [Custom Templates](custom-templates.md): Run user-provided scripts at
     specific provisioning phases with inline, file, or URL sources.
+- [GitHub Action](github-action.md): Use holodeck as a GitHub Action to
+    provision GPU test environments in CI workflows.
 
 ## Contributing
 
