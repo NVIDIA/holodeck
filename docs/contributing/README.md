@@ -193,11 +193,11 @@ test is skipped by any future smoke filter that might otherwise match it.
 
 1. **Single-node test** — add an `Entry(...)` to the `DescribeTable` in
    `tests/aws_test.go`.
-2. **Cluster test** — add an `Entry(...)` to `tests/aws_cluster_test.go`.
-3. Create the corresponding fixture file under `tests/data/`.
-4. Assign Ginkgo labels with `Label("label1", "label2", ...)` as the last
+1. **Cluster test** — add an `Entry(...)` to `tests/aws_cluster_test.go`.
+1. Create the corresponding fixture file under `tests/data/`.
+1. Assign Ginkgo labels with `Label("label1", "label2", ...)` as the last
    argument of the `Entry`.
-5. If the test is an edge case, platform-specific variant, or is expensive
+1. If the test is an edge case, platform-specific variant, or is expensive
    (> 30 min), add `"post-merge"` to its label list so it runs only in the
    full tier.
 
