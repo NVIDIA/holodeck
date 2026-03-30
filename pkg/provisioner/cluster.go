@@ -514,7 +514,7 @@ func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo)
 		fmt.Fprintf(&script, "echo 'Configuring control-plane node with IP %s...'\n", node.PrivateIP)
 
 		// Get the actual node name from private IP
-		fmt.Fprintf(&script, "CP_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep '%s' | awk '{print $1}')\n", node.PrivateIP)
+		fmt.Fprintf(&script, "CP_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep -w '%s' | awk '{print $1}')\n", node.PrivateIP)
 		script.WriteString("if [ -n \"$CP_NODE\" ]; then\n")
 
 		// Apply control-plane labels
@@ -547,7 +547,7 @@ func (cp *ClusterProvisioner) configureNodes(firstCP NodeInfo, nodes []NodeInfo)
 		fmt.Fprintf(&script, "echo 'Configuring worker node with IP %s...'\n", node.PrivateIP)
 
 		// Get the actual node name from private IP
-		fmt.Fprintf(&script, "WORKER_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep '%s' | awk '{print $1}')\n", node.PrivateIP)
+		fmt.Fprintf(&script, "WORKER_NODE=$(sudo -E kubectl get nodes -o wide --no-headers | grep -w '%s' | awk '{print $1}')\n", node.PrivateIP)
 		script.WriteString("if [ -n \"$WORKER_NODE\" ]; then\n")
 
 		// Apply worker role label
