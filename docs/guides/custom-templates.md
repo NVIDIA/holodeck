@@ -7,7 +7,7 @@ security policies without modifying Holodeck itself.
 
 ## Source Types
 
-Each custom template must specify exactly one source:
+Each custom template must specify **exactly one** source:
 
 | Source   | Description                                    | Field    |
 |----------|------------------------------------------------|----------|
@@ -15,22 +15,39 @@ Each custom template must specify exactly one source:
 | File     | Path to a local script file                    | `file`   |
 | URL      | HTTPS URL to fetch the script from             | `url`    |
 
+Specifying zero sources or more than one source is a validation error
+that is caught before provisioning starts.
+
 ## Execution Phases
 
 Custom templates execute at one of five phases during provisioning:
 
-| Phase             | When it runs                                 |
-|-------------------|----------------------------------------------|
-| `pre-install`     | Before any Holodeck components (kernel, etc.) |
-| `post-runtime`    | After container runtime installation          |
-| `post-toolkit`    | After NVIDIA Container Toolkit installation   |
-| `post-kubernetes` | After Kubernetes is ready                     |
-| `post-install`    | After all components (default)                |
+| Phase             | When it runs                                  | Typical use case                         |
+|-------------------|-----------------------------------------------|------------------------------------------|
+| `pre-install`     | Before any Holodeck components (kernel, etc.) | System prerequisites, package repos      |
+| `post-runtime`    | After container runtime installation          | Runtime tuning, registry mirrors         |
+| `post-toolkit`    | After NVIDIA Container Toolkit installation   | CDI configuration, GPU validation        |
+| `post-kubernetes` | After Kubernetes is ready                     | Workload deployment, cluster config      |
+| `post-install`    | After all components (default)                | End-to-end validation, smoke tests       |
 
 If no phase is specified, the template defaults to `post-install`.
 
 Multiple templates can share the same phase and execute in the
 order they appear in the YAML.
+
+## Field Reference
+
+| Field             | Type              | Required | Default        | Description                                      |
+|-------------------|-------------------|----------|----------------|--------------------------------------------------|
+| `name`            | string            | yes      | -              | Human-readable identifier; must be unique        |
+| `phase`           | string            | no       | `post-install` | Execution phase (see table above)                |
+| `inline`          | string            | one of   | -              | Script content embedded in YAML                  |
+| `file`            | string            | one of   | -              | Path to a local script file                      |
+| `url`             | string            | one of   | -              | HTTPS URL to fetch the script from               |
+| `checksum`        | string            | no       | -              | SHA256 checksum for `file` or `url` sources      |
+| `timeout`         | int               | no       | `600`          | Maximum execution time in seconds                |
+| `continueOnError` | bool              | no       | `false`        | Continue provisioning if the script fails        |
+| `env`             | map[string]string | no       | -              | Environment variables exported before the script |
 
 ## Configuration Options
 
@@ -58,7 +75,8 @@ customTemplates:
 ```
 
 Relative paths are resolved from the directory containing the
-Holodeck configuration file. Absolute paths are used as-is.
+Holodeck configuration file. Absolute paths are used as-is. Path
+traversal (`..`) components are rejected during validation.
 
 ### URL Source
 
@@ -70,7 +88,10 @@ customTemplates:
     checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 ```
 
-HTTPS is strongly recommended for URL sources.
+URLs **must** use the `https://` scheme. HTTP and other schemes are
+rejected by the validator. Always provide a `checksum` for URL sources
+to verify script integrity before execution. Scripts larger than 10 MB
+are rejected.
 
 ## Examples
 
@@ -131,6 +152,65 @@ customTemplates:
     continueOnError: true
 ```
 
+### Complete Environment with Custom Templates
+
+The following is a full environment spec that installs the NVIDIA driver,
+containerd, the Container Toolkit, and Kubernetes — then runs custom
+scripts at three phases:
+
+```yaml
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: gpu-cluster-with-customizations
+spec:
+  provider: aws
+  auth:
+    keyName: my-key-pair
+    publicKey: ~/.ssh/id_rsa.pub
+    privateKey: ~/.ssh/id_rsa
+  instance:
+    type: g4dn.xlarge
+    region: us-east-1
+    os: ubuntu-22.04
+  nvidiaDriver:
+    install: true
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  kubernetes:
+    install: true
+  customTemplates:
+    # Phase 1: pre-install — run before any component is installed
+    - name: configure-apt-proxy
+      phase: pre-install
+      inline: |
+        #!/bin/bash
+        echo 'Acquire::http::Proxy "http://proxy.example.com:3128";' \
+          > /etc/apt/apt.conf.d/99proxy
+
+    # Phase 2: post-toolkit — run after CTK, before Kubernetes
+    - name: configure-cdi
+      phase: post-toolkit
+      inline: |
+        #!/bin/bash
+        nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+        nvidia-ctk runtime configure --runtime=containerd --cdi.enabled
+
+    # Phase 3: post-kubernetes — deploy workloads once cluster is ready
+    - name: deploy-gpu-operator
+      phase: post-kubernetes
+      url: https://scripts.example.com/deploy-gpu-operator.sh
+      checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      env:
+        OPERATOR_VERSION: v24.9.0
+        NAMESPACE: gpu-operator
+      timeout: 600
+      continueOnError: false
+```
+
 ## Security Considerations
 
 - **Checksum verification**: Use `checksum` with URL sources to
@@ -165,6 +245,18 @@ customTemplates:
     start with letter or underscore, contain only letters, digits,
     and underscores.
 - **Fix:** Rename the variable (e.g., `my-var` -> `MY_VAR`).
+
+### Validation error "duplicate name"
+
+- **Cause:** Two templates in `customTemplates` share the same `name` value.
+    Names must be unique across all templates, regardless of phase.
+- **Fix:** Give each template a distinct `name`.
+
+### Validation error "exactly one source must be specified"
+
+- **Cause:** A template has either no source fields (`inline`, `file`, `url`)
+    or more than one set simultaneously.
+- **Fix:** Set exactly one of `inline`, `file`, or `url`.
 
 ### Dryrun passes but template fails at runtime
 
