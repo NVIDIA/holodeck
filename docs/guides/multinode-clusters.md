@@ -218,100 +218,152 @@ Example files are available in `examples/`:
 
 ## Network Architecture
 
-Cluster mode creates a production-grade VPC topology with public and private
-subnets, a NAT gateway for outbound internet, and an NLB for API server access.
+Cluster mode creates a VPC (10.0.0.0/16) with two subnets. All cluster nodes —
+both control-plane and workers — are placed in the **public subnet** with
+public IP addresses for direct internet access via the Internet Gateway (IGW).
+The private subnet (10.0.0.0/24) is created and reserved for future use (e.g.,
+SSM VPC endpoints).
+
+NAT Gateway is intentionally **not** provisioned by default. Each cluster node
+gets a public IP and reaches the internet directly through the IGW. This avoids
+consuming Elastic IP quota (AWS default: 5 per region), which can cause failures
+when multiple holodeck environments run concurrently in CI.
 
 ```text
-┌──────────────────────────────── VPC 10.0.0.0/16 ────────────────────────────────┐
-│                                                                                  │
-│  ┌─── Public Subnet 10.0.1.0/24 ───┐    ┌─── Private Subnet 10.0.0.0/24 ───┐  │
-│  │                                   │    │                                   │  │
-│  │  NAT Gateway ──── Elastic IP      │    │  CP nodes (no public IP)          │  │
-│  │  NLB ─────────── :6443            │    │  Worker nodes (no public IP)      │  │
-│  │                                   │    │                                   │  │
-│  │  Route: 0.0.0.0/0 → IGW          │    │  Route: 0.0.0.0/0 → NAT GW       │  │
-│  └───────────────────────────────────┘    └───────────────────────────────────┘  │
-│                                                                                  │
-│  Internet Gateway                                                                │
-└──────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────── VPC 10.0.0.0/16 ───────────────────────────────┐
+│                                                                                │
+│  ┌──── Public Subnet 10.0.1.0/24 ────────────────────────────────────────┐   │
+│  │                                                                         │   │
+│  │  CP node(s)     public IP ─── SSH / kubectl                            │   │
+│  │  Worker node(s) public IP ─── SSH                                      │   │
+│  │  NLB (HA only)  public DNS ── :6443 → CP instances                     │   │
+│  │                                                                         │   │
+│  │  Route: 0.0.0.0/0 → Internet Gateway                                   │   │
+│  └─────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                │
+│  ┌──── Private Subnet 10.0.0.0/24 (reserved, no instances) ──────────────┐   │
+│  └─────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                │
+│  Internet Gateway                                                              │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Key properties:**
 
-- All nodes run in the private subnet with no public IP addresses
-- Outbound internet (for package installs, container pulls) goes through the NAT
-  gateway
-- The Kubernetes API server is exposed via an NLB in the public subnet on port
-  6443
-- SSH access to nodes uses AWS SSM port forwarding (no open SSH port to the
-  internet)
+- All cluster nodes run in the public subnet with public IP addresses
+- Outbound internet access (package installs, image pulls) goes directly through
+  the Internet Gateway — no NAT Gateway is needed
+- In HA mode, the Kubernetes API server is exposed via an internet-facing NLB on
+  port 6443; otherwise holodeck connects directly to the control-plane public IP
+- Holodeck provisions nodes via direct SSH to the public IP; if a node has no
+  public IP (e.g., future private-subnet deployment), holodeck automatically
+  falls back to SSM port-forwarding transport
+- Source/Destination Check is disabled on all network interfaces so Calico VXLAN
+  encapsulation works correctly
 
 ### Single-Node vs Cluster Networking
 
 | Feature | Single-node | Cluster |
 |---------|-------------|---------|
-| Subnets | 1 (public) | 2 (public + private) |
-| Node public IPs | Yes | No |
-| Internet route | IGW direct | NAT gateway |
-| SSH access | Direct SSH | SSM port forwarding |
-| API server | Direct to instance | NLB |
+| Subnets | 1 (public) | 2 (public + private reserved) |
+| Node public IPs | Yes | Yes (public subnet) |
+| Internet route | IGW direct | IGW direct |
+| SSH access | Direct SSH | Direct SSH (SSM fallback for private-IP nodes) |
+| API server | Direct to instance | Direct (single CP) or NLB (HA) |
 | Security groups | 1 shared | CP + Worker (least-privilege) |
 
 ## Security Groups
 
 Cluster mode creates separate security groups for control-plane and worker nodes,
-enforcing least-privilege access.
+enforcing least-privilege access. Security group sources reference other security
+groups by ID rather than CIDR where possible, so rules remain tight as instances
+scale.
 
-### Control-Plane Security Group
+### Control-Plane Security Group (`<name>-cp`)
 
 | Port | Protocol | Source | Purpose |
 |------|----------|--------|---------|
-| 22 | TCP | 0.0.0.0/0 | SSH (via SSM) |
-| 6443 | TCP | NLB subnet CIDR + Worker SG | Kubernetes API |
+| 22 | TCP | Caller public IP | SSH access |
+| 6443 | TCP | Caller IP + 10.0.1.0/24 (NLB subnet) + Worker SG | Kubernetes API |
 | 2379-2380 | TCP | CP SG (self) | etcd peer/client |
-| 10250 | TCP | CP SG (self) | kubelet |
+| 10250 | TCP | CP SG (self) + Worker SG | kubelet |
 | 10259 | TCP | CP SG (self) | kube-scheduler |
 | 10257 | TCP | CP SG (self) | kube-controller-manager |
-| 4789 | UDP | CP SG + Worker SG | Calico VXLAN |
-| 4240 | TCP | CP SG + Worker SG | Calico Typha |
+| 4789 | UDP | CP SG (self) + Worker SG | Calico VXLAN |
+| 179 | TCP | CP SG (self) + Worker SG | Calico BGP |
+| 5473 | TCP | CP SG (self) + Worker SG | Calico Typha |
+| ICMP | - | 10.0.0.0/16 (VPC) | Ping / path MTU discovery |
 
-### Worker Security Group
+### Worker Security Group (`<name>-worker`)
 
 | Port | Protocol | Source | Purpose |
 |------|----------|--------|---------|
-| 22 | TCP | 0.0.0.0/0 | SSH (via SSM) |
+| 22 | TCP | Caller public IP | SSH access |
 | 10250 | TCP | CP SG | kubelet (from control-plane only) |
-| 30000-32767 | TCP | 0.0.0.0/0 | NodePort services |
+| 30000-32767 | TCP/UDP | 0.0.0.0/0 | NodePort services |
 | 4789 | UDP | CP SG + Worker SG | Calico VXLAN |
-| 4240 | TCP | CP SG + Worker SG | Calico Typha |
+| 179 | TCP | CP SG + Worker SG | Calico BGP |
+| 5473 | TCP | CP SG + Worker SG | Calico Typha |
+| ICMP | - | 10.0.0.0/16 (VPC) | Ping / path MTU discovery |
 
-## SSH Access via SSM
+The control-plane security group is created first. After the worker security
+group is created, cross-references are added back to the CP group for ports that
+workers must reach (K8s API, kubelet, Calico overlay ports).
 
-Since cluster nodes have no public IPs, Holodeck uses AWS Systems Manager (SSM)
-port forwarding for SSH access during provisioning. This is handled automatically.
+## SSH Transport
 
-To manually SSH to a node after creation:
+Holodeck provisions cluster nodes over SSH. The transport used depends on whether
+the node has a public IP:
+
+- **Direct SSH** (default for public-subnet nodes): holodeck dials the node's
+  public IP on port 22 directly.
+- **SSM port-forwarding** (automatic fallback for private-subnet nodes): if a
+  node has no public IP but has an EC2 instance ID, holodeck uses
+  `aws ssm start-session` with `AWS-StartPortForwardingSession` to tunnel SSH
+  through AWS Systems Manager. No bastion host or open inbound SSH port is
+  required.
+
+Since all nodes currently use the public subnet, direct SSH is the normal path.
+The SSM fallback is wired and ready for deployments that move nodes to private
+subnets.
+
+### Manual SSM Access (for private-subnet nodes)
 
 ```bash
-# Get node details
-holodeck status <id>
-
-# SSH via SSM port forwarding
+# Start an SSM port-forwarding session to the node's SSH port
 aws ssm start-session \
   --target <instance-id> \
+  --region <region> \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["22"],"localPortNumber":["2222"]}' &
 
+# Connect through the local tunnel
 ssh -i key.pem -p 2222 ubuntu@localhost
 ```
 
-**Prerequisites for SSM:**
+**Prerequisites for SSM transport:**
 
-- The EC2 instances must have an IAM instance profile with the
+- EC2 instances need an IAM instance profile with the
   `AmazonSSMManagedInstanceCore` policy
 - The SSM agent must be installed on the AMI (pre-installed on Ubuntu 22.04+,
   Amazon Linux 2023, and Rocky Linux 9)
-- The AWS CLI v2 and Session Manager plugin must be installed on the client
+- AWS CLI v2 and the Session Manager plugin must be installed on the client
+
+## Network Load Balancer (HA Mode)
+
+When `highAvailability.enabled: true`, holodeck creates an internet-facing
+Network Load Balancer in the public subnet:
+
+- **Scheme**: internet-facing (IPv4)
+- **Listener**: TCP port 6443
+- **Target group**: all control-plane instances, port 6443 (TCP health check,
+  10-second interval, 2-of-2 threshold)
+- **Name pattern**: `<environment-name>-nlb` (truncated to 32 characters)
+- **Endpoint**: `Status.Cluster.LoadBalancerDNS` in the environment status
+
+kubeadm is configured with the NLB DNS name as the control-plane endpoint so
+that worker joins and client kubeconfigs always use the load-balanced address,
+surviving individual control-plane node restarts.
 
 ## Calico Networking
 
@@ -324,9 +376,9 @@ ssh -i key.pem -p 2222 ubuntu@localhost
 ### Nodes not joining
 
 1. Check security group rules allow inter-node communication (see tables above)
-1. Verify the NAT gateway is active — nodes need outbound internet to pull
-   container images and join the cluster
-1. Check that the NLB health check on port 6443 is healthy
+1. Verify internet connectivity — nodes need outbound access to pull container
+   images and reach the package repositories
+1. If HA is enabled, check that the NLB health check on port 6443 is healthy
 
 ### SSH to debug
 
@@ -349,12 +401,13 @@ sudo journalctl -u kubelet -f
 sudo kubeadm token list
 ```
 
-### NAT gateway issues
+### Nodes cannot reach the internet
 
-If nodes cannot pull images or reach the internet:
+Cluster nodes use the public subnet with direct IGW access. If they cannot pull
+images or reach package repositories:
 
 ```bash
-# Check the NAT gateway state in AWS console
-# Verify the private route table has 0.0.0.0/0 → NAT GW
-# Check that the NAT gateway's Elastic IP is allocated
+# Confirm the public route table has 0.0.0.0/0 → Internet Gateway
+# Verify the node's public IP is assigned (visible in holodeck status)
+# Check the security group allows outbound traffic (default AWS SGs allow all egress)
 ```
