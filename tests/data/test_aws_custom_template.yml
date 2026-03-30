@@ -1,0 +1,37 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: holodeck-custom-template-e2e
+  description: "E2E test for custom templates feature"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /home/runner/.cache/key
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    image:
+      architecture: amd64
+  containerRuntime:
+    install: true
+    name: docker
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm
+  customTemplates:
+    - name: post-install-validation
+      phase: post-install
+      inline: |
+        #!/bin/bash
+        set -euo pipefail
+        echo "Custom template E2E validation"
+        # Verify the environment is functional after provisioning
+        nvidia-smi > /dev/null 2>&1 || { echo "FAIL: nvidia-smi not available"; exit 1; }
+        docker info > /dev/null 2>&1 || { echo "FAIL: docker not available"; exit 1; }
+        kubectl get nodes > /dev/null 2>&1 || { echo "FAIL: kubectl not available"; exit 1; }
+        echo "Custom template validation passed"

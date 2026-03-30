@@ -260,6 +260,11 @@ var _ = DescribeTable("AWS Environment E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_fedora42_crio.yml"),
 		description: "Tests Fedora 42 with CRI-O runtime",
 	}, Label("rpm", "rpm-fedora", "post-merge")),
+	Entry("Custom Template Test", testConfig{
+		name:        "Custom Template Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_custom_template.yml"),
+		description: "Tests custom template execution during provisioning",
+	}, Label("custom-template", "post-merge")),
 )
 
 // Note: To run tests in parallel, use: ginkgo -p or --procs=N

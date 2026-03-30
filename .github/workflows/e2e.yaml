@@ -47,6 +47,7 @@ jobs:
           - rpm-rocky
           - rpm-al2023
           - rpm-fedora
+          - custom-template
     name: E2E Test (${{ matrix.label }})
 
     steps:
