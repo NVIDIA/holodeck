@@ -83,7 +83,7 @@ verify:
 
 COVERAGE_FILE := coverage.out
 test:
-	go test -coverprofile=$(COVERAGE_FILE) ./pkg/...
+	go test -coverprofile=$(COVERAGE_FILE) ./pkg/... ./cmd/... ./api/... ./internal/...
 
 coverage: test
 	go tool cover -func=$(COVERAGE_FILE)
