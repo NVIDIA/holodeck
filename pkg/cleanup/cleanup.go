@@ -29,6 +29,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 
 	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -60,8 +61,9 @@ func safeString(s *string) string {
 
 // Cleaner handles cleanup of AWS resources
 type Cleaner struct {
-	ec2 internalaws.EC2Client
-	log *logger.FunLogger
+	ec2   internalaws.EC2Client
+	elbv2 internalaws.ELBv2Client
+	log   *logger.FunLogger
 }
 
 // CleanerOption is a functional option for configuring the Cleaner.
@@ -72,6 +74,14 @@ type CleanerOption func(*Cleaner)
 func WithEC2Client(client internalaws.EC2Client) CleanerOption {
 	return func(c *Cleaner) {
 		c.ec2 = client
+	}
+}
+
+// WithELBv2Client sets a custom ELBv2 client for the Cleaner.
+// This is primarily used for testing to inject mock clients.
+func WithELBv2Client(client internalaws.ELBv2Client) CleanerOption {
+	return func(c *Cleaner) {
+		c.elbv2 = client
 	}
 }
 
@@ -89,8 +99,8 @@ func New(log *logger.FunLogger, region string,
 		opt(c)
 	}
 
-	// If no EC2 client was injected, create the real one
-	if c.ec2 == nil {
+	// If no clients were injected, create real ones from shared config
+	if c.ec2 == nil || c.elbv2 == nil {
 		// Use Background here because New is a top-level initializer
 		// without caller-provided context.
 		cfg, err := config.LoadDefaultConfig(context.Background(),
@@ -98,7 +108,12 @@ func New(log *logger.FunLogger, region string,
 		if err != nil {
 			return nil, fmt.Errorf("failed to load AWS config: %w", err)
 		}
-		c.ec2 = ec2.NewFromConfig(cfg)
+		if c.ec2 == nil {
+			c.ec2 = ec2.NewFromConfig(cfg)
+		}
+		if c.elbv2 == nil {
+			c.elbv2 = elasticloadbalancingv2.NewFromConfig(cfg)
+		}
 	}
 
 	return c, nil
@@ -238,6 +253,15 @@ func (c *Cleaner) DeleteVPCResources(ctx context.Context, vpcID string) error {
 	// Check for context cancellation before each step
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("cleanup cancelled: %w", err)
+	}
+
+	// Delete load balancers (NLBs/ALBs) — must happen before subnets/IGW/VPC
+	if err := c.deleteLoadBalancers(ctx, vpcID); err != nil {
+		c.log.Warning("Failed to delete load balancers: %v", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cleanup cancelled after load balancer deletion: %w", err)
 	}
 
 	// Delete instances
@@ -618,4 +642,95 @@ func (c *Cleaner) deleteVPC(ctx context.Context, vpcID string) error {
 	}
 
 	return fmt.Errorf("failed to delete VPC %s after %d attempts", vpcID, maxAttempts)
+}
+
+func (c *Cleaner) deleteLoadBalancers(ctx context.Context, vpcID string) error {
+	// Describe all load balancers and filter by VPC
+	describeInput := &elasticloadbalancingv2.DescribeLoadBalancersInput{}
+	result, err := c.elbv2.DescribeLoadBalancers(ctx, describeInput)
+	if err != nil {
+		return fmt.Errorf("failed to describe load balancers: %w", err)
+	}
+
+	var count int
+	for _, lb := range result.LoadBalancers {
+		if lb.VpcId == nil || *lb.VpcId != vpcID {
+			continue
+		}
+
+		lbArn := aws.ToString(lb.LoadBalancerArn)
+		lbName := aws.ToString(lb.LoadBalancerName)
+		c.log.Info("Deleting load balancer %s (%s)", lbName, lbArn)
+
+		// Delete listeners
+		if err := c.deleteLBListeners(ctx, lbArn); err != nil {
+			c.log.Warning("Failed to delete listeners for %s: %v", lbName, err)
+		}
+
+		// Delete target groups
+		if err := c.deleteLBTargetGroups(ctx, lbArn); err != nil {
+			c.log.Warning("Failed to delete target groups for %s: %v", lbName, err)
+		}
+
+		// Delete the load balancer
+		_, err := c.elbv2.DeleteLoadBalancer(ctx, &elasticloadbalancingv2.DeleteLoadBalancerInput{
+			LoadBalancerArn: aws.String(lbArn),
+		})
+		if err != nil {
+			c.log.Warning("Failed to delete load balancer %s: %v", lbName, err)
+			continue
+		}
+		count++
+	}
+
+	if count > 0 {
+		c.log.Info("Deleted %d load balancer(s), waiting for ENIs to detach", count)
+		// NLBs take time to fully decommission and release ENIs.
+		// Wait briefly to allow ENI cleanup before subnet deletion.
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("cancelled waiting for LB decommission: %w", ctx.Err())
+		case <-time.After(30 * time.Second):
+		}
+	}
+
+	return nil
+}
+
+func (c *Cleaner) deleteLBListeners(ctx context.Context, lbArn string) error {
+	result, err := c.elbv2.DescribeListeners(ctx, &elasticloadbalancingv2.DescribeListenersInput{
+		LoadBalancerArn: aws.String(lbArn),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to describe listeners: %w", err)
+	}
+
+	for _, listener := range result.Listeners {
+		_, err := c.elbv2.DeleteListener(ctx, &elasticloadbalancingv2.DeleteListenerInput{
+			ListenerArn: listener.ListenerArn,
+		})
+		if err != nil {
+			c.log.Warning("Failed to delete listener %s: %v", safeString(listener.ListenerArn), err)
+		}
+	}
+	return nil
+}
+
+func (c *Cleaner) deleteLBTargetGroups(ctx context.Context, lbArn string) error {
+	result, err := c.elbv2.DescribeTargetGroups(ctx, &elasticloadbalancingv2.DescribeTargetGroupsInput{
+		LoadBalancerArn: aws.String(lbArn),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to describe target groups: %w", err)
+	}
+
+	for _, tg := range result.TargetGroups {
+		_, err := c.elbv2.DeleteTargetGroup(ctx, &elasticloadbalancingv2.DeleteTargetGroupInput{
+			TargetGroupArn: tg.TargetGroupArn,
+		})
+		if err != nil {
+			c.log.Warning("Failed to delete target group %s: %v", safeString(tg.TargetGroupArn), err)
+		}
+	}
+	return nil
 }
