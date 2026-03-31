@@ -530,6 +530,90 @@ var _ = Describe("Cleanup Package", func() {
 				Expect(deletedSGs).To(ConsistOf("sg-custom"))
 			})
 
+			It("should revoke cross-referencing SG rules before deleting", func() {
+				revokedIngress := []string{}
+				revokedEgress := []string{}
+				deletedSGs := []string{}
+
+				mockEC.DescribeSecurityGroupsFunc = func(ctx context.Context,
+					params *ec2.DescribeSecurityGroupsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+					return &ec2.DescribeSecurityGroupsOutput{
+						SecurityGroups: []types.SecurityGroup{
+							{
+								GroupId:   aws.String("sg-default"),
+								GroupName: aws.String("default"),
+							},
+							{
+								GroupId:   aws.String("sg-cp"),
+								GroupName: aws.String("holodeck-cp"),
+								IpPermissions: []types.IpPermission{
+									{
+										IpProtocol:       aws.String("-1"),
+										UserIdGroupPairs: []types.UserIdGroupPair{{GroupId: aws.String("sg-worker")}},
+									},
+								},
+								IpPermissionsEgress: []types.IpPermission{
+									{
+										IpProtocol: aws.String("-1"),
+										IpRanges:   []types.IpRange{{CidrIp: aws.String("0.0.0.0/0")}},
+									},
+								},
+							},
+							{
+								GroupId:   aws.String("sg-worker"),
+								GroupName: aws.String("holodeck-worker"),
+								IpPermissions: []types.IpPermission{
+									{
+										IpProtocol:       aws.String("-1"),
+										UserIdGroupPairs: []types.UserIdGroupPair{{GroupId: aws.String("sg-cp")}},
+									},
+								},
+								IpPermissionsEgress: []types.IpPermission{
+									{
+										IpProtocol: aws.String("-1"),
+										IpRanges:   []types.IpRange{{CidrIp: aws.String("0.0.0.0/0")}},
+									},
+								},
+							},
+						},
+					}, nil
+				}
+				mockEC.DescribeNetworkInterfacesFunc = func(ctx context.Context,
+					params *ec2.DescribeNetworkInterfacesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+					return &ec2.DescribeNetworkInterfacesOutput{}, nil
+				}
+				mockEC.RevokeSecurityGroupIngressFunc = func(ctx context.Context,
+					params *ec2.RevokeSecurityGroupIngressInput,
+					optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+					revokedIngress = append(revokedIngress, *params.GroupId)
+					return &ec2.RevokeSecurityGroupIngressOutput{}, nil
+				}
+				mockEC.RevokeSecurityGroupEgressFunc = func(ctx context.Context,
+					params *ec2.RevokeSecurityGroupEgressInput,
+					optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+					revokedEgress = append(revokedEgress, *params.GroupId)
+					return &ec2.RevokeSecurityGroupEgressOutput{}, nil
+				}
+				mockEC.DeleteSecurityGroupFunc = func(ctx context.Context,
+					params *ec2.DeleteSecurityGroupInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+					deletedSGs = append(deletedSGs, *params.GroupId)
+					return &ec2.DeleteSecurityGroupOutput{}, nil
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(revokedIngress).To(ConsistOf("sg-cp", "sg-worker"))
+				Expect(revokedEgress).To(ConsistOf("sg-cp", "sg-worker"))
+				Expect(deletedSGs).To(ConsistOf("sg-cp", "sg-worker"))
+			})
+
 			It("should handle VPC deletion failure with retries", func() {
 				deleteAttempts := 0
 				mockEC.DeleteVpcFunc = func(ctx context.Context,

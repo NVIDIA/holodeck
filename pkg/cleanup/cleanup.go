@@ -442,6 +442,35 @@ func (c *Cleaner) deleteSecurityGroups(ctx context.Context, vpcID string) error 
 		}
 	}
 
+	// Revoke all ingress/egress rules to break cross-SG references.
+	// Without this, SGs that reference each other (e.g., CP allows traffic
+	// from Worker and vice versa) cannot be deleted due to DependencyViolation.
+	for _, sg := range nonDefaultSGs {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context cancelled during SG rule revocation: %w", err)
+		}
+
+		if len(sg.IpPermissions) > 0 {
+			_, err := c.ec2.RevokeSecurityGroupIngress(ctx, &ec2.RevokeSecurityGroupIngressInput{
+				GroupId:       sg.GroupId,
+				IpPermissions: sg.IpPermissions,
+			})
+			if err != nil {
+				c.log.Warning("Failed to revoke ingress rules for %s: %v", safeString(sg.GroupId), err)
+			}
+		}
+
+		if len(sg.IpPermissionsEgress) > 0 {
+			_, err := c.ec2.RevokeSecurityGroupEgress(ctx, &ec2.RevokeSecurityGroupEgressInput{
+				GroupId:       sg.GroupId,
+				IpPermissions: sg.IpPermissionsEgress,
+			})
+			if err != nil {
+				c.log.Warning("Failed to revoke egress rules for %s: %v", safeString(sg.GroupId), err)
+			}
+		}
+	}
+
 	// Delete non-default security groups
 	for _, sg := range nonDefaultSGs {
 		deleteInput := &ec2.DeleteSecurityGroupInput{
