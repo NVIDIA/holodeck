@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.2] - 2026-03-31
+
+### Bug Fixes
+
+- **fix: revoke cross-referencing SG rules before deletion in cleanup (#766)** — Security groups that reference each other (e.g., CP SG allows traffic from Worker SG and vice versa) are now cleaned up by revoking all ingress/egress rules before attempting deletion, fixing `DependencyViolation` errors in periodic VPC cleanup.
+
+### CI
+
+- **ci: update periodic cleanup to v0.3.1 (#765)** — Periodic cleanup workflow updated to use v0.3.1 with NLB cleanup support.
+
 ## [v0.3.1] - 2026-03-31
 
 ### Bug Fixes

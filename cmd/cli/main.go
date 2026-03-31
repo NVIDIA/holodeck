@@ -40,7 +40,7 @@ const (
 	// ProgramName is the canonical name of this program
 	ProgramName = "holodeck"
 	// ProgramVersion is the current version of the program
-	ProgramVersion = "0.3.1"
+	ProgramVersion = "0.3.2"
 )
 
 type config struct {
@@ -49,11 +49,10 @@ type config struct {
 	Quiet   bool
 }
 
-func main() {
-	config := config{}
-	log := logger.NewLogger()
+// NewApp creates and configures the CLI application.
+func NewApp(log *logger.FunLogger) *cli.App {
+	cfg := config{}
 
-	// Create the top-level CLI
 	c := cli.NewApp()
 	c.Name = ProgramName
 	c.Usage = "Create and manage test environments"
@@ -105,18 +104,18 @@ Examples:
 			Name:        "quiet",
 			Aliases:     []string{"q"},
 			Usage:       "Suppress non-error output",
-			Destination: &config.Quiet,
+			Destination: &cfg.Quiet,
 		},
 		&cli.BoolFlag{
 			Name:        "verbose",
 			Usage:       "Enable verbose output",
-			Destination: &config.Verbose,
+			Destination: &cfg.Verbose,
 		},
 		&cli.BoolFlag{
 			Name:        "debug",
 			Aliases:     []string{"d"},
 			Usage:       "Enable debug-level logging",
-			Destination: &config.Debug,
+			Destination: &cfg.Debug,
 			EnvVars:     []string{"DEBUG"},
 		},
 	}
@@ -151,6 +150,13 @@ Examples:
 		status.NewCommand(log),
 		update.NewCommand(log),
 	}
+
+	return c
+}
+
+func main() {
+	log := logger.NewLogger()
+	c := NewApp(log)
 
 	// Custom help template
 	c.CustomAppHelpTemplate = `NAME:
