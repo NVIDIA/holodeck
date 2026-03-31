@@ -54,15 +54,16 @@ func (p *Provider) createNLB(cache *ClusterCache) error {
 	}
 	lbName := nlbBaseName + nlbSuffix
 
-	// Use the public subnet for the internet-facing NLB
+	// Use the public subnet for the internal NLB (same subnet as instances)
 	subnetIDs := []string{cache.PublicSubnetid}
 
-	// Create load balancer
+	// Create load balancer — internal scheme avoids hairpin routing issues
+	// where nodes connecting to the NLB's public IP get i/o timeouts
 	createLBInput := &elasticloadbalancingv2.CreateLoadBalancerInput{
 		Name:          aws.String(lbName),
 		Type:          lbType,
 		Subnets:       subnetIDs,
-		Scheme:        elbv2types.LoadBalancerSchemeEnumInternetFacing,
+		Scheme:        elbv2types.LoadBalancerSchemeEnumInternal,
 		IpAddressType: elbv2types.IpAddressTypeIpv4,
 		Tags:          p.convertTagsToELBv2Tags(),
 	}
