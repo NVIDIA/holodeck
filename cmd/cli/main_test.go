@@ -18,11 +18,21 @@ package main
 
 import (
 	"testing"
+
+	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
-func TestVersion(t *testing.T) {
-	expected := "0.3.1"
-	if ProgramVersion != expected {
-		t.Errorf("expected version %q, got %q", expected, ProgramVersion)
+func TestNewApp(t *testing.T) {
+	log := logger.NewLogger()
+	app := NewApp(log)
+
+	if app.Version != "0.3.2" {
+		t.Errorf("expected app version %q, got %q", "0.3.2", app.Version)
+	}
+	if app.Name != "holodeck" {
+		t.Errorf("expected app name %q, got %q", "holodeck", app.Name)
+	}
+	if len(app.Commands) == 0 {
+		t.Error("expected app to have subcommands")
 	}
 }
