@@ -279,12 +279,10 @@ if [[ "$IS_HA" == "true" ]] && [[ "$INIT_ENDPOINT" != "$CONTROL_PLANE_ENDPOINT" 
         sed "s|controlPlaneEndpoint: ${INIT_ESCAPED}:6443|controlPlaneEndpoint: ${CONTROL_PLANE_ENDPOINT}:6443|g" | \
         sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f - || \
         holodeck_log "WARN" "$COMPONENT" "Could not update kubeadm-config, join may need manual endpoint"
-    # Update admin.conf kubeconfig to use the NLB
-    sudo sed -i "s|server: https://${INIT_ESCAPED}:6443|server: https://${CONTROL_PLANE_ENDPOINT}:6443|g" \
-        /etc/kubernetes/admin.conf
-    # Re-copy the updated admin.conf to user kubeconfig
-    sudo cp -f /etc/kubernetes/admin.conf "$HOME/.kube/config"
-    sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+    # NOTE: Do NOT patch admin.conf to use the NLB endpoint.
+    # CP nodes must use their local API server (localhost:6443) to avoid
+    # AWS NLB hairpin routing — NLBs drop traffic when a registered target
+    # connects through the NLB and gets routed back to itself.
 fi
 
 # Label this node as control-plane (keep the taint for multinode)
@@ -371,6 +369,11 @@ holodeck_progress "$COMPONENT" 4 4 "Configuring node"
 
 # Setup kubeconfig for control-plane nodes
 if [[ "$IS_CONTROL_PLANE" == "true" ]]; then
+    # Patch admin.conf to use the local API server instead of the NLB endpoint.
+    # AWS NLBs drop hairpin traffic (target connects through NLB back to itself),
+    # so CP nodes must talk to their own local kube-apiserver.
+    sudo sed -i 's|server: https://.*:6443|server: https://localhost:6443|g' \
+        /etc/kubernetes/admin.conf
     mkdir -p "$HOME/.kube"
     sudo cp -f /etc/kubernetes/admin.conf "$HOME/.kube/config"
     sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
