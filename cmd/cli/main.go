@@ -39,6 +39,8 @@ import (
 const (
 	// ProgramName is the canonical name of this program
 	ProgramName = "holodeck"
+	// ProgramVersion is the current version of the program
+	ProgramVersion = "0.3.1"
 )
 
 type config struct {
@@ -94,7 +96,7 @@ Examples:
 
   # Use a custom cache directory
   holodeck --cachepath /path/to/cache create -f env.yaml`
-	c.Version = "0.3.0"
+	c.Version = ProgramVersion
 	c.EnableBashCompletion = true
 
 	// Setup the flags for this command
