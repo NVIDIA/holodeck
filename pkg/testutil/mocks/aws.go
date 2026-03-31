@@ -156,6 +156,10 @@ type MockEC2Client struct {
 	DescribeInternetGatewaysFunc     func(ctx context.Context, params *ec2.DescribeInternetGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)
 	DescribeInstanceTypesFunc        func(ctx context.Context, params *ec2.DescribeInstanceTypesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error)
 	ReplaceRouteTableAssociationFunc func(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error)
+
+	// Security Group Revoke operations
+	RevokeSecurityGroupIngressFunc func(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error)
+	RevokeSecurityGroupEgressFunc  func(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error)
 }
 
 // VPC operations
@@ -487,9 +491,15 @@ func (m *MockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.M
 // Security Group Revoke operations
 
 func (m *MockEC2Client) RevokeSecurityGroupIngress(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+	if m.RevokeSecurityGroupIngressFunc != nil {
+		return m.RevokeSecurityGroupIngressFunc(ctx, params, optFns...)
+	}
 	return &ec2.RevokeSecurityGroupIngressOutput{}, nil
 }
 
 func (m *MockEC2Client) RevokeSecurityGroupEgress(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+	if m.RevokeSecurityGroupEgressFunc != nil {
+		return m.RevokeSecurityGroupEgressFunc(ctx, params, optFns...)
+	}
 	return &ec2.RevokeSecurityGroupEgressOutput{}, nil
 }
