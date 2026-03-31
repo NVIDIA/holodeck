@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.1] - 2026-03-31
+
+### Bug Fixes
+
+- **fix: HA NLB hairpin routing (#746, #762)** — Control-plane nodes now use `localhost:6443` for kubectl instead of the NLB endpoint, avoiding AWS NLB hairpin/loopback timeouts where a registered target connects through the NLB and gets routed back to itself.
+- **fix: switch HA NLB to internal scheme (#760)** — NLB uses internal scheme to keep traffic within the VPC.
+- **fix: NLB cleanup in periodic VPC cleaner (#762)** — `DeleteVPCResources` now deletes NLB listeners, target groups, and load balancers before attempting subnet/IGW/VPC deletion, preventing `DependencyViolation` errors from NLB-owned ENIs.
+
+### CI
+
+- **ci: update periodic cleanup to v0.3.0 and add manual trigger (#758)** — Periodic cleanup workflow uses the latest holodeck binary and supports manual dispatch.
+
 ## [v0.3.0] - 2026-03-30
 
 ### Features
