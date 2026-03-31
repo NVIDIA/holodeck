@@ -153,23 +153,6 @@ fi
 
 # Initialize cluster
 if [[ ! -f /etc/kubernetes/admin.conf ]]; then
-    # Wait for control-plane endpoint to be resolvable (NLB DNS may take time)
-    if [[ "$CONTROL_PLANE_ENDPOINT" == *"elb.amazonaws.com"* ]] || \
-       [[ "$CONTROL_PLANE_ENDPOINT" == *"amazonaws.com"* ]]; then
-        holodeck_log "INFO" "$COMPONENT" "Waiting for NLB DNS to resolve: ${CONTROL_PLANE_ENDPOINT}"
-        for i in {1..30}; do
-            if host "${CONTROL_PLANE_ENDPOINT}" &>/dev/null || \
-               getent hosts "${CONTROL_PLANE_ENDPOINT}" &>/dev/null; then
-                holodeck_log "INFO" "$COMPONENT" "NLB DNS resolved successfully"
-                break
-            fi
-            if [[ $i -eq 30 ]]; then
-                holodeck_log "WARN" "$COMPONENT" "NLB DNS not yet resolved after 5 min, proceeding anyway"
-            fi
-            sleep 10
-        done
-    fi
-
     INIT_ARGS=(
         --kubernetes-version="${K8S_VERSION}"
         --pod-network-cidr=192.168.0.0/16
