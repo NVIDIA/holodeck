@@ -480,7 +480,9 @@ func (c *Cleaner) deleteSecurityGroups(ctx context.Context, vpcID string) error 
 
 		_, err = c.ec2.DeleteSecurityGroup(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete security group %s: %v", safeString(sg.GroupId), err)
+			if !strings.Contains(err.Error(), "InvalidGroup.NotFound") {
+				c.log.Warning("Failed to delete security group %s: %v", safeString(sg.GroupId), err)
+			}
 		}
 	}
 
@@ -512,7 +514,9 @@ func (c *Cleaner) deleteSubnets(ctx context.Context, vpcID string) error {
 
 		_, err = c.ec2.DeleteSubnet(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete subnet %s: %v", safeString(subnet.SubnetId), err)
+			if !strings.Contains(err.Error(), "InvalidSubnetID.NotFound") {
+				c.log.Warning("Failed to delete subnet %s: %v", safeString(subnet.SubnetId), err)
+			}
 		}
 	}
 
@@ -583,7 +587,9 @@ func (c *Cleaner) deleteRouteTables(ctx context.Context, vpcID string) error {
 
 		_, err = c.ec2.DeleteRouteTable(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete route table %s: %v", safeString(rt.RouteTableId), err)
+			if !strings.Contains(err.Error(), "InvalidRouteTableID.NotFound") {
+				c.log.Warning("Failed to delete route table %s: %v", safeString(rt.RouteTableId), err)
+			}
 		}
 	}
 
