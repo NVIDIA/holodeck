@@ -70,6 +70,10 @@ func (p *Provider) deleteNLBForCluster(cache *ClusterCache) error {
 	}
 	describeOutput, err := p.elbv2.DescribeLoadBalancers(ctx, describeInput)
 	if err != nil {
+		if isNLBNotFoundError(err.Error()) {
+			p.log.Info("No load balancers found for %s, nothing to delete", lbName)
+			return nil
+		}
 		return fmt.Errorf("error describing load balancers: %w", err)
 	}
 

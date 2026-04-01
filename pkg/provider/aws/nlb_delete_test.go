@@ -21,9 +21,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // MockELBv2Client implements internalaws.ELBv2Client for testing.
@@ -240,5 +242,24 @@ func TestDeleteTargetGroup_RealError(t *testing.T) {
 	err := provider.deleteTargetGroup(cache)
 	if err == nil {
 		t.Fatal("expected error for InternalError, got nil")
+	}
+}
+
+func TestDeleteNLBForCluster_DescribeNotFound(t *testing.T) {
+	mock := &MockELBv2Client{
+		DescribeLBsFunc: func(ctx context.Context, params *elasticloadbalancingv2.DescribeLoadBalancersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeLoadBalancersOutput, error) {
+			return nil, fmt.Errorf("LoadBalancerNotFound: One or more load balancers not found")
+		},
+	}
+
+	env := &v1alpha1.Environment{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+	}
+	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep, Environment: env}
+	cache := &ClusterCache{LoadBalancerDNS: "gone-nlb.elb.amazonaws.com"}
+
+	err := provider.deleteNLBForCluster(cache)
+	if err != nil {
+		t.Fatalf("expected no error when NLB is already deleted, got: %v", err)
 	}
 }
