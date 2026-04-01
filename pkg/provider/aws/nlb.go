@@ -19,6 +19,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -27,6 +28,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 )
+
+// isNLBNotFoundError returns true if the error indicates the load balancer doesn't exist.
+func isNLBNotFoundError(errMsg string) bool {
+	return strings.Contains(errMsg, "LoadBalancerNotFound")
+}
+
+// isTargetGroupNotFoundError returns true if the error indicates the target group doesn't exist.
+func isTargetGroupNotFoundError(errMsg string) bool {
+	return strings.Contains(errMsg, "TargetGroupNotFound")
+}
+
+// isListenerNotFoundError returns true if the error indicates the listener doesn't exist.
+func isListenerNotFoundError(errMsg string) bool {
+	return strings.Contains(errMsg, "ListenerNotFound")
+}
 
 const (
 	// Port for Kubernetes API server
@@ -271,6 +287,11 @@ func (p *Provider) deleteNLB(cache *ClusterCache) error {
 
 	_, err := p.elbv2.DeleteLoadBalancer(ctx, deleteLBInput)
 	if err != nil {
+		if isNLBNotFoundError(err.Error()) {
+			p.log.Info("Load balancer %s already deleted", cache.LoadBalancerArn)
+			cancelLoading(nil)
+			return nil
+		}
 		cancelLoading(logger.ErrLoadingFailed)
 		return fmt.Errorf("error deleting load balancer: %w", err)
 	}
@@ -296,6 +317,9 @@ func (p *Provider) deleteListener(cache *ClusterCache) error {
 
 	describeOutput, err := p.elbv2.DescribeListeners(ctx, describeInput)
 	if err != nil {
+		if isListenerNotFoundError(err.Error()) || isNLBNotFoundError(err.Error()) {
+			return nil
+		}
 		return fmt.Errorf("error describing listeners: %w", err)
 	}
 
@@ -310,6 +334,10 @@ func (p *Provider) deleteListener(cache *ClusterCache) error {
 		cancelDel()
 
 		if err != nil {
+			if isListenerNotFoundError(err.Error()) {
+				p.log.Info("Listener %s already deleted", aws.ToString(listener.ListenerArn))
+				continue
+			}
 			return fmt.Errorf("error deleting listener %s: %w", aws.ToString(listener.ListenerArn), err)
 		}
 	}
@@ -332,6 +360,9 @@ func (p *Provider) deleteTargetGroup(cache *ClusterCache) error {
 	defer cancelTargets()
 
 	targetsOutput, err := p.elbv2.DescribeTargetHealth(ctxTargets, describeTargetsInput)
+	if err != nil && isTargetGroupNotFoundError(err.Error()) {
+		return nil
+	}
 	if err == nil && len(targetsOutput.TargetHealthDescriptions) > 0 {
 		targets := make([]elbv2types.TargetDescription, 0, len(targetsOutput.TargetHealthDescriptions))
 		for _, th := range targetsOutput.TargetHealthDescriptions {
@@ -362,6 +393,10 @@ func (p *Provider) deleteTargetGroup(cache *ClusterCache) error {
 
 	_, err = p.elbv2.DeleteTargetGroup(ctx, deleteTGInput)
 	if err != nil {
+		if isTargetGroupNotFoundError(err.Error()) {
+			p.log.Info("Target group %s already deleted", cache.TargetGroupArn)
+			return nil
+		}
 		return fmt.Errorf("error deleting target group: %w", err)
 	}
 
