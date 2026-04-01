@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -612,6 +613,20 @@ var _ = Describe("Cleanup Package", func() {
 				Expect(revokedIngress).To(ConsistOf("sg-cp", "sg-worker"))
 				Expect(revokedEgress).To(ConsistOf("sg-cp", "sg-worker"))
 				Expect(deletedSGs).To(ConsistOf("sg-cp", "sg-worker"))
+			})
+
+			It("should treat InvalidVpcID.NotFound as success", func() {
+				mockEC.DeleteVpcFunc = func(ctx context.Context,
+					params *ec2.DeleteVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+					return nil, fmt.Errorf("operation error EC2: DeleteVpc, https response error StatusCode: 400, api error InvalidVpcID.NotFound: The vpc ID '%s' does not exist", *params.VpcId)
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-already-gone")
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("should handle VPC deletion failure with retries", func() {
