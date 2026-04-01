@@ -480,7 +480,9 @@ func (c *Cleaner) deleteSecurityGroups(ctx context.Context, vpcID string) error 
 
 		_, err = c.ec2.DeleteSecurityGroup(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete security group %s: %v", safeString(sg.GroupId), err)
+			if !strings.Contains(err.Error(), "InvalidGroup.NotFound") {
+				c.log.Warning("Failed to delete security group %s: %v", safeString(sg.GroupId), err)
+			}
 		}
 	}
 
@@ -512,7 +514,9 @@ func (c *Cleaner) deleteSubnets(ctx context.Context, vpcID string) error {
 
 		_, err = c.ec2.DeleteSubnet(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete subnet %s: %v", safeString(subnet.SubnetId), err)
+			if !strings.Contains(err.Error(), "InvalidSubnetID.NotFound") {
+				c.log.Warning("Failed to delete subnet %s: %v", safeString(subnet.SubnetId), err)
+			}
 		}
 	}
 
@@ -583,7 +587,9 @@ func (c *Cleaner) deleteRouteTables(ctx context.Context, vpcID string) error {
 
 		_, err = c.ec2.DeleteRouteTable(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete route table %s: %v", safeString(rt.RouteTableId), err)
+			if !strings.Contains(err.Error(), "InvalidRouteTableID.NotFound") {
+				c.log.Warning("Failed to delete route table %s: %v", safeString(rt.RouteTableId), err)
+			}
 		}
 	}
 
@@ -617,7 +623,11 @@ func (c *Cleaner) deleteInternetGateways(ctx context.Context, vpcID string) erro
 
 		_, err = c.ec2.DetachInternetGateway(ctx, detachInput)
 		if err != nil {
-			c.log.Warning("Failed to detach internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "Gateway.NotAttached") &&
+				!strings.Contains(errMsg, "InvalidInternetGatewayID.NotFound") {
+				c.log.Warning("Failed to detach internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			}
 		}
 
 		// Delete internet gateway
@@ -627,7 +637,9 @@ func (c *Cleaner) deleteInternetGateways(ctx context.Context, vpcID string) erro
 
 		_, err = c.ec2.DeleteInternetGateway(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			if !strings.Contains(err.Error(), "InvalidInternetGatewayID.NotFound") {
+				c.log.Warning("Failed to delete internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			}
 		}
 	}
 

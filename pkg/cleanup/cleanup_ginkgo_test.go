@@ -783,6 +783,266 @@ var _ = Describe("Cleanup Package", func() {
 			})
 		})
 
+		Describe("deleteInternetGateways NotFound handling", func() {
+			BeforeEach(func() {
+				mockEC.DescribeInstancesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstancesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+					return &ec2.DescribeInstancesOutput{}, nil
+				}
+				mockEC.DescribeSecurityGroupsFunc = func(ctx context.Context,
+					params *ec2.DescribeSecurityGroupsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+					return &ec2.DescribeSecurityGroupsOutput{}, nil
+				}
+				mockEC.DescribeSubnetsFunc = func(ctx context.Context,
+					params *ec2.DescribeSubnetsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+					return &ec2.DescribeSubnetsOutput{}, nil
+				}
+				mockEC.DescribeRouteTablesFunc = func(ctx context.Context,
+					params *ec2.DescribeRouteTablesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+					return &ec2.DescribeRouteTablesOutput{}, nil
+				}
+				mockEC.DeleteVpcFunc = func(ctx context.Context,
+					params *ec2.DeleteVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+					return &ec2.DeleteVpcOutput{}, nil
+				}
+			})
+
+			It("should complete successfully when IGW detach/delete return NotFound", func() {
+				detachCalls := 0
+				deleteCalls := 0
+
+				mockEC.DescribeInternetGatewaysFunc = func(ctx context.Context,
+					params *ec2.DescribeInternetGatewaysInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+					return &ec2.DescribeInternetGatewaysOutput{
+						InternetGateways: []types.InternetGateway{
+							{InternetGatewayId: aws.String("igw-gone")},
+						},
+					}, nil
+				}
+				mockEC.DetachInternetGatewayFunc = func(ctx context.Context,
+					params *ec2.DetachInternetGatewayInput,
+					optFns ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error) {
+					detachCalls++
+					return nil, fmt.Errorf("InvalidInternetGatewayID.NotFound: igw-gone does not exist")
+				}
+				mockEC.DeleteInternetGatewayFunc = func(ctx context.Context,
+					params *ec2.DeleteInternetGatewayInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error) {
+					deleteCalls++
+					return nil, fmt.Errorf("InvalidInternetGatewayID.NotFound: igw-gone does not exist")
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+				// NotFound errors are silently ignored — detach and delete still called
+				Expect(detachCalls).To(Equal(1))
+				Expect(deleteCalls).To(Equal(1))
+			})
+		})
+
+		Describe("deleteSecurityGroups NotFound handling", func() {
+			BeforeEach(func() {
+				mockEC.DescribeInstancesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstancesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+					return &ec2.DescribeInstancesOutput{}, nil
+				}
+				mockEC.DescribeSubnetsFunc = func(ctx context.Context,
+					params *ec2.DescribeSubnetsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+					return &ec2.DescribeSubnetsOutput{}, nil
+				}
+				mockEC.DescribeRouteTablesFunc = func(ctx context.Context,
+					params *ec2.DescribeRouteTablesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+					return &ec2.DescribeRouteTablesOutput{}, nil
+				}
+				mockEC.DescribeInternetGatewaysFunc = func(ctx context.Context,
+					params *ec2.DescribeInternetGatewaysInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+					return &ec2.DescribeInternetGatewaysOutput{}, nil
+				}
+				mockEC.DeleteVpcFunc = func(ctx context.Context,
+					params *ec2.DeleteVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+					return &ec2.DeleteVpcOutput{}, nil
+				}
+			})
+
+			It("should complete successfully when SG delete returns InvalidGroup.NotFound", func() {
+				deleteCalls := 0
+
+				mockEC.DescribeSecurityGroupsFunc = func(ctx context.Context,
+					params *ec2.DescribeSecurityGroupsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+					return &ec2.DescribeSecurityGroupsOutput{
+						SecurityGroups: []types.SecurityGroup{
+							{GroupId: aws.String("sg-default"), GroupName: aws.String("default")},
+							{GroupId: aws.String("sg-gone"), GroupName: aws.String("holodeck-sg")},
+						},
+					}, nil
+				}
+				mockEC.DescribeNetworkInterfacesFunc = func(ctx context.Context,
+					params *ec2.DescribeNetworkInterfacesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+					return &ec2.DescribeNetworkInterfacesOutput{}, nil
+				}
+				mockEC.DeleteSecurityGroupFunc = func(ctx context.Context,
+					params *ec2.DeleteSecurityGroupInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
+					deleteCalls++
+					return nil, fmt.Errorf("InvalidGroup.NotFound: The security group '%s' does not exist", *params.GroupId)
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(deleteCalls).To(Equal(1))
+			})
+		})
+
+		Describe("deleteSubnets NotFound handling", func() {
+			BeforeEach(func() {
+				mockEC.DescribeInstancesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstancesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+					return &ec2.DescribeInstancesOutput{}, nil
+				}
+				mockEC.DescribeSecurityGroupsFunc = func(ctx context.Context,
+					params *ec2.DescribeSecurityGroupsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+					return &ec2.DescribeSecurityGroupsOutput{}, nil
+				}
+				mockEC.DescribeRouteTablesFunc = func(ctx context.Context,
+					params *ec2.DescribeRouteTablesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+					return &ec2.DescribeRouteTablesOutput{}, nil
+				}
+				mockEC.DescribeInternetGatewaysFunc = func(ctx context.Context,
+					params *ec2.DescribeInternetGatewaysInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+					return &ec2.DescribeInternetGatewaysOutput{}, nil
+				}
+				mockEC.DeleteVpcFunc = func(ctx context.Context,
+					params *ec2.DeleteVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+					return &ec2.DeleteVpcOutput{}, nil
+				}
+			})
+
+			It("should complete successfully when subnet delete returns InvalidSubnetID.NotFound", func() {
+				deleteCalls := 0
+
+				mockEC.DescribeSubnetsFunc = func(ctx context.Context,
+					params *ec2.DescribeSubnetsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+					return &ec2.DescribeSubnetsOutput{
+						Subnets: []types.Subnet{
+							{SubnetId: aws.String("subnet-gone")},
+						},
+					}, nil
+				}
+				mockEC.DeleteSubnetFunc = func(ctx context.Context,
+					params *ec2.DeleteSubnetInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error) {
+					deleteCalls++
+					return nil, fmt.Errorf("InvalidSubnetID.NotFound: The subnet ID '%s' does not exist", *params.SubnetId)
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(deleteCalls).To(Equal(1))
+			})
+		})
+
+		Describe("deleteRouteTables NotFound handling", func() {
+			BeforeEach(func() {
+				mockEC.DescribeInstancesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstancesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+					return &ec2.DescribeInstancesOutput{}, nil
+				}
+				mockEC.DescribeSecurityGroupsFunc = func(ctx context.Context,
+					params *ec2.DescribeSecurityGroupsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+					return &ec2.DescribeSecurityGroupsOutput{}, nil
+				}
+				mockEC.DescribeSubnetsFunc = func(ctx context.Context,
+					params *ec2.DescribeSubnetsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+					return &ec2.DescribeSubnetsOutput{}, nil
+				}
+				mockEC.DescribeInternetGatewaysFunc = func(ctx context.Context,
+					params *ec2.DescribeInternetGatewaysInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+					return &ec2.DescribeInternetGatewaysOutput{}, nil
+				}
+				mockEC.DeleteVpcFunc = func(ctx context.Context,
+					params *ec2.DeleteVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+					return &ec2.DeleteVpcOutput{}, nil
+				}
+			})
+
+			It("should complete successfully when route table delete returns InvalidRouteTableID.NotFound", func() {
+				deleteCalls := 0
+				mainRT := true
+
+				mockEC.DescribeRouteTablesFunc = func(ctx context.Context,
+					params *ec2.DescribeRouteTablesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+					return &ec2.DescribeRouteTablesOutput{
+						RouteTables: []types.RouteTable{
+							{
+								RouteTableId: aws.String("rtb-main"),
+								Associations: []types.RouteTableAssociation{
+									{RouteTableAssociationId: aws.String("rtbassoc-main"), Main: &mainRT},
+								},
+							},
+							{
+								RouteTableId: aws.String("rtb-gone"),
+								Associations: []types.RouteTableAssociation{
+									{RouteTableAssociationId: aws.String("rtbassoc-gone")},
+								},
+							},
+						},
+					}, nil
+				}
+				mockEC.ReplaceRouteTableAssociationFunc = func(ctx context.Context,
+					params *ec2.ReplaceRouteTableAssociationInput,
+					optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error) {
+					return &ec2.ReplaceRouteTableAssociationOutput{}, nil
+				}
+				mockEC.DeleteRouteTableFunc = func(ctx context.Context,
+					params *ec2.DeleteRouteTableInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error) {
+					deleteCalls++
+					return nil, fmt.Errorf("InvalidRouteTableID.NotFound: The routeTable ID '%s' does not exist", *params.RouteTableId)
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(deleteCalls).To(Equal(1))
+			})
+		})
+
 		Describe("deleteRouteTables", func() {
 			BeforeEach(func() {
 				mockEC.DescribeInstancesFunc = func(ctx context.Context,

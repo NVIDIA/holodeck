@@ -55,6 +55,13 @@ const (
 	sshMaxRetries = 20
 	// sshRetryDelay is the delay between SSH connection retry attempts.
 	sshRetryDelay = 1 * time.Second
+	// sshKeepaliveInterval is how often we send keepalive requests to prevent
+	// network middleboxes from dropping idle SSH connections during long-running
+	// commands like kubeadm init (~10-20 minutes).
+	sshKeepaliveInterval = 30 * time.Second
+	// sshHandshakeTimeout is the maximum time for the SSH handshake to complete.
+	// Without this, connections to unresponsive hosts block indefinitely.
+	sshHandshakeTimeout = 15 * time.Second
 )
 
 type Provisioner struct {
@@ -466,6 +473,23 @@ func addScriptHeader(tpl *bytes.Buffer) error {
 	return nil
 }
 
+// startKeepalive sends periodic SSH keepalive requests to prevent network
+// middleboxes (NATs, firewalls) from dropping idle connections during
+// long-running remote commands. The goroutine self-terminates when the
+// client connection is closed.
+func startKeepalive(client *ssh.Client) {
+	go func() {
+		ticker := time.NewTicker(sshKeepaliveInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			_, _, err := client.SendRequest("keepalive@holodeck", true, nil)
+			if err != nil {
+				return
+			}
+		}
+	}()
+}
+
 // createSshClient creates a ssh client, and retries if it fails to connect.
 // When transport is non-nil, it uses transport.Dial() to get a net.Conn and
 // creates the SSH client via ssh.NewClientConn. When transport is nil, it
@@ -498,6 +522,7 @@ func connectOrDie(keyPath, userName, hostUrl string, transport Transport) (*ssh.
 			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
+		Timeout:         sshHandshakeTimeout,
 	}
 
 	addr := hostUrl + ":22"
@@ -507,12 +532,19 @@ func connectOrDie(keyPath, userName, hostUrl string, transport Transport) (*ssh.
 			var conn net.Conn
 			conn, err = transport.Dial()
 			if err == nil {
+				// Set a deadline for the SSH handshake. ssh.NewClientConn
+				// does not use ClientConfig.Timeout (that only applies to
+				// ssh.Dial), so we set it on the underlying connection.
+				_ = conn.SetDeadline(time.Now().Add(sshHandshakeTimeout))
 				var sshConn ssh.Conn
 				var chans <-chan ssh.NewChannel
 				var reqs <-chan *ssh.Request
 				sshConn, chans, reqs, err = ssh.NewClientConn(conn, addr, sshConfig)
 				if err == nil {
+					// Clear the deadline for normal operation
+					_ = conn.SetDeadline(time.Time{})
 					client = ssh.NewClient(sshConn, chans, reqs)
+					startKeepalive(client)
 					return client, nil
 				}
 				_ = conn.Close()
@@ -521,6 +553,7 @@ func connectOrDie(keyPath, userName, hostUrl string, transport Transport) (*ssh.
 			// Fall back to direct SSH dial
 			client, err = ssh.Dial("tcp", addr, sshConfig)
 			if err == nil {
+				startKeepalive(client)
 				return client, nil
 			}
 		}

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.4] - 2026-04-01
+
+### Bug Fixes
+
+- **fix: handle InvalidInternetGatewayID.NotFound in IGW detach** — When an Internet Gateway is already deleted, the detach step now recognizes `InvalidInternetGatewayID.NotFound` alongside `Gateway.NotAttached` and skips retries, fixing cleanup hangs where the IGW was deleted out-of-band.
+- **fix: handle NotFound errors in NLB/listener/target-group deletion** — All NLB cleanup paths now check for `LoadBalancerNotFound`, `ListenerNotFound`, and `TargetGroupNotFound` before retrying, treating already-deleted resources as success.
+- **fix: add SSH keepalive and handshake timeout** — SSH connections now send keepalive probes every 30 seconds to prevent session drops during long operations (e.g., `kubeadm init`). A 15-second handshake timeout prevents `connectOrDie` from blocking indefinitely against hosts that accept TCP but never complete the SSH handshake.
+- **fix: suppress NotFound warnings in cleanup deleteInternetGateways** — The periodic cleanup job no longer logs misleading "Failed to detach/delete internet gateway" warnings when an IGW is already gone.
+
 ## [v0.3.3] - 2026-04-01
 
 ### Bug Fixes
