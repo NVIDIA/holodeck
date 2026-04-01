@@ -617,7 +617,11 @@ func (c *Cleaner) deleteInternetGateways(ctx context.Context, vpcID string) erro
 
 		_, err = c.ec2.DetachInternetGateway(ctx, detachInput)
 		if err != nil {
-			c.log.Warning("Failed to detach internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "Gateway.NotAttached") &&
+				!strings.Contains(errMsg, "InvalidInternetGatewayID.NotFound") {
+				c.log.Warning("Failed to detach internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			}
 		}
 
 		// Delete internet gateway
@@ -627,7 +631,9 @@ func (c *Cleaner) deleteInternetGateways(ctx context.Context, vpcID string) erro
 
 		_, err = c.ec2.DeleteInternetGateway(ctx, deleteInput)
 		if err != nil {
-			c.log.Warning("Failed to delete internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			if !strings.Contains(err.Error(), "InvalidInternetGatewayID.NotFound") {
+				c.log.Warning("Failed to delete internet gateway %s: %v", safeString(igw.InternetGatewayId), err)
+			}
 		}
 	}
 

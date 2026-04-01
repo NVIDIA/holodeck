@@ -783,6 +783,72 @@ var _ = Describe("Cleanup Package", func() {
 			})
 		})
 
+		Describe("deleteInternetGateways NotFound handling", func() {
+			BeforeEach(func() {
+				mockEC.DescribeInstancesFunc = func(ctx context.Context,
+					params *ec2.DescribeInstancesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+					return &ec2.DescribeInstancesOutput{}, nil
+				}
+				mockEC.DescribeSecurityGroupsFunc = func(ctx context.Context,
+					params *ec2.DescribeSecurityGroupsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+					return &ec2.DescribeSecurityGroupsOutput{}, nil
+				}
+				mockEC.DescribeSubnetsFunc = func(ctx context.Context,
+					params *ec2.DescribeSubnetsInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
+					return &ec2.DescribeSubnetsOutput{}, nil
+				}
+				mockEC.DescribeRouteTablesFunc = func(ctx context.Context,
+					params *ec2.DescribeRouteTablesInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+					return &ec2.DescribeRouteTablesOutput{}, nil
+				}
+				mockEC.DeleteVpcFunc = func(ctx context.Context,
+					params *ec2.DeleteVpcInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
+					return &ec2.DeleteVpcOutput{}, nil
+				}
+			})
+
+			It("should complete successfully when IGW detach/delete return NotFound", func() {
+				detachCalls := 0
+				deleteCalls := 0
+
+				mockEC.DescribeInternetGatewaysFunc = func(ctx context.Context,
+					params *ec2.DescribeInternetGatewaysInput,
+					optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
+					return &ec2.DescribeInternetGatewaysOutput{
+						InternetGateways: []types.InternetGateway{
+							{InternetGatewayId: aws.String("igw-gone")},
+						},
+					}, nil
+				}
+				mockEC.DetachInternetGatewayFunc = func(ctx context.Context,
+					params *ec2.DetachInternetGatewayInput,
+					optFns ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error) {
+					detachCalls++
+					return nil, fmt.Errorf("InvalidInternetGatewayID.NotFound: igw-gone does not exist")
+				}
+				mockEC.DeleteInternetGatewayFunc = func(ctx context.Context,
+					params *ec2.DeleteInternetGatewayInput,
+					optFns ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error) {
+					deleteCalls++
+					return nil, fmt.Errorf("InvalidInternetGatewayID.NotFound: igw-gone does not exist")
+				}
+
+				cleaner, err := New(log, "us-west-2", WithEC2Client(mockEC))
+				Expect(err).NotTo(HaveOccurred())
+
+				err = cleaner.DeleteVPCResources(context.Background(), "vpc-12345")
+				Expect(err).NotTo(HaveOccurred())
+				// NotFound errors are silently ignored — detach and delete still called
+				Expect(detachCalls).To(Equal(1))
+				Expect(deleteCalls).To(Equal(1))
+			})
+		})
+
 		Describe("deleteRouteTables", func() {
 			BeforeEach(func() {
 				mockEC.DescribeInstancesFunc = func(ctx context.Context,
