@@ -21,11 +21,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
 // MockELBv2Client implements internalaws.ELBv2Client for testing.

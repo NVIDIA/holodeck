@@ -27,8 +27,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NVIDIA/holodeck/internal/logger"
 	"golang.org/x/crypto/ssh"
+
+	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
 // countingTransport counts Dial() calls while connecting to a black hole.
@@ -126,14 +127,14 @@ func startBlackHoleServer(t *testing.T) string {
 			}
 			go func(c net.Conn) {
 				<-done
-				c.Close()
+				_ = c.Close()
 			}(conn)
 		}
 	}()
 
 	t.Cleanup(func() {
 		close(done)
-		listener.Close()
+		_ = listener.Close()
 	})
 
 	return listener.Addr().String()
