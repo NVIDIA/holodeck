@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -652,6 +653,12 @@ func (c *Cleaner) deleteVPC(ctx context.Context, vpcID string) error {
 		_, err := c.ec2.DeleteVpc(ctx, deleteInput)
 		if err == nil {
 			c.log.Info("Successfully deleted VPC: %s", vpcID)
+			return nil
+		}
+
+		// VPC already deleted — treat as success
+		if strings.Contains(err.Error(), "InvalidVpcID.NotFound") {
+			c.log.Info("VPC %s already deleted", vpcID)
 			return nil
 		}
 
