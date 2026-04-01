@@ -625,8 +625,8 @@ func (p *Provider) deleteInternetGateway(cache *AWS) error {
 				VpcId:             &cache.Vpcid,
 			})
 			if err != nil {
-				if strings.Contains(err.Error(), "Gateway.NotAttached") {
-					p.log.Info("Internet Gateway %s already detached", cache.InternetGwid)
+				if isAlreadyDetachedError(err.Error()) {
+					p.log.Info("Internet Gateway %s already detached or does not exist", cache.InternetGwid)
 					return nil
 				}
 				return err
@@ -710,6 +710,13 @@ func (p *Provider) deleteVPC(cache *AWS) error {
 
 	p.log.Info("VPC %s successfully deleted", cache.Vpcid)
 	return nil
+}
+
+// isAlreadyDetachedError returns true if the error indicates the IGW
+// is already detached or doesn't exist (both mean "nothing to detach").
+func isAlreadyDetachedError(errMsg string) bool {
+	return strings.Contains(errMsg, "Gateway.NotAttached") ||
+		strings.Contains(errMsg, "InvalidInternetGatewayID.NotFound")
 }
 
 // Helper functions
