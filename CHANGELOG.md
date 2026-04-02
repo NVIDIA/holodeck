@@ -2,42 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v0.3.4] - 2026-04-01
+## [v0.3.1] - 2026-04-02
 
 ### Bug Fixes
 
-- **fix: handle InvalidInternetGatewayID.NotFound in IGW detach** — When an Internet Gateway is already deleted, the detach step now recognizes `InvalidInternetGatewayID.NotFound` alongside `Gateway.NotAttached` and skips retries, fixing cleanup hangs where the IGW was deleted out-of-band.
-- **fix: handle NotFound errors in NLB/listener/target-group deletion** — All NLB cleanup paths now check for `LoadBalancerNotFound`, `ListenerNotFound`, and `TargetGroupNotFound` before retrying, treating already-deleted resources as success.
-- **fix: add SSH keepalive and handshake timeout** — SSH connections now send keepalive probes every 30 seconds to prevent session drops during long operations (e.g., `kubeadm init`). A 15-second handshake timeout prevents `connectOrDie` from blocking indefinitely against hosts that accept TCP but never complete the SSH handshake.
-- **fix: suppress NotFound warnings in cleanup deleteInternetGateways** — The periodic cleanup job no longer logs misleading "Failed to detach/delete internet gateway" warnings when an IGW is already gone.
+#### SSH Reliability
+- **fix: add SSH keepalive and handshake timeout (#772)** — SSH connections now send keepalive probes every 30 seconds to prevent session drops during long operations (e.g., `kubeadm init`). A 15-second handshake timeout prevents `connectOrDie` from blocking indefinitely against hosts that accept TCP but never complete the SSH handshake.
 
-## [v0.3.3] - 2026-04-01
-
-### Bug Fixes
-
-- **fix: treat InvalidVpcID.NotFound as success in VPC cleanup (#769)** — VPCs that no longer exist are now treated as successfully cleaned up instead of retrying and failing, fixing periodic cleanup failures caused by the Docker action's post-entrypoint re-running cleanup.
-
-## [v0.3.2] - 2026-03-31
-
-### Bug Fixes
-
-- **fix: revoke cross-referencing SG rules before deletion in cleanup (#766)** — Security groups that reference each other (e.g., CP SG allows traffic from Worker SG and vice versa) are now cleaned up by revoking all ingress/egress rules before attempting deletion, fixing `DependencyViolation` errors in periodic VPC cleanup.
-
-### CI
-
-- **ci: update periodic cleanup to v0.3.1 (#765)** — Periodic cleanup workflow updated to use v0.3.1 with NLB cleanup support.
-
-## [v0.3.1] - 2026-03-31
-
-### Bug Fixes
-
-- **fix: HA NLB hairpin routing (#746, #762)** — Control-plane nodes now use `localhost:6443` for kubectl instead of the NLB endpoint, avoiding AWS NLB hairpin/loopback timeouts where a registered target connects through the NLB and gets routed back to itself.
+#### AWS Resource Cleanup — Provider
+- **fix: HA NLB hairpin routing (#746, #762)** — Control-plane nodes now use `localhost:6443` for kubectl instead of the NLB endpoint, avoiding AWS NLB hairpin/loopback timeouts.
 - **fix: switch HA NLB to internal scheme (#760)** — NLB uses internal scheme to keep traffic within the VPC.
+- **fix: handle InvalidInternetGatewayID.NotFound in IGW detach (#772)** — The detach step now recognizes `InvalidInternetGatewayID.NotFound` alongside `Gateway.NotAttached` and skips retries.
+- **fix: handle NotFound errors in NLB/listener/target-group deletion (#772)** — All NLB cleanup paths now check for `LoadBalancerNotFound`, `ListenerNotFound`, and `TargetGroupNotFound`, treating already-deleted resources as success.
+
+#### AWS Resource Cleanup — Periodic Cleanup Action
 - **fix: NLB cleanup in periodic VPC cleaner (#762)** — `DeleteVPCResources` now deletes NLB listeners, target groups, and load balancers before attempting subnet/IGW/VPC deletion, preventing `DependencyViolation` errors from NLB-owned ENIs.
+- **fix: revoke cross-referencing SG rules before deletion (#766)** — Security groups that reference each other are now cleaned up by revoking all ingress/egress rules before attempting deletion.
+- **fix: treat InvalidVpcID.NotFound as success in VPC cleanup (#769)** — VPCs that no longer exist are treated as successfully cleaned up.
+- **fix: suppress NotFound warnings in all cleanup delete functions (#772)** — The periodic cleanup job no longer logs misleading warnings when IGWs, security groups, subnets, or route tables are already gone.
 
 ### CI
 
-- **ci: update periodic cleanup to v0.3.0 and add manual trigger (#758)** — Periodic cleanup workflow uses the latest holodeck binary and supports manual dispatch.
+- **ci: update periodic cleanup and add manual trigger (#758, #765)** — Periodic cleanup workflow uses the latest holodeck binary and supports manual dispatch.
 
 ## [v0.3.0] - 2026-03-30
 
