@@ -93,8 +93,8 @@ case "${HOLODECK_OS_FAMILY}" in
 
         # Install containerd with specific version if provided
         if [[ -n "{{.Version}}" ]] && [[ "{{.Version}}" != "latest" ]]; then
-            holodeck_log "INFO" "$COMPONENT" "Attempting to install containerd.io={{.Version}}-1"
-            if ! holodeck_retry 3 "$COMPONENT" pkg_install_version "containerd.io" "{{.Version}}-1"; then
+            holodeck_log "INFO" "$COMPONENT" "Attempting to install containerd.io={{.Version}}*"
+            if ! holodeck_retry 3 "$COMPONENT" pkg_install_version "containerd.io" "{{.Version}}*"; then
                 holodeck_log "WARN" "$COMPONENT" \
                     "Specific version {{.Version}} not found, installing latest"
                 holodeck_retry 3 "$COMPONENT" pkg_install containerd.io
