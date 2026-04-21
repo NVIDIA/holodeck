@@ -200,6 +200,11 @@ var _ = DescribeTable("AWS Environment E2E",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_kernel.yml"),
 		description: "Tests AWS environment with kernel features enabled",
 	}, Label("kernel")),
+	Entry("Install specific version of NVIDIA Driver package", testConfig{
+		name:        "NVIDIA Driver Package Version Test",
+		filePath:    filepath.Join(packagePath, "data", "test_aws_driver_package.yml"),
+		description: "Install specific version of NVIDIA Driver package",
+	}, Label("nvidia-driver")),
 	Entry("CTK Git Source Test", testConfig{
 		name:        "CTK Git Source Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_ctk_git.yml"),

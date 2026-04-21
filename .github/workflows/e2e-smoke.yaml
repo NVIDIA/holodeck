@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        label: ["default && !rpm", "cluster && minimal"]
+        label: ["default && !rpm", "cluster && minimal", "nvidia-driver"]
     name: E2E Smoke (${{ matrix.label }})
 
     steps:
