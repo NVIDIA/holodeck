@@ -152,8 +152,8 @@ github.com/json-iterator/go
 # github.com/kr/fs v0.1.0
 ## explicit
 github.com/kr/fs
-# github.com/mattn/go-isatty v0.0.20
-## explicit; go 1.15
+# github.com/mattn/go-isatty v0.0.21
+## explicit; go 1.21
 github.com/mattn/go-isatty
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 ## explicit
