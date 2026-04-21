@@ -238,9 +238,10 @@ if [[ "${ID}" == "amzn" ]]; then
 else
     DRIVER_PACKAGE="cuda-drivers"
     if [[ -n "$DESIRED_VERSION" ]]; then
+		DESIRED_BRANCH="${DESIRED_VERSION%%.*}"
         case "${HOLODECK_OS_FAMILY}" in
             debian)
-                DRIVER_PACKAGE="${DRIVER_PACKAGE}=${DESIRED_VERSION}"
+                DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}=${DESIRED_VERSION}-*"
                 ;;
             amazon|rhel)
                 DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_VERSION}"
