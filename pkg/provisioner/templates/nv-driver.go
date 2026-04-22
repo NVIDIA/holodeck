@@ -302,6 +302,16 @@ fi
 
 FINAL_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
 
+# Strict version-pin check: when the user pinned a specific driver version,
+# fail loudly if the installed version does not match. Catches silent-pin
+# regressions where the package resolver picks a different point release than
+# requested (see issue #783).
+if [[ -n "$DESIRED_VERSION" ]] && [[ "$FINAL_VERSION" != "$DESIRED_VERSION" ]]; then
+    holodeck_error 11 "$COMPONENT" \
+        "Driver version mismatch: desired=${DESIRED_VERSION} installed=${FINAL_VERSION}" \
+        "Verify that version ${DESIRED_VERSION} is available in the configured CUDA repo, or pin to an available version"
+fi
+
 # Write provenance
 sudo mkdir -p /etc/nvidia-driver
 printf '%s\n' '{
