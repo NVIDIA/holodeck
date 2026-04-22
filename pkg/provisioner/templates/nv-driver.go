@@ -238,18 +238,29 @@ if [[ "${ID}" == "amzn" ]]; then
 else
     DRIVER_PACKAGE="cuda-drivers"
     if [[ -n "$DESIRED_VERSION" ]]; then
-		DESIRED_BRANCH="${DESIRED_VERSION%%.*}"
         case "${HOLODECK_OS_FAMILY}" in
             debian)
-                DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}=${DESIRED_VERSION}-*"
+                DRIVER_PINNING_PACKAGE=nvidia-driver-pinning-${DESIRED_VERSION}
                 ;;
             amazon|rhel)
                 DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_VERSION}"
                 ;;
         esac
     elif [[ -n "$DESIRED_BRANCH" ]]; then
-        DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}"
+        case "${HOLODECK_OS_FAMILY}" in
+            debian)
+                DRIVER_PINNING_PACKAGE=nvidia-driver-pinning-${DESIRED_BRANCH}
+                ;;
+            *)
+                DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}"
+                ;;
+        esac
     fi
+fi
+
+if [[ -n "$DRIVER_PINNING_PACKAGE" ]]; then
+    holodeck_log "INFO" "$COMPONENT" "Installing package: ${DRIVER_PINNING_PACKAGE}"
+    holodeck_retry 3 "$COMPONENT" install_packages_with_retry "$DRIVER_PINNING_PACKAGE"
 fi
 
 holodeck_log "INFO" "$COMPONENT" "Installing package: ${DRIVER_PACKAGE}"
