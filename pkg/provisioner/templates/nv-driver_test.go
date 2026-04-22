@@ -243,7 +243,7 @@ func TestNvDriver_Execute_PackageWithVersion(t *testing.T) {
 	out := buf.String()
 
 	assert.Contains(t, out, `DESIRED_VERSION="560.35.03"`)
-	assert.Contains(t, out, `DRIVER_PACKAGE="${DRIVER_PACKAGE}=${DESIRED_VERSION}"`)
+	assert.Contains(t, out, `DRIVER_PINNING_PACKAGE=nvidia-driver-pinning-${DESIRED_VERSION}`)
 }
 
 func TestNvDriver_Execute_PackageWithBranch(t *testing.T) {
