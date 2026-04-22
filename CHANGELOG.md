@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.2] - 2026-04-22
+
+### Bug Fixes
+
+#### Provisioning
+- **fix containerd.io apt package install (#779)**
+- **fix bug in NVIDIA Driver install script when package version is specified (#782)**
+- **fix(nv-driver): strict post-install version check for pinned driver installs (#786)**
+
 ## [v0.3.1] - 2026-04-02
 
 ### Bug Fixes
