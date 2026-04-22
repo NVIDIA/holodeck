@@ -262,6 +262,31 @@ func TestNvDriver_Execute_PackageWithBranch(t *testing.T) {
 	assert.Contains(t, out, `DRIVER_PACKAGE="${DRIVER_PACKAGE}-${DESIRED_BRANCH}"`)
 }
 
+// TestNvDriver_Execute_PackageStrictVersionCheck asserts that the generated
+// script contains a runtime guard that fails loudly when the installed driver
+// version does not match the pinned DESIRED_VERSION. Without this guard a
+// silent mismatch (e.g., apt resolving to a different point release than
+// requested) would pass provisioning — the exact failure mode that motivated
+// issue #783. The template is static, so the snippet is always emitted; it
+// self-gates at runtime on DESIRED_VERSION being non-empty.
+func TestNvDriver_Execute_PackageStrictVersionCheck(t *testing.T) {
+	nvd := &NvDriver{
+		Source:  "package",
+		Version: "580.95.05",
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, nvd.Execute(&buf, v1alpha1.Environment{}))
+	out := buf.String()
+
+	assert.Contains(t, out, `[[ -n "$DESIRED_VERSION" ]] && [[ "$FINAL_VERSION" != "$DESIRED_VERSION" ]]`,
+		"guard must gate on DESIRED_VERSION being set AND check FINAL_VERSION equals it")
+	assert.Contains(t, out, `holodeck_error 11`,
+		"mismatch must abort with holodeck_error 11")
+	assert.Contains(t, out, "Driver version mismatch",
+		"error message must identify the mismatch")
+}
+
 func TestNvDriver_Execute_RunfileSource(t *testing.T) {
 	nvd := &NvDriver{
 		Source:          "runfile",
