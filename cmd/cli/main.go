@@ -40,7 +40,7 @@ const (
 	// ProgramName is the canonical name of this program
 	ProgramName = "holodeck"
 	// ProgramVersion is the current version of the program
-	ProgramVersion = "0.3.1"
+	ProgramVersion = "0.3.2"
 )
 
 type config struct {
