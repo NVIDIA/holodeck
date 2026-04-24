@@ -24,7 +24,7 @@ import (
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
-const defaultNVBranch = "575"
+const defaultNVBranch = "580"
 
 // nvDriverPackageTemplate installs the NVIDIA driver from CUDA repository packages.
 // From https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
