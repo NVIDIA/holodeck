@@ -1711,11 +1711,11 @@ var (
 
 // Default Versions
 const (
-	defaultKubernetesVersion     = "v1.33.3"
+	defaultKubernetesVersion     = "v1.35.3"
 	defaultKubeletReleaseVersion = "v0.18.0"
-	defaultCNIPluginsVersion     = "v1.7.1"
-	defaultCRIVersion            = "v1.33.0"
-	defaultCalicoVersion         = "v3.30.2"
+	defaultCNIPluginsVersion     = "v1.9.1"
+	defaultCRIVersion            = "v1.35.0"
+	defaultCalicoVersion         = "v3.31.5"
 )
 
 // Kubernetes holds configuration for Kubernetes installation templates.
