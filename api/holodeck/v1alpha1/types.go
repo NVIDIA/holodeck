@@ -18,6 +18,11 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+)
+
+var (
+	scheme = runtime.NewScheme()
 )
 
 // EnvironmentSpec defines the desired state of infra provider
@@ -481,7 +486,8 @@ type EnvironmentList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Environment{}, &EnvironmentList{})
+	scheme.AddKnownTypes(GroupVersion, &Environment{}, &EnvironmentList{})
+	metav1.AddToGroupVersion(scheme, GroupVersion)
 }
 
 type Properties struct {
