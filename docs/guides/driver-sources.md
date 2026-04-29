@@ -23,10 +23,10 @@ spec:
 
 **Configuration options:**
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| `branch` | Driver branch to install (e.g., `560`, `550`) | `575` |
-| `version` | Exact package version to install | Latest in branch |
+| Field | Description                                  | Default          |
+|-------|----------------------------------------------|------------------|
+| `branch` | Driver branch to install (e.g. `535`, `580`) | `580`            |
+| `version` | Exact package version to install             | Latest in branch |
 
 When `version` is specified, it takes precedence over `branch` for package
 selection.
