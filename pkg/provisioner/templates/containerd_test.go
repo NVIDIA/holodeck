@@ -17,7 +17,6 @@ package templates
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -231,36 +230,6 @@ func TestContainerd_Execute_Version2x(t *testing.T) {
 		"template should not pin runc version (containerd.io bundles it)")
 }
 
-func TestContainerd_Execute_Version2(t *testing.T) {
-	env := v1alpha1.Environment{
-		Spec: v1alpha1.EnvironmentSpec{
-			ContainerRuntime: v1alpha1.ContainerRuntime{
-				Version: "2.0.0",
-			},
-		},
-	}
-	c, err := NewContainerd(env)
-	require.NoError(t, err)
-	var buf bytes.Buffer
-	err = c.Execute(&buf, env)
-	require.NoError(t, err)
-	out := buf.String()
-
-	assert.Contains(t, out, `COMPONENT="containerd"`)
-	assert.Contains(t, out, "holodeck_progress")
-	assert.Contains(t, out, "Installing containerd 2.0.0 from official binaries")
-	assert.Contains(t, out, "containerd-2.0.0-linux-${ARCH}.tar.gz")
-	assert.Contains(t, out, "https://github.com/containerd/containerd/releases/download/v2.0.0/")
-	assert.Contains(t, out, "SystemdCgroup = true")
-	assert.Contains(t, out, "containerd config default")
-	assert.Contains(t, out, `RUNC_VERSION="1.2.3"`)
-	assert.Contains(t, out, `CNI_VERSION="v1.6.2"`)
-	assert.Contains(t, out, `conf_dir = "/etc/cni/net.d"`)
-	assert.Contains(t, out, `bin_dir = "/opt/cni/bin"`)
-	assert.Contains(t, out, "holodeck_verify_containerd")
-	assert.Contains(t, out, "holodeck_mark_installed")
-}
-
 func TestContainerd_Execute_GitSource(t *testing.T) {
 	c := &Containerd{
 		Source:    "git",
@@ -327,26 +296,8 @@ func TestContainerd_Execute_CommonElements(t *testing.T) {
 			require.NoError(t, err)
 			out := buf.String()
 
-			if tt.version == "2.0.0" {
-				assert.True(t, strings.Contains(out, "sudo modprobe overlay"))
-				assert.True(t, strings.Contains(out, "sudo modprobe br_netfilter"))
-				assert.True(t, strings.Contains(out, "net.bridge.bridge-nf-call-iptables"))
-				assert.True(t, strings.Contains(out, "net.ipv4.ip_forward"))
-				assert.True(t, strings.Contains(out, "sudo sysctl --system"))
-				assert.True(t, strings.Contains(out, `if [[ "$ARCH" == "x86_64" ]]`))
-				assert.True(t, strings.Contains(out, `ARCH="amd64"`))
-				assert.True(t, strings.Contains(out, `elif [[ "$ARCH" == "aarch64" ]]`))
-				assert.True(t, strings.Contains(out, `ARCH="arm64"`))
-				assert.True(t, strings.Contains(out, `CNI_VERSION="v1.6.2"`))
-				assert.True(t, strings.Contains(out, "/opt/cni/bin"))
-			}
-
 			assert.Contains(t, out, "sudo mkdir -p /etc/containerd")
-			if tt.version == "1.7.26" {
-				assert.Contains(t, out, "sudo systemctl restart containerd")
-			} else {
-				assert.Contains(t, out, "sudo systemctl enable --now containerd")
-			}
+			assert.Contains(t, out, "sudo systemctl restart containerd")
 			assert.Contains(t, out, "sudo systemctl enable")
 		})
 	}
