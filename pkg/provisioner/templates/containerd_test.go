@@ -181,6 +181,12 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	assert.Contains(t, out, "1.7.26")
 	assert.Contains(t, out, "download.docker.com")
 	assert.Contains(t, out, "Amazon Linux repository")
+	assert.Contains(t, out, "/etc/apt/keyrings/docker.gpg",
+		"debian branch must add the Docker apt keyring")
+	assert.Contains(t, out, "docker-ce.repo",
+		"rhel branch must install the Docker dnf repo")
+	assert.Contains(t, out, "Unsupported OS family",
+		"unknown OS families must be rejected with a diagnostic")
 	assert.Contains(t, out, `SystemdCgroup \= true`)
 	assert.Contains(t, out, "containerd config default")
 	assert.Contains(t, out, `conf_dir = "/etc/cni/net.d"`)
