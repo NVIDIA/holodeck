@@ -198,6 +198,39 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	assert.Contains(t, out, "holodeck_mark_installed")
 }
 
+// TestContainerd_Execute_Version2x asserts that requesting a v2.x version
+// renders the unified containerd.io package template (same path as v1.x),
+// not the binary-download v2 template.
+func TestContainerd_Execute_Version2x(t *testing.T) {
+	env := v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			ContainerRuntime: v1alpha1.ContainerRuntime{
+				Version: "2.2.3",
+			},
+		},
+	}
+	c, err := NewContainerd(env)
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	err = c.Execute(&buf, env)
+	require.NoError(t, err)
+	out := buf.String()
+
+	// Discriminators that exist ONLY in the unified package (V1) template:
+	assert.Contains(t, out, "download.docker.com",
+		"v2.x must use the Docker apt/dnf repo path")
+	assert.Contains(t, out, "Installing containerd 2.2.3 using package repository",
+		"v2.x must take the package-repo install path, not the binary-download path")
+	assert.Contains(t, out, "HOLODECK_OS_FAMILY",
+		"v2.x must go through the OS-family switch (debian/amazon/rhel)")
+
+	// Discriminators that exist ONLY in the V2 binary template — must be ABSENT:
+	assert.NotContains(t, out, "github.com/containerd/containerd/releases/download",
+		"template should not download containerd binaries from GitHub")
+	assert.NotContains(t, out, "RUNC_VERSION",
+		"template should not pin runc version (containerd.io bundles it)")
+}
+
 func TestContainerd_Execute_Version2(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
