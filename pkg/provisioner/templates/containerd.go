@@ -820,11 +820,7 @@ func (t *Containerd) Execute(tpl *bytes.Buffer, env v1alpha1.Environment) error 
 
 	switch t.Source {
 	case "package", "":
-		if t.MajorVersion == 2 {
-			tmpl = containerdV2Tmpl
-		} else {
-			tmpl = containerdV1Tmpl
-		}
+		tmpl = containerdV1Tmpl
 	case "git":
 		tmpl = containerdGitTmpl
 	case "latest":
