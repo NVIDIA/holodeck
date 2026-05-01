@@ -1,0 +1,25 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: containerd-cell-3-amzn-1727
+  description: "containerd consolidation E2E — Amazon Linux 2023 + 1.7.27"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /Users/eduardoa/.ssh/cnt-ci.pem
+    username: ec2-user
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    ingressIpRanges:
+      - 12.161.61.162/32
+    image:
+      architecture: amd64
+      imageId: ami-0a21b93c10617c1a5
+  containerRuntime:
+    install: true
+    name: containerd
+    version: 1.7.27
+  kubernetes:
+    install: false
