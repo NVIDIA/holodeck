@@ -17,7 +17,6 @@ package templates
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,7 +31,6 @@ func TestNewContainerd_Defaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "package", c.Source)
 	assert.Equal(t, "1.7.27", c.Version)
-	assert.Equal(t, 1, c.MajorVersion)
 }
 
 func TestNewContainerd_CustomVersion(t *testing.T) {
@@ -46,7 +44,6 @@ func TestNewContainerd_CustomVersion(t *testing.T) {
 	c, err := NewContainerd(env)
 	require.NoError(t, err)
 	assert.Equal(t, "1.7.0", c.Version)
-	assert.Equal(t, 1, c.MajorVersion)
 }
 
 func TestNewContainerd_EmptyVersion(t *testing.T) {
@@ -60,7 +57,6 @@ func TestNewContainerd_EmptyVersion(t *testing.T) {
 	c, err := NewContainerd(env)
 	require.NoError(t, err)
 	assert.Equal(t, "1.7.27", c.Version)
-	assert.Equal(t, 1, c.MajorVersion)
 }
 
 func TestNewContainerd_Version2(t *testing.T) {
@@ -74,7 +70,6 @@ func TestNewContainerd_Version2(t *testing.T) {
 	c, err := NewContainerd(env)
 	require.NoError(t, err)
 	assert.Equal(t, "2.0.0", c.Version)
-	assert.Equal(t, 2, c.MajorVersion)
 }
 
 func TestNewContainerd_PackageSpec(t *testing.T) {
@@ -186,6 +181,12 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	assert.Contains(t, out, "1.7.26")
 	assert.Contains(t, out, "download.docker.com")
 	assert.Contains(t, out, "Amazon Linux repository")
+	assert.Contains(t, out, "/etc/apt/keyrings/docker.gpg",
+		"debian branch must add the Docker apt keyring")
+	assert.Contains(t, out, "docker-ce.repo",
+		"rhel branch must install the Docker dnf repo")
+	assert.Contains(t, out, "Unsupported OS family",
+		"unknown OS families must be rejected with a diagnostic")
 	assert.Contains(t, out, `SystemdCgroup \= true`)
 	assert.Contains(t, out, "containerd config default")
 	assert.Contains(t, out, `conf_dir = "/etc/cni/net.d"`)
@@ -198,11 +199,14 @@ func TestContainerd_Execute_Version1(t *testing.T) {
 	assert.Contains(t, out, "holodeck_mark_installed")
 }
 
-func TestContainerd_Execute_Version2(t *testing.T) {
+// TestContainerd_Execute_Version2x asserts that requesting a v2.x version
+// renders the unified containerd.io package template (same path as v1.x),
+// not the binary-download v2 template.
+func TestContainerd_Execute_Version2x(t *testing.T) {
 	env := v1alpha1.Environment{
 		Spec: v1alpha1.EnvironmentSpec{
 			ContainerRuntime: v1alpha1.ContainerRuntime{
-				Version: "2.0.0",
+				Version: "2.2.3",
 			},
 		},
 	}
@@ -213,19 +217,19 @@ func TestContainerd_Execute_Version2(t *testing.T) {
 	require.NoError(t, err)
 	out := buf.String()
 
-	assert.Contains(t, out, `COMPONENT="containerd"`)
-	assert.Contains(t, out, "holodeck_progress")
-	assert.Contains(t, out, "Installing containerd 2.0.0 from official binaries")
-	assert.Contains(t, out, "containerd-2.0.0-linux-${ARCH}.tar.gz")
-	assert.Contains(t, out, "https://github.com/containerd/containerd/releases/download/v2.0.0/")
-	assert.Contains(t, out, "SystemdCgroup = true")
-	assert.Contains(t, out, "containerd config default")
-	assert.Contains(t, out, `RUNC_VERSION="1.2.3"`)
-	assert.Contains(t, out, `CNI_VERSION="v1.6.2"`)
-	assert.Contains(t, out, `conf_dir = "/etc/cni/net.d"`)
-	assert.Contains(t, out, `bin_dir = "/opt/cni/bin"`)
-	assert.Contains(t, out, "holodeck_verify_containerd")
-	assert.Contains(t, out, "holodeck_mark_installed")
+	// Discriminators that exist ONLY in the unified package (V1) template:
+	assert.Contains(t, out, "download.docker.com",
+		"v2.x must use the Docker apt/dnf repo path")
+	assert.Contains(t, out, "Installing containerd 2.2.3 using package repository",
+		"v2.x must take the package-repo install path, not the binary-download path")
+	assert.Contains(t, out, "HOLODECK_OS_FAMILY",
+		"v2.x must go through the OS-family switch (debian/amazon/rhel)")
+
+	// Discriminators that exist ONLY in the V2 binary template — must be ABSENT:
+	assert.NotContains(t, out, "github.com/containerd/containerd/releases/download",
+		"template should not download containerd binaries from GitHub")
+	assert.NotContains(t, out, "RUNC_VERSION",
+		"template should not pin runc version (containerd.io bundles it)")
 }
 
 func TestContainerd_Execute_GitSource(t *testing.T) {
@@ -294,26 +298,8 @@ func TestContainerd_Execute_CommonElements(t *testing.T) {
 			require.NoError(t, err)
 			out := buf.String()
 
-			if tt.version == "2.0.0" {
-				assert.True(t, strings.Contains(out, "sudo modprobe overlay"))
-				assert.True(t, strings.Contains(out, "sudo modprobe br_netfilter"))
-				assert.True(t, strings.Contains(out, "net.bridge.bridge-nf-call-iptables"))
-				assert.True(t, strings.Contains(out, "net.ipv4.ip_forward"))
-				assert.True(t, strings.Contains(out, "sudo sysctl --system"))
-				assert.True(t, strings.Contains(out, `if [[ "$ARCH" == "x86_64" ]]`))
-				assert.True(t, strings.Contains(out, `ARCH="amd64"`))
-				assert.True(t, strings.Contains(out, `elif [[ "$ARCH" == "aarch64" ]]`))
-				assert.True(t, strings.Contains(out, `ARCH="arm64"`))
-				assert.True(t, strings.Contains(out, `CNI_VERSION="v1.6.2"`))
-				assert.True(t, strings.Contains(out, "/opt/cni/bin"))
-			}
-
 			assert.Contains(t, out, "sudo mkdir -p /etc/containerd")
-			if tt.version == "1.7.26" {
-				assert.Contains(t, out, "sudo systemctl restart containerd")
-			} else {
-				assert.Contains(t, out, "sudo systemctl enable --now containerd")
-			}
+			assert.Contains(t, out, "sudo systemctl restart containerd")
 			assert.Contains(t, out, "sudo systemctl enable")
 		})
 	}

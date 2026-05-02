@@ -1,0 +1,24 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: containerd-cell-2-ubuntu-223
+  description: "containerd consolidation E2E — Ubuntu + 2.2.3 (the actual fix)"
+spec:
+  provider: aws
+  auth:
+    keyName: cnt-ci
+    privateKey: /Users/eduardoa/.ssh/cnt-ci.pem
+  instance:
+    type: g4dn.xlarge
+    region: us-west-1
+    ingressIpRanges:
+      - 12.161.61.162/32
+    image:
+      architecture: amd64
+      imageId: ami-07c175e73e37b02df
+  containerRuntime:
+    install: true
+    name: containerd
+    version: 2.2.3
+  kubernetes:
+    install: false
