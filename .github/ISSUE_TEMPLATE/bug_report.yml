@@ -1,149 +1,56 @@
-name: 🐛 Bug Report
-description: Report a bug or unexpected behavior in Holodeck
+name: "Bug report"
+description: "Report a defect (DGXC OSS policy: kind/bug)."
 title: "[Bug]: "
-labels: ["kind/bug", "needs-triage"]
+labels: ["kind/bug", "needs-triage", "priority/unprioritized"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! Please fill out the form below.
-        
-        Before submitting, please search existing issues to avoid duplicates.
-
-  - type: textarea
-    id: description
+        Thanks for filing a bug. Please complete every section. Issues missing reproduction or version data may be re-labeled `needs-triage` and parked.
+  - type: input
+    id: version
     attributes:
-      label: Bug Description
-      description: A clear and concise description of the bug.
-      placeholder: Describe what happened...
-    validations:
-      required: true
-
+      label: Component / version
+      description: e.g. holodeck v0.4.2 / k8s-test-infra commit abc1234
+    validations: { required: true }
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Actual behaviour, including full error output / stack traces.
+      render: shell
+    validations: { required: true }
   - type: textarea
     id: expected
     attributes:
-      label: Expected Behavior
-      description: What did you expect to happen?
-      placeholder: I expected...
-    validations:
-      required: true
-
+      label: Expected behaviour
+    validations: { required: true }
   - type: textarea
-    id: actual
+    id: repro
     attributes:
-      label: Actual Behavior
-      description: What actually happened?
-      placeholder: Instead, what happened was...
-    validations:
-      required: true
-
+      label: Steps to reproduce
+      description: Minimal, deterministic. Include manifests, commands, env.
+      render: bash
+    validations: { required: true }
   - type: textarea
-    id: reproduce
+    id: env
     attributes:
-      label: Steps to Reproduce
-      description: Steps to reproduce the behavior.
-      placeholder: |
-        1. Run `holodeck create -f ...`
-        2. Wait for provisioning...
-        3. See error
-    validations:
-      required: true
-
-  - type: dropdown
-    id: provider
-    attributes:
-      label: Cloud Provider
-      description: Which provider are you using?
-      options:
-        - AWS
-        - SSH (existing instance)
-        - Not applicable
-    validations:
-      required: true
-
-  - type: dropdown
-    id: command
-    attributes:
-      label: Holodeck Command
-      description: Which command exhibited the issue?
-      options:
-        - create
-        - delete
-        - status
-        - list
-        - dryrun
-        - GitHub Action
-        - Other
-    validations:
-      required: true
-
-  - type: textarea
-    id: environment-yaml
-    attributes:
-      label: Environment YAML
-      description: |
-        If applicable, share your environment YAML configuration.
-        Redact any sensitive information (keys, credentials, etc.).
-      placeholder: |
-        apiVersion: holodeck.nvidia.com/v1alpha1
-        kind: Environment
-        metadata:
-          name: my-environment
-        spec:
-          provider: aws
-          ...
+      label: Environment
+      description: OS, kernel, container runtime, k8s version, GPU/driver, hardware.
       render: yaml
-
+    validations: { required: true }
   - type: textarea
     id: logs
     attributes:
-      label: Relevant Logs
-      description: |
-        Include any relevant logs or error messages.
-        Please wrap in code blocks.
-      placeholder: |
-        ```
-        Error: failed to create instance: ...
-        ```
+      label: Logs / artefacts
+      description: Attach or paste relevant logs (redact secrets).
       render: shell
-
-  - type: input
-    id: holodeck-version
-    attributes:
-      label: Holodeck Version
-      description: Output of `holodeck --version` or commit SHA
-      placeholder: v1.0.0 or abc1234
-    validations:
-      required: true
-
-  - type: input
-    id: go-version
-    attributes:
-      label: Go Version
-      description: Output of `go version`
-      placeholder: go1.21.0
-
-  - type: input
-    id: os
-    attributes:
-      label: Operating System
-      description: OS and version where holodeck is running
-      placeholder: Ubuntu 22.04, macOS 14.0, etc.
-
-  - type: textarea
-    id: additional
-    attributes:
-      label: Additional Context
-      description: |
-        Add any other context about the problem here.
-        Screenshots, links, or any additional information.
-
   - type: checkboxes
-    id: checklist
+    id: terms
     attributes:
-      label: Checklist
+      label: Pre-submission checks
       options:
-        - label: I have searched existing issues for duplicates
+        - label: I searched existing issues and Discussions and this is not a duplicate.
           required: true
-        - label: I have redacted any sensitive information from logs/configs
+        - label: This is a defect, not a usage question (questions belong in Discussions).
           required: true
