@@ -48,3 +48,39 @@ func TestNewCommand_HasListSubcommand(t *testing.T) {
 		t.Errorf("missing 'list' subcommand in skill command")
 	}
 }
+
+// TestNewCommand_MainGoWiringContract verifies the full surface that
+// cmd/cli/main.go consumes when registering the skill command:
+// non-nil, Name == "skill", non-empty Usage (renders in `--help`),
+// and both `list` and `add` subcommands present.
+//
+// Failure modes caught:
+//   - NewCommand returning nil (main.go would deref-panic on Run)
+//   - Renaming the command away from "skill" (breaks docs and skill
+//     install paths)
+//   - Empty Usage (urfave/cli renders a blank line in the COMMANDS
+//     section of the top-level help)
+//   - Either subcommand silently dropped from build()
+func TestNewCommand_MainGoWiringContract(t *testing.T) {
+	cmd := NewCommand(logger.NewLogger())
+	if cmd == nil {
+		t.Fatal("NewCommand returned nil")
+	}
+	if cmd.Name != "skill" {
+		t.Errorf("Name = %q, want %q", cmd.Name, "skill")
+	}
+	if cmd.Usage == "" {
+		t.Errorf("Usage is empty; the top-level help would render a blank command entry")
+	}
+	want := map[string]bool{"list": false, "add": false}
+	for _, sub := range cmd.Subcommands {
+		if _, ok := want[sub.Name]; ok {
+			want[sub.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("missing %q subcommand on the skill command", name)
+		}
+	}
+}
