@@ -10774,6 +10774,9 @@ type InstanceTypeInfo struct {
 	// [Boot modes]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ami-boot.html
 	SupportedBootModes []BootModeType
 
+	// Indicates whether the instance type is supported in the current Region.
+	SupportedInRegion *bool
+
 	// The supported root device types.
 	SupportedRootDeviceTypes []RootDeviceType
 
@@ -25019,10 +25022,6 @@ type VolumeModification struct {
 
 	// The current modification state.
 	ModificationState VolumeModificationState
-
-	// Describes whether the resource is managed by a service provider and, if so,
-	// describes the service provider that manages it.
-	Operator *OperatorResponse
 
 	// The original IOPS rate of the volume.
 	OriginalIops *int32
