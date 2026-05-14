@@ -164,6 +164,33 @@ Platform: Linux/Darwin. On Windows, the chown step is a no-op.
 `rsync + ssh + remote-run` blocks in your workflow with a direct
 `kubectl --kubeconfig=$GITHUB_WORKSPACE/kubeconfig …` step.
 
+## Agentic skills
+
+Holodeck ships an embedded catalog of agentic skills that teach an AI
+coding agent how to drive the CLI correctly. List the catalog:
+
+```bash
+holodeck skill list
+```
+
+Install a skill into your AI agent's native format:
+
+```bash
+# Claude Code (project-local: ./.claude/skills/<name>/SKILL.md)
+holodeck skill add using-holodeck --claude
+
+# Multiple agents at once
+holodeck skill add using-holodeck --claude --cursor --codex --gemini
+
+# Or install everything for every agent, user-wide
+holodeck skill add --all --all-agents --global
+```
+
+Supported agents: Claude Code, Cursor, Codex CLI, Gemini CLI. Skills
+are short markdown guides authored against the actual CLI behavior;
+they version with the code so updates land alongside the features
+they describe.
+
 ## 📂 More
 
 - [Examples](docs/examples/)
