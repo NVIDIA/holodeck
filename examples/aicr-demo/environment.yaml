@@ -1,0 +1,36 @@
+# Holodeck environment for the AICR integration demo
+# (docs/guides/aicr-integration.md).
+#
+# Provisions a single-node g6e.xlarge (1x NVIDIA L40S, 48 GiB VRAM)
+# on AWS, installs kubeadm-based Kubernetes, NVIDIA driver, container
+# toolkit, and containerd. End state: a GPU-ready K8s cluster that
+# AICR can layer Slurm and inference platforms onto.
+
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: aicr-demo-l40s
+  description: "Day-0 cluster for the AICR integration demo"
+spec:
+  provider: aws
+  auth:
+    keyName: <your key name here>
+    privateKey: <your key path here>
+  instance:
+    type: g6e.xlarge          # 1x NVIDIA L40S (48 GiB VRAM), 4 vCPU, 32 GiB host RAM
+    region: us-west-2
+    os: ubuntu-22.04
+    image:
+      architecture: x86_64
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm
+    version: v1.35.0          # AICR requires K8s 1.34+
+    crictlVersion: v1.35.0
