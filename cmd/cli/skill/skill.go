@@ -82,6 +82,7 @@ Examples:
   holodeck skill add --all --all-agents --global`,
 		Subcommands: []*cli.Command{
 			c.buildListCommand(),
+			c.buildAddCommand(),
 		},
 	}
 }
