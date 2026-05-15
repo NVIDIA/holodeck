@@ -292,12 +292,76 @@ mean the recipe didn't request that phase).
 
 ## Why this matters
 
-<!-- Filled in Task 9 -->
+You started with an empty AWS account. Twenty-five minutes and roughly
+two dollars later, you have:
+
+- A reproducible Kubernetes cluster declared by a single Environment
+    YAML.
+- A snapshot capturing exactly what's installed — driver, CUDA,
+    kernel, container runtime, operators.
+- Two AICR recipes derived from that snapshot, one matching every
+    installed component.
+- A Slurm scheduler accepting `sbatch` jobs on the GPU.
+- A Dynamo inference platform serving an OpenAI-compatible API.
+
+Both platforms run on the same single L40S. The whole stack is
+declarative — re-run the same commands tomorrow and you get the same
+result. That's the holodeck + AICR superpower: Day 0 provisioning and
+Day 1 composition glued together so that one developer with two CLIs
+can stand up production-shape infrastructure in the time it takes to
+get a coffee.
 
 ## Troubleshooting
 
-<!-- Filled in Task 9 -->
+**`g6e` quota denied.** AWS new accounts often don't have GPU quota in
+`us-west-2`. Request via the Service Quotas console: search for
+"Running On-Demand G and VT instances" → request 4 vCPUs minimum (or
+more for multi-instance work).
+
+**`holodeck create` hangs on the Ansible play.** The driver install
+step can take 4–6 minutes. Tail the holodeck process; if it's still
+making SSH calls, wait. If it errors with "kernel headers not found",
+re-check `os: ubuntu-22.04` matches an Ubuntu version with stable
+NVIDIA driver kernel-module packaging.
+
+**`aicr recipe` reports `l40` matched against `L40S`.** The AICR
+accelerator catalog has an `l40` row that maps to both L40 and L40S
+SKUs. Expect a `matched as l40` informational message — not an error.
+
+**SlurmCluster pods Pending.** Run `kubectl describe pod -n slurm`.
+The common cause is the `nvidia.com/gpu` resource not yet registered
+by the GPU Operator. Phase 2.3's `deploy.sh` installs the GPU
+Operator — if you ran Slurm first, the NodeSet Pending will resolve
+as soon as Phase 2.3 completes.
+
+**Dynamo pods OOMKilled.** Qwen3-0.6B fits comfortably on L40S (48
+GiB VRAM), so OOM here means a pod escaped to a non-GPU node. Confirm
+the deployment's tolerations match your single-node cluster's taints
+— or remove taints with `kubectl taint nodes --all
+node-role.kubernetes.io/control-plane-`.
+
+**Two `deploy.sh` invocations conflict.** Both Slurm and Dynamo
+recipes depend on cert-manager. The second invocation should treat
+cert-manager as already-installed; if it errors with "release already
+exists", run with `--reuse-values` or skip the conflicting component
+manually.
 
 ## Next steps + cleanup
 
-<!-- Filled in Task 9 -->
+Tear down when you're done:
+
+```bash
+holodeck delete <instance-id>
+# If the VPC lingers (rare):
+holodeck cleanup <vpc-id>
+```
+
+Where to go next:
+
+- [Multi-node clusters](multinode-clusters.md) — scale beyond single-
+    node for real Slurm jobs.
+- AICR variants on managed Kubernetes — see
+    [cuj1-eks.md](https://github.com/NVIDIA/aicr/blob/main/demos/cuj1-eks.md)
+    and [cuj1-gke.md](https://github.com/NVIDIA/aicr/blob/main/demos/cuj1-gke.md).
+- [AICR component catalog](https://github.com/NVIDIA/aicr/blob/main/docs/user/component-catalog.md)
+    — every operator a recipe can install.
