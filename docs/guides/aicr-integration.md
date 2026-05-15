@@ -41,7 +41,103 @@ inference path running on the same hardware.
 
 ## Phase 1 — Provision with Holodeck
 
-<!-- Filled in Task 4 -->
+### 3.1 Configure
+
+Open [`examples/aicr-demo/environment.yaml`](../../examples/aicr-demo/environment.yaml):
+
+```yaml
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: aicr-demo-l40s
+spec:
+  provider: aws
+  auth:
+    keyName: <your key name here>
+    privateKey: <your key path here>
+  instance:
+    type: g6e.xlarge          # 1x NVIDIA L40S (48 GiB VRAM), 4 vCPU, 32 GiB host RAM
+    region: us-west-2
+    os: ubuntu-22.04
+    image: { architecture: x86_64 }
+  containerRuntime:    { install: true, name: containerd }
+  nvidiaContainerToolkit: { install: true }
+  nvidiaDriver:        { install: true }
+  kubernetes:
+    install: true
+    installer: kubeadm
+    version: v1.35.0          # AICR requires K8s 1.34+
+    crictlVersion: v1.35.0
+```
+
+What matters in this YAML:
+
+- `provider: aws` + `auth` (`keyName`, `privateKey`) — the only fields you edit.
+- `instance.type: g6e.xlarge` — cheapest cloud SKU in AICR's `l40` accelerator row.
+- `os: ubuntu-22.04` — the AMI is auto-resolved by region; SSH username is auto-detected.
+- `kubernetes.version: v1.35.0` — AICR's recipe floor is K8s 1.34+,
+    and 1.35 is the current line.
+- `containerd` + `nvidiaDriver` + `nvidiaContainerToolkit` — Day 0
+    ends at host-level GPU access via a `nvidia` runtimeClass.
+
+Copy the example into your working directory and fill in your AWS key:
+
+```bash
+cp examples/aicr-demo/environment.yaml ./my-env.yaml
+$EDITOR ./my-env.yaml  # set auth.keyName and auth.privateKey
+```
+
+### 3.2 Create the cluster
+
+```bash
+holodeck create -f ./my-env.yaml
+```
+
+Holodeck creates a VPC, a security group locked to your public IP, an
+EC2 instance, then runs Ansible plays (driver, container runtime,
+toolkit, kubeadm). Total wall-clock is typically 6–8 minutes.
+
+Monitor progress:
+
+```bash
+holodeck list
+holodeck status <instance-id>
+```
+
+For a pre-flight check that does not touch AWS:
+
+```bash
+holodeck dryrun -f ./my-env.yaml
+```
+
+On success, holodeck writes a `./kubeconfig` to the current directory
+and reports the instance as `Ready`.
+
+### 3.3 Verify GPU + cluster
+
+Point `kubectl` at the new cluster and confirm the node is up:
+
+```bash
+export KUBECONFIG=$PWD/kubeconfig
+kubectl get nodes -o wide
+```
+
+Confirm the L40S is reachable from a pod using the `nvidia` runtimeClass:
+
+```bash
+kubectl run nvidia-smi --rm -it --restart=Never \
+  --image=nvcr.io/nvidia/cuda:12.6.0-base-ubuntu22.04 \
+  --overrides='{"spec":{"runtimeClassName":"nvidia"}}' \
+  -- nvidia-smi
+```
+
+Expected output: the node is `Ready`, the pod prints `NVIDIA L40S`,
+the driver version, and the CUDA version.
+
+> Note: `nvidia.com/gpu` as a Kubernetes resource will NOT exist yet
+> — that is the GPU Operator's job, installed by AICR in Phase 2. Day
+> 0 ends at host-level GPU access via the `nvidia` runtimeClass; Day 1
+> turns it into a schedulable resource.
 
 ## Phase 2 — Compose with AICR
 
