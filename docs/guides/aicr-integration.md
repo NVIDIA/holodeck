@@ -268,7 +268,27 @@ answer about Kubernetes.
 
 ### 2.4 Validate end state
 
-<!-- Filled in Task 8 -->
+Both recipes carry their own validation checks (deployment,
+conformance, performance). Run them against the final cluster state:
+
+```bash
+aicr validate --recipe recipe-slurm.yaml  --phase all \
+  --output report-slurm.json
+aicr validate --recipe recipe-dynamo.yaml --phase all \
+  --output report-dynamo.json
+```
+
+Summarize results:
+
+```bash
+for f in report-slurm.json report-dynamo.json; do
+  echo "=== $f ==="
+  jq '.results.summary' "$f"
+done
+```
+
+Expected: both reports show `failed: 0` (skipped tests are fine — they
+mean the recipe didn't request that phase).
 
 ## Why this matters
 
