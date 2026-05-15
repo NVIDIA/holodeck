@@ -27,6 +27,7 @@ Run `holodeck os list` to see all available operating systems:
 
 | OS ID | Family | SSH User | Package Manager | Architectures |
 |-------|--------|----------|-----------------|---------------|
+| ubuntu-26.04 | debian | ubuntu | apt | x86_64, arm64 |
 | ubuntu-24.04 | debian | ubuntu | apt | x86_64, arm64 |
 | ubuntu-22.04 | debian | ubuntu | apt | x86_64, arm64 |
 | ubuntu-20.04 | debian | ubuntu | apt | x86_64, arm64 |
@@ -90,6 +91,7 @@ rocky-9              rhel      rocky       dnf          x86_64, arm64
 ubuntu-20.04         debian    ubuntu      apt          x86_64, arm64
 ubuntu-22.04         debian    ubuntu      apt          x86_64, arm64
 ubuntu-24.04         debian    ubuntu      apt          x86_64, arm64
+ubuntu-26.04         debian    ubuntu      apt          x86_64, arm64
 ```
 
 ### Get OS Details
