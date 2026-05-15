@@ -219,7 +219,52 @@ Expected: job state `COMPLETED`, job output contains the L40S
 
 ### 2.3 Dynamo track
 
-<!-- Filled in Task 7 -->
+With Slurm running, the same cluster also gets an inference platform
+— no re-provisioning. Generate the Dynamo recipe from the **same**
+snapshot:
+
+```bash
+aicr recipe --snapshot snapshot.yaml \
+  --intent inference --platform dynamo \
+  --output recipe-dynamo.yaml
+
+aicr bundle --recipe recipe-dynamo.yaml --output ./bundle-dynamo
+cd ./bundle-dynamo && ./deploy.sh && cd ..
+```
+
+`deploy.sh` here installs the GPU Operator (which registers
+`nvidia.com/gpu` on the node), the Dynamo platform, and its
+dependencies. cert-manager is already present from the Slurm bundle —
+the second `deploy.sh` should be a no-op for it.
+
+Deploy a sample inference workload and wait for it:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/NVIDIA/aicr/main/demos/workloads/inference/vllm-agg.yaml
+
+kubectl wait --for=condition=ready pod --all \
+  -n dynamo-workload --timeout=300s
+```
+
+Hit the chat-completions endpoint:
+
+```bash
+kubectl port-forward -n dynamo-workload svc/vllm-agg-frontend 8000:8000 &
+PF_PID=$!
+
+curl -s http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Qwen/Qwen3-0.6B",
+    "messages": [{"role":"user","content":"What is Kubernetes?"}],
+    "max_tokens": 64
+  }' | jq .
+
+kill $PF_PID
+```
+
+Expected: HTTP 200; `choices[0].message.content` contains a coherent
+answer about Kubernetes.
 
 ### 2.4 Validate end state
 
