@@ -141,7 +141,36 @@ the driver version, and the CUDA version.
 
 ## Phase 2 — Compose with AICR
 
-<!-- Filled in Tasks 5–8 -->
+### 2.1 Snapshot the cluster
+
+```bash
+aicr snapshot --output snapshot.yaml
+yq '.metadata, .measurements[] | {(.type): [.subtypes[].subtype // .subtypes[].name]}' snapshot.yaml
+```
+
+A snapshot is AICR's read of your live cluster — node provider, GPU
+model, kernel, container runtime, OS, K8s server version, installed
+operators. AICR uses it two ways:
+
+- as input to `recipe` (matches a validated configuration to your
+    hardware), and
+- as a baseline that `validate` compares against later.
+
+Skim the output; you should see your L40S detected under `GPU.smi.gpu`
+with the Ada Lovelace architecture, the installed driver version, and
+the CUDA version. Snapshot capture takes under a minute.
+
+### 2.2 Slurm track
+
+<!-- Filled in Task 6 -->
+
+### 2.3 Dynamo track
+
+<!-- Filled in Task 7 -->
+
+### 2.4 Validate end state
+
+<!-- Filled in Task 8 -->
 
 ## Why this matters
 
