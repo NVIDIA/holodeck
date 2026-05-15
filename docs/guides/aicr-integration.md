@@ -162,7 +162,60 @@ the CUDA version. Snapshot capture takes under a minute.
 
 ### 2.2 Slurm track
 
-<!-- Filled in Task 6 -->
+The first thing AICR layers onto the cluster is a Slurm batch
+scheduler via the SchedMD Slinky operator (`--platform slurm`, added
+in AICR PR #866).
+
+Generate the recipe from your snapshot:
+
+```bash
+aicr recipe --snapshot snapshot.yaml \
+  --intent training --platform slurm \
+  --output recipe-slurm.yaml
+```
+
+Materialize it into a deployable bundle:
+
+```bash
+aicr bundle --recipe recipe-slurm.yaml --output ./bundle-slurm
+cd ./bundle-slurm && ./deploy.sh && cd ..
+```
+
+The bundle's `deploy.sh` installs (in order): cert-manager, the
+slinky-slurm-operator CRDs, and the operator itself in the `slinky`
+namespace.
+
+Wait for the operator to be Ready, then bring up a single-node Slurm
+cluster with the committed manifest:
+
+```bash
+kubectl wait --for=condition=available deploy/slinky-slurm-operator \
+  -n slinky --timeout=180s
+
+kubectl create namespace slurm
+kubectl apply -f examples/aicr-demo/slurm-cluster.yaml
+
+# Wait for the controller pod:
+kubectl wait --for=condition=ready pod \
+  -l app.kubernetes.io/component=controller \
+  -n slurm --timeout=300s
+```
+
+Submit a one-shot GPU job via `sbatch` from inside the controller pod:
+
+```bash
+SLURM_CTL=$(kubectl get pod -n slurm \
+  -l app.kubernetes.io/component=controller -o name | head -1)
+
+kubectl exec -n slurm "$SLURM_CTL" -- \
+  sbatch --gres=gpu:1 --wrap="nvidia-smi && hostname"
+
+# Wait a few seconds, then check job state:
+kubectl exec -n slurm "$SLURM_CTL" -- sacct
+```
+
+Expected: job state `COMPLETED`, job output contains the L40S
+`nvidia-smi` banner.
 
 ### 2.3 Dynamo track
 
