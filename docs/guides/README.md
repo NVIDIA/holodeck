@@ -26,6 +26,9 @@ This section is for in-depth guides and tutorials related to Holodeck.
     specific provisioning phases with inline, file, or URL sources.
 - [GitHub Action](github-action.md): Use holodeck as a GitHub Action to
     provision GPU test environments in CI workflows.
+- [AICR Integration](aicr-integration.md): End-to-end walkthrough that
+    provisions a single-node L40S cluster with Holodeck, then layers
+    Slurm (Slinky) and Dynamo inference on top with AICR.
 
 ## Contributing
 

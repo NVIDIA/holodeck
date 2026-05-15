@@ -181,6 +181,23 @@ holodeck create -f examples/aws_arm64.yaml
 
 ---
 
+## End-to-End Integration Examples
+
+### 20. AICR Integration Demo
+
+**Folder:** [`examples/aicr-demo/`](../../examples/aicr-demo/)
+
+End-to-end example used by the
+[AICR Integration guide](../guides/aicr-integration.md). Contains a
+Holodeck Environment for `g6e.xlarge` (1× NVIDIA L40S) and a minimal
+single-node `SlurmCluster` manifest for the Slinky Slurm operator.
+
+```bash
+holodeck create -f examples/aicr-demo/environment.yaml
+```
+
+---
+
 ## Updated AWS Examples
 
 The example configurations now show that `ingressIpRanges` is optional:
