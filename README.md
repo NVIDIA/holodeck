@@ -177,10 +177,10 @@ Install a skill into your AI agent's native format:
 
 ```bash
 # Claude Code (project-local: ./.claude/skills/<name>/SKILL.md)
-holodeck skill add using-holodeck --claude
+holodeck skill add --claude using-holodeck
 
 # Multiple agents at once
-holodeck skill add using-holodeck --claude --cursor --codex --gemini
+holodeck skill add --claude --cursor --codex --gemini using-holodeck
 
 # Or install everything for every agent, user-wide
 holodeck skill add --all --all-agents --global
