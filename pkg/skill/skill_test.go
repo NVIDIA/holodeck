@@ -78,10 +78,17 @@ func TestParseSkill(t *testing.T) {
 			wantErr:  "invalid skill name",
 		},
 		{
-			name:     "invalid name: empty after trim",
+			name:     "invalid name: embedded space",
 			fileName: "spaces",
 			raw:      "---\nname: foo bar\ndescription: x\n---\nbody\n",
 			wantErr:  "invalid skill name",
+		},
+		{
+			name:     "invalid name: exceeds 64 char cap",
+			fileName: "toolong",
+			// 65 characters: 'a' repeated.
+			raw:     "---\nname: " + strings.Repeat("a", 65) + "\ndescription: x\n---\nbody\n",
+			wantErr: "invalid skill name",
 		},
 		{
 			name:     "empty body",
