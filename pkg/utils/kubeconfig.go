@@ -17,6 +17,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,6 +48,13 @@ type kubeConfigCluster struct {
 	Server                   string `json:"server"`
 	CertificateAuthorityData string `json:"certificate-authority-data,omitempty"`
 }
+
+// Errors returned by ApplyRemoteAccess so callers and tests can
+// distinguish failure modes via errors.Is without string matching.
+var (
+	ErrRewriteFailed = errors.New("kubeconfig server URL rewrite failed")
+	ErrChownFailed   = errors.New("kubeconfig chown failed")
+)
 
 // RewriteKubeConfigServer rewrites the server URL in a kubeconfig file.
 // If serverURL is empty, this is a no-op.
