@@ -91,6 +91,16 @@ func TestParseSkill(t *testing.T) {
 			wantErr: "invalid skill name",
 		},
 		{
+			name:     "valid name: 64 char upper bound",
+			fileName: "boundary",
+			// Exactly 64 characters: 'a' repeated. Locks down the {0,63}
+			// length cap against a mistaken tightening to {0,62}.
+			raw:         "---\nname: " + strings.Repeat("a", 64) + "\ndescription: x\n---\nbody\n",
+			wantName:    strings.Repeat("a", 64),
+			wantDesc:    "x",
+			wantBodyHas: "body",
+		},
+		{
 			name:     "empty body",
 			fileName: "foo",
 			raw:      "---\nname: foo\ndescription: x\n---\n",
