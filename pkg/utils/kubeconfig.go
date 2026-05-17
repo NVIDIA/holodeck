@@ -65,7 +65,19 @@ var (
 // the new server URL but the original ownership; the caller must
 // treat the kubeconfig as garbage and abort.
 func ApplyRemoteAccess(cfg *v1alpha1.Environment, hostUrl, path string) error {
-	// Stub — real implementation added in the next commit.
+	if !cfg.Spec.Kubernetes.RemoteAccess {
+		return nil
+	}
+	if hostUrl == "" {
+		return fmt.Errorf("ApplyRemoteAccess: hostUrl is empty")
+	}
+	serverURL := fmt.Sprintf("https://%s:6443", hostUrl)
+	if err := RewriteKubeConfigServer(path, serverURL); err != nil {
+		return fmt.Errorf("%w: %w", ErrRewriteFailed, err)
+	}
+	if err := chownToWorkspaceOwner(path); err != nil {
+		return fmt.Errorf("%w: %w", ErrChownFailed, err)
+	}
 	return nil
 }
 
