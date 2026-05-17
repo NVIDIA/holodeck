@@ -70,9 +70,13 @@ func (c *command) runList(_ *cli.Context) error {
 	switch c.outputFormat {
 	case "", "table":
 		tw := tabwriter.NewWriter(c.out, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "NAME\tDESCRIPTION")
+		if _, err := fmt.Fprintln(tw, "NAME\tDESCRIPTION"); err != nil {
+			return err
+		}
 		for _, s := range data.Skills {
-			fmt.Fprintf(tw, "%s\t%s\n", s.Name, s.Description)
+			if _, err := fmt.Fprintf(tw, "%s\t%s\n", s.Name, s.Description); err != nil {
+				return err
+			}
 		}
 		return tw.Flush()
 	case "json":

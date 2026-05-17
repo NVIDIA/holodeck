@@ -79,7 +79,7 @@ func TestInstall_PerFile_NewFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("writeFileAtomic: %v", err)
 	}
-	got, err := os.ReadFile(dest)
+	got, err := os.ReadFile(dest) // #nosec G304 -- dest is constructed from t.TempDir()
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestInstall_PerFile_CreatesParentDirs(t *testing.T) {
 func TestInstall_SingleFile_AppendsToExisting(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "AGENTS.md")
-	if err := os.WriteFile(dest, []byte("# Existing\n\nold content\n"), 0644); err != nil {
+	if err := os.WriteFile(dest, []byte("# Existing\n\nold content\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	section := []byte("<!-- BEGIN holodeck-skill:demo -->\nDEMO\n<!-- END holodeck-skill:demo -->\n")
@@ -111,7 +111,7 @@ func TestInstall_SingleFile_AppendsToExisting(t *testing.T) {
 		t.Fatalf("installSingleFile: %v", err)
 	}
 
-	got, err := os.ReadFile(dest)
+	got, err := os.ReadFile(dest) // #nosec G304 -- dest is constructed from t.TempDir()
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestInstall_SingleFile_CreatesIfMissing(t *testing.T) {
 	if err := installSingleFile(dest, section, "demo"); err != nil {
 		t.Fatalf("installSingleFile: %v", err)
 	}
-	got, err := os.ReadFile(dest)
+	got, err := os.ReadFile(dest) // #nosec G304 -- dest is constructed from t.TempDir()
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestInstall_OverwriteCheck_NoFile(t *testing.T) {
 func TestInstall_OverwriteCheck_FileExists(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "exists.md")
-	if err := os.WriteFile(dest, []byte("x"), 0644); err != nil {
+	if err := os.WriteFile(dest, []byte("x"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	exists, err := destinationExists(dest)

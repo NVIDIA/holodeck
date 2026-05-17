@@ -78,7 +78,9 @@ func Install(r Renderer, s Skill, opts InstallOptions) (string, error) {
 	}
 
 	if opts.DryRun {
-		fmt.Fprintf(opts.Stdout, "would write %s (%d bytes)\n", dest, len(rendered))
+		if _, err := fmt.Fprintf(opts.Stdout, "would write %s (%d bytes)\n", dest, len(rendered)); err != nil {
+			return "", err
+		}
 		return dest, nil
 	}
 
@@ -130,7 +132,7 @@ func destinationExists(dest string) (bool, error) {
 // writeFileAtomic creates parent dirs as needed and writes content
 // to dest via a sibling tempfile + rename.
 func writeFileAtomic(dest string, content []byte) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
 		return fmt.Errorf("creating %s: %w", filepath.Dir(dest), err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(dest), filepath.Base(dest)+".tmp.*")
@@ -162,6 +164,7 @@ func writeFileAtomic(dest string, content []byte) error {
 // creating the file if it does not exist. The write is atomic.
 func installSingleFile(dest string, section []byte, skillName string) error {
 	var existing []byte
+	// #nosec G304 -- dest is computed from Renderer.InstallPath, bounded to known config-dir paths
 	raw, err := os.ReadFile(dest)
 	switch {
 	case err == nil:
@@ -180,8 +183,8 @@ func installSingleFile(dest string, section []byte, skillName string) error {
 // replaced; otherwise section is appended (with a leading blank line
 // if existing has content).
 func spliceSection(existing, section []byte, skillName string) []byte {
-	begin := []byte(fmt.Sprintf("<!-- BEGIN holodeck-skill:%s -->", skillName))
-	end := []byte(fmt.Sprintf("<!-- END holodeck-skill:%s -->", skillName))
+	begin := fmt.Appendf(nil, "<!-- BEGIN holodeck-skill:%s -->", skillName)
+	end := fmt.Appendf(nil, "<!-- END holodeck-skill:%s -->", skillName)
 
 	bIdx := bytes.Index(existing, begin)
 	if bIdx < 0 {
@@ -225,7 +228,9 @@ func spliceSection(existing, section []byte, skillName string) []byte {
 
 // confirmOverwrite reads a y/N response from in.
 func confirmOverwrite(in io.Reader, out io.Writer, dest string) (bool, error) {
-	fmt.Fprintf(out, "overwrite %s? [y/N] ", dest)
+	if _, err := fmt.Fprintf(out, "overwrite %s? [y/N] ", dest); err != nil {
+		return false, err
+	}
 	scanner := bufio.NewScanner(in)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {

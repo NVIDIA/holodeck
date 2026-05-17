@@ -101,7 +101,9 @@ func (c *command) runAdd(ctx *cli.Context) error {
 				return err
 			}
 			if !c.dryRun {
-				fmt.Fprintf(c.out, "installed %s for %s -> %s\n", s.Name, r.AgentName(), path)
+				if _, err := fmt.Fprintf(c.out, "installed %s for %s -> %s\n", s.Name, r.AgentName(), path); err != nil {
+					return err
+				}
 			}
 		}
 	}

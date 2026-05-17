@@ -27,8 +27,10 @@ import "testing"
 //
 // Other renderers' interface conformance is verified in their own
 // _test.go files.
+var _ Renderer = NewClaudeRenderer() // compile-time interface check
+
 func TestRendererInterfaceSatisfied(t *testing.T) {
-	var r Renderer = NewClaudeRenderer()
+	r := NewClaudeRenderer()
 	if r.AgentName() == "" {
 		t.Errorf("AgentName returned empty string")
 	}
