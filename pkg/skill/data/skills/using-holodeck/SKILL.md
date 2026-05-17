@@ -106,21 +106,26 @@ holodeck scp ./local-file.txt <instance-id>:/remote/path/
 holodeck scp <instance-id>:/remote/file.log ./local/
 ```
 
-**Get artifacts off the instance:**
+**Get artifacts off the instance** (flags must precede the positional
+ID — urfave/cli/v2's parser stops parsing flags after the first
+positional):
 ```bash
-holodeck get kubeconfig <instance-id>           # downloads kubeconfig
-holodeck get kubeconfig <id> -o ./my.kubeconfig # -o here is an output PATH, not a format
-holodeck get ssh-config <instance-id>           # ~/.ssh/config snippet
+holodeck get kubeconfig <instance-id>                # downloads kubeconfig
+holodeck get kubeconfig -o ./my.kubeconfig <id>      # -o is an output PATH (not a format)
+holodeck get ssh-config <instance-id>                # prints SSH config snippet to stdout
 ```
 
-**Update an existing environment** — `update <id>` alone is a no-op;
-pass the specific change as a flag:
+**Update an existing environment** — bare `update <id>` is a no-op
+("No changes to apply"); pass change flags BEFORE the positional ID
+(urfave/cli/v2's parser stops parsing flags after the first
+positional, so `update <id> --add-driver` fails with
+"instance ID is required" — flag-first is mandatory):
 ```bash
-holodeck update <id> --reprovision         # re-run all installers (idempotent)
-holodeck update <id> --add-driver          # add NVIDIA driver
-holodeck update <id> --add-kubernetes      # add K8s + kubeadm
-holodeck update <id> --add-toolkit --enable-cdi   # NVIDIA container toolkit
-holodeck update <id> --label team=gpu-infra
+holodeck update --reprovision <id>              # re-run all installers (idempotent)
+holodeck update --add-driver <id>               # add NVIDIA driver
+holodeck update --add-kubernetes <id>           # add K8s + kubeadm
+holodeck update --add-toolkit --enable-cdi <id> # NVIDIA container toolkit
+holodeck update --label team=gpu-infra <id>     # repeatable
 ```
 
 **Destroy:**
@@ -129,9 +134,12 @@ holodeck delete <instance-id>
 ```
 
 **Clean up orphaned AWS VPC resources (when a provision failed
-mid-flight):**
+mid-flight)** — region is required either via `--region` or the
+`AWS_REGION` env var:
 ```bash
-holodeck cleanup vpc-12345678
+holodeck cleanup --region us-west-2 vpc-12345678
+holodeck cleanup --region us-west-2 vpc-12345678 vpc-87654321   # multiple
+AWS_REGION=us-west-2 holodeck cleanup vpc-12345678              # env-var form
 ```
 
 ## OS image discovery
@@ -151,6 +159,14 @@ Read commands (`list`, `status`, `describe`) accept
 
 ## Common pitfalls
 
+- **Instance IDs** — short hex strings (e.g. `878b6723`) shown by
+  `holodeck list`. They are NOT AWS-style `i-…` IDs. Always grab the
+  ID from `holodeck list` output, not the AWS console.
+- **Flag ordering** — urfave/cli/v2's default parser stops parsing
+  flags once it sees a positional arg. For any command that takes
+  both flags and a positional (e.g. `update`, `get kubeconfig`),
+  flags MUST precede the positional. `update <id> --add-driver`
+  fails; `update --add-driver <id>` works.
 - **AWS credentials** — the SDK reads `AWS_ACCESS_KEY_ID` /
   `AWS_SECRET_ACCESS_KEY` from the environment (or any other
   SDK-supported source: shared credentials file, IAM role, etc.).
