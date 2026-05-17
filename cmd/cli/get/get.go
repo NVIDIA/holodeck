@@ -184,6 +184,9 @@ func (m command) runKubeconfig(instanceID string) error {
 	if err := utils.GetKubeConfig(m.log, &env, hostUrl, outputPath); err != nil {
 		return fmt.Errorf("failed to download kubeconfig: %w", err)
 	}
+	if err := utils.ApplyRemoteAccess(&env, hostUrl, outputPath); err != nil {
+		return fmt.Errorf("applying kubeconfig remote-access settings: %w", err)
+	}
 
 	m.log.Info("Kubeconfig saved to: %s", outputPath)
 	m.log.Info("To use: export KUBECONFIG=%s", outputPath)

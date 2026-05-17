@@ -488,6 +488,9 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 		if err = utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %w", err)
 		}
+		if err := utils.ApplyRemoteAccess(&opts.cache, hostUrl, opts.kubeconfig); err != nil {
+			return fmt.Errorf("applying kubeconfig remote-access settings: %w", err)
+		}
 	}
 
 	return nil
@@ -560,6 +563,9 @@ func runMultinodeProvision(log *logger.FunLogger, opts *options) error {
 		if hostUrl != "" {
 			if err := utils.GetKubeConfig(log, &opts.cache, hostUrl, opts.kubeconfig); err != nil {
 				return fmt.Errorf("failed to get kubeconfig: %w", err)
+			}
+			if err := utils.ApplyRemoteAccess(&opts.cache, hostUrl, opts.kubeconfig); err != nil {
+				return fmt.Errorf("applying kubeconfig remote-access settings: %w", err)
 			}
 		}
 	}

@@ -100,6 +100,9 @@ func entrypoint(log *logger.FunLogger) error {
 		if err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %w", err)
 		}
+		if err := utils.ApplyRemoteAccess(&cfg, hostUrl, kubeconfig); err != nil {
+			return fmt.Errorf("applying kubeconfig remote-access settings: %w", err)
+		}
 	}
 
 	return nil
