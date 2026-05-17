@@ -32,8 +32,8 @@ metadata:
 spec:
   provider: aws
   auth:
-    keyName: HOLODECK_AWS_ACCESS_KEY_ID
-    privateKey: HOLODECK_AWS_SECRET_ACCESS_KEY
+    keyName: my-aws-keypair             # AWS EC2 key-pair name (in this region)
+    privateKey: ~/.ssh/my-aws-key.pem   # local filesystem path to the .pem
   instance:
     type: g4dn.xlarge        # GPU instance type
     region: us-west-2
@@ -65,11 +65,14 @@ check the `NOTES` column).
 
 ## Core workflows
 
-**Inspect what would happen first (no AWS calls — recommended before
-any new config):**
+**Validate the config first (read-only — no resources created, but
+does make AWS describe API calls to check instance type, image, and
+arch compatibility; requires valid AWS credentials):**
 ```bash
 holodeck dryrun -f env.yaml
 ```
+Recommended before any new config — provisioning failures cost real
+money.
 
 **Create + provision:**
 ```bash
@@ -105,13 +108,19 @@ holodeck scp <instance-id>:/remote/file.log ./local/
 
 **Get artifacts off the instance:**
 ```bash
-holodeck get kubeconfig <instance-id>   # downloads kubeconfig
-holodeck get ssh-config <instance-id>   # ~/.ssh/config snippet
+holodeck get kubeconfig <instance-id>           # downloads kubeconfig
+holodeck get kubeconfig <id> -o ./my.kubeconfig # -o here is an output PATH, not a format
+holodeck get ssh-config <instance-id>           # ~/.ssh/config snippet
 ```
 
-**Update an existing environment (re-run installers idempotently):**
+**Update an existing environment** — `update <id>` alone is a no-op;
+pass the specific change as a flag:
 ```bash
-holodeck update <instance-id>
+holodeck update <id> --reprovision         # re-run all installers (idempotent)
+holodeck update <id> --add-driver          # add NVIDIA driver
+holodeck update <id> --add-kubernetes      # add K8s + kubeadm
+holodeck update <id> --add-toolkit --enable-cdi   # NVIDIA container toolkit
+holodeck update <id> --label team=gpu-infra
 ```
 
 **Destroy:**
@@ -142,11 +151,18 @@ Read commands (`list`, `status`, `describe`) accept
 
 ## Common pitfalls
 
-- **AWS credentials** — the AWS provider needs `AWS_ACCESS_KEY_ID`
-  and `AWS_SECRET_ACCESS_KEY` (or any other SDK-supported credential
-  source). The values referenced by `auth.keyName` and
-  `auth.privateKey` in env.yaml are environment-variable names, not
-  literals.
+- **AWS credentials** — the SDK reads `AWS_ACCESS_KEY_ID` /
+  `AWS_SECRET_ACCESS_KEY` from the environment (or any other
+  SDK-supported source: shared credentials file, IAM role, etc.).
+  These are **separate** from `auth.keyName` / `auth.privateKey` in
+  env.yaml: those are **literal** values — `auth.keyName` is the EC2
+  SSH key-pair name registered in the target region, and
+  `auth.privateKey` is a filesystem path to the `.pem` on disk. Some
+  example files in `examples/` use placeholder strings (e.g.
+  `HOLODECK_AWS_ACCESS_KEY_ID`); those are intended as
+  user-replaceable templates, NOT env-var references — holodeck does
+  not call `os.Getenv` on them. Substitute actual values before
+  running.
 - **Region** — instance `region` must match a region with available
   GPU capacity. `g4dn` and `p4` families have limited inventory in
   some regions; `us-west-2` and `us-east-1` are reliable.
@@ -164,8 +180,9 @@ Read commands (`list`, `status`, `describe`) accept
 - Don't run `create --provision` against an unfamiliar config without
   running `holodeck dryrun -f env.yaml` first — provisioning failures
   cost real money.
-- Don't share an env.yaml with embedded secrets — `auth.keyName` and
-  `auth.privateKey` should point to environment variables, not
-  literal credentials.
+- Don't commit a populated env.yaml — `auth.privateKey` resolves to a
+  filesystem path; keep it outside the repo and chmod the `.pem` to
+  `0600`. Source AWS credentials from the environment / SDK chain,
+  not from env.yaml.
 - Don't manually `terraform destroy` against a holodeck-managed env;
   use `holodeck delete <id>`, which cleans up both infra and cache.
