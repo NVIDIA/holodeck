@@ -37,8 +37,10 @@ spec:
   instance:
     type: g4dn.xlarge        # GPU instance type
     region: us-west-2
-    image:
-      os: ubuntu-22.04       # see 'holodeck os list' for valid IDs
+    os: ubuntu-22.04         # see 'holodeck os list' for valid IDs
+    # Or, for an explicit AMI instead of an OS ID:
+    # image:
+    #   imageId: ami-0123456789abcdef0
   containerRuntime:
     install: true
     name: containerd
@@ -134,8 +136,9 @@ holodeck os ami ubuntu-22.04 --region us-east-1 --arch arm64
 
 ## Output flags
 
-Read commands (`list`, `status`, `describe`, `os list`) accept
+Read commands (`list`, `status`, `describe`) accept
 `-o table|json|yaml` (default `table`). Use `-o json` in scripts.
+`os list` prints a fixed table and does not take `-o`.
 
 ## Common pitfalls
 
@@ -148,8 +151,8 @@ Read commands (`list`, `status`, `describe`, `os list`) accept
   GPU capacity. `g4dn` and `p4` families have limited inventory in
   some regions; `us-west-2` and `us-east-1` are reliable.
 - **OS** — only IDs listed by `holodeck os list` are valid for
-  `spec.instance.image.os`. For an explicit AMI, set
-  `spec.instance.image.imageId` instead.
+  `spec.instance.os`. For an explicit AMI, set
+  `spec.instance.image.imageId` instead (and omit `os`).
 - **Cache** — instance metadata lives in `~/.cache/holodeck/` by
   default; pass `--cachepath <dir>` to override. `list` shows only
   cached envs.
