@@ -56,6 +56,19 @@ var (
 	ErrChownFailed   = errors.New("kubeconfig chown failed")
 )
 
+// ApplyRemoteAccess rewrites the kubeconfig server URL to a publicly
+// reachable endpoint and chowns the file to the bind-mounted workspace
+// owner. No-op when Spec.Kubernetes.RemoteAccess is false.
+//
+// Ordering: rewrite first, then chown. If rewrite fails, the file is
+// left untouched. If rewrite succeeds but chown fails, the file has
+// the new server URL but the original ownership; the caller must
+// treat the kubeconfig as garbage and abort.
+func ApplyRemoteAccess(cfg *v1alpha1.Environment, hostUrl, path string) error {
+	// Stub — real implementation added in the next commit.
+	return nil
+}
+
 // RewriteKubeConfigServer rewrites the server URL in a kubeconfig file.
 // If serverURL is empty, this is a no-op.
 func RewriteKubeConfigServer(path string, serverURL string) error {
