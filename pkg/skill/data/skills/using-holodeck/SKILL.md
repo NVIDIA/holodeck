@@ -126,9 +126,10 @@ holodeck cleanup vpc-12345678
 ## OS image discovery
 
 ```bash
-holodeck os list                  # table of supported OS IDs
-holodeck os describe ubuntu-22.04 # details for one OS
-holodeck os ami ubuntu-22.04 us-east-1   # resolve to an AMI ID
+holodeck os list                                       # table of supported OS IDs
+holodeck os describe ubuntu-22.04                      # details for one OS
+holodeck os ami ubuntu-22.04 --region us-east-1        # resolve to an AMI ID
+holodeck os ami ubuntu-22.04 --region us-east-1 --arch arm64
 ```
 
 ## Output flags
