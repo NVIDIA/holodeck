@@ -115,7 +115,7 @@ func RewriteKubeConfigServer(path string, serverURL string) error {
 }
 
 // GetKubeConfig downloads the kubeconfig file from the remote host
-func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl string, dest string, desiredServerURL string) error {
+func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl string, dest string) error {
 	remoteFilePath := "${HOME}/.kube/config"
 
 	// Create a new ssh session
@@ -163,13 +163,6 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	}
 
 	log.Info(fmt.Sprintf("Kubeconfig saved to %s\n", dest))
-
-	if desiredServerURL != "" {
-		if err := RewriteKubeConfigServer(dest, desiredServerURL); err != nil {
-			return fmt.Errorf("failed to rewrite kubeconfig server URL: %w", err)
-		}
-		log.Info(fmt.Sprintf("Kubeconfig server URL rewritten to %s\n", desiredServerURL))
-	}
 
 	return nil
 }
