@@ -21,10 +21,17 @@ package skill
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v2"
 )
+
+// skillNameRE constrains skill names to a safe, predictable form so the
+// name can be used as a path segment without traversal risk. Today the
+// catalog is embedded at compile time, but the regex hardens the parser
+// against future loaders that read SKILL.md from disk or network.
+var skillNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
 // Skill is a single entry in the catalog, parsed from a SKILL.md file.
 type Skill struct {
@@ -60,6 +67,9 @@ func parseSkill(fileName string, raw []byte) (Skill, error) {
 	}
 	if fm.Name == "" {
 		return Skill{}, fmt.Errorf("%s: name is required in frontmatter", fileName)
+	}
+	if !skillNameRE.MatchString(fm.Name) {
+		return Skill{}, fmt.Errorf("%s: invalid skill name %q: must match %s", fileName, fm.Name, skillNameRE)
 	}
 	if fm.Description == "" {
 		return Skill{}, fmt.Errorf("%s: description is required in frontmatter", fileName)

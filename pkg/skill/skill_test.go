@@ -54,6 +54,36 @@ func TestParseSkill(t *testing.T) {
 			wantErr:  "description is required",
 		},
 		{
+			name:     "invalid name: path traversal",
+			fileName: "evil",
+			raw:      "---\nname: ../../etc/passwd\ndescription: x\n---\nbody\n",
+			wantErr:  "invalid skill name",
+		},
+		{
+			name:     "invalid name: starts with hyphen",
+			fileName: "leading-hyphen",
+			raw:      "---\nname: -foo\ndescription: x\n---\nbody\n",
+			wantErr:  "invalid skill name",
+		},
+		{
+			name:     "invalid name: uppercase",
+			fileName: "uppercase",
+			raw:      "---\nname: Foo\ndescription: x\n---\nbody\n",
+			wantErr:  "invalid skill name",
+		},
+		{
+			name:     "invalid name: underscore",
+			fileName: "underscore",
+			raw:      "---\nname: foo_bar\ndescription: x\n---\nbody\n",
+			wantErr:  "invalid skill name",
+		},
+		{
+			name:     "invalid name: empty after trim",
+			fileName: "spaces",
+			raw:      "---\nname: foo bar\ndescription: x\n---\nbody\n",
+			wantErr:  "invalid skill name",
+		},
+		{
 			name:     "empty body",
 			fileName: "foo",
 			raw:      "---\nname: foo\ndescription: x\n---\n",
