@@ -1,10 +1,10 @@
-# Holodeck environment for the AICR integration demo
+# Holodeck environment for the AICR integration guide
 # (docs/guides/aicr-integration.md).
 #
 # Provisions a single-node g6e.xlarge (1x NVIDIA L40S, 48 GiB VRAM)
 # on AWS, installs kubeadm-based Kubernetes, NVIDIA driver, container
 # toolkit, and containerd. End state: a GPU-ready K8s cluster that
-# AICR can layer Slurm and inference platforms onto.
+# AICR can snapshot and generate a recipe against.
 
 apiVersion: holodeck.nvidia.com/v1alpha1
 kind: Environment

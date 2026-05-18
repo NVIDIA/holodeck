@@ -187,13 +187,13 @@ holodeck create -f examples/aws_arm64.yaml
 
 **Folder:** [`examples/aicr-demo/`](../../examples/aicr-demo/)
 
-End-to-end example used by the
+Companion example for the
 [AICR Integration guide](../guides/aicr-integration.md). Contains a
-Holodeck Environment for `g6e.xlarge` (1× NVIDIA L40S) and a minimal
-single-node `SlurmCluster` manifest for the Slinky Slurm operator.
+Holodeck Environment for `g6e.xlarge` (1× NVIDIA L40S) sized for the
+guide's snapshot + recipe walkthrough.
 
 ```bash
-holodeck create -f examples/aicr-demo/environment.yaml
+holodeck create -f examples/aicr-demo/environment.yaml --provision
 ```
 
 ---
