@@ -161,7 +161,7 @@ operators. It is the input AICR uses to derive a matching recipe.
 Skim a few key fields:
 
 ```bash
-yq '.measurements[] | select(.type=="GPU") | .subtypes[] | .data.gpu.model // .data.gpu.product-architecture' snapshot.yaml
+yq '.measurements[] | select(.type=="GPU") | .subtypes[] | .data.gpu.model // .data.gpu."product-architecture"' snapshot.yaml
 yq '.measurements[] | select(.type=="Kubernetes") | .subtypes[0].data.server_version' snapshot.yaml
 ```
 
