@@ -96,9 +96,12 @@ func entrypoint(log *logger.FunLogger) error {
 	}
 
 	if cfg.Spec.Kubernetes.Install {
-		err = utils.GetKubeConfig(log, &cfg, hostUrl, kubeconfig, "")
+		err = utils.GetKubeConfig(log, &cfg, hostUrl, kubeconfig)
 		if err != nil {
 			return fmt.Errorf("failed to get kubeconfig: %w", err)
+		}
+		if err := utils.ApplyRemoteAccess(&cfg, hostUrl, kubeconfig); err != nil {
+			return fmt.Errorf("applying kubeconfig remote-access settings: %w", err)
 		}
 	}
 

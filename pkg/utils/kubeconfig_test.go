@@ -17,12 +17,17 @@
 package utils
 
 import (
+	"bytes"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 )
 
 func TestRewriteKubeConfigServer(t *testing.T) {
@@ -103,6 +108,195 @@ users:
 			} else {
 				assert.Contains(t, string(data), tt.expected)
 				assert.NotContains(t, string(data), "10.0.0.1")
+			}
+		})
+	}
+}
+
+func TestApplyRemoteAccess(t *testing.T) {
+	const validInput = `apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: dGVzdA==
+    server: https://10.0.0.1:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: dGVzdA==
+    client-key-data: dGVzdA==
+`
+
+	tests := []struct {
+		name           string
+		remoteAccess   bool
+		hostUrl        string
+		initialMode    os.FileMode
+		initialContent string
+		writeFile      bool
+		// expectations
+		wantErr        bool
+		wantErrIs      []error // sentinels to assert via errors.Is
+		wantBytesEqual bool    // file unchanged from initialContent
+		wantScheme     string  // "" = skip URL parse assertion
+		wantHostname   string
+		wantPort       string
+		wantMode       os.FileMode
+	}{
+		{
+			name:           "disabled no-op",
+			remoteAccess:   false,
+			hostUrl:        "ec2-1-2-3-4.compute.amazonaws.com",
+			initialMode:    0o600,
+			initialContent: validInput,
+			writeFile:      true,
+			wantBytesEqual: true,
+			wantMode:       0o600,
+		},
+		{
+			name:           "enabled valid",
+			remoteAccess:   true,
+			hostUrl:        "ec2-1-2-3-4.compute.amazonaws.com",
+			initialMode:    0o600,
+			initialContent: validInput,
+			writeFile:      true,
+			wantScheme:     "https",
+			wantHostname:   "ec2-1-2-3-4.compute.amazonaws.com",
+			wantPort:       "6443",
+			wantMode:       0o600,
+		},
+		{
+			name:           "enabled IPv4 host",
+			remoteAccess:   true,
+			hostUrl:        "54.1.2.3",
+			initialMode:    0o600,
+			initialContent: validInput,
+			writeFile:      true,
+			wantScheme:     "https",
+			wantHostname:   "54.1.2.3",
+			wantPort:       "6443",
+			wantMode:       0o600,
+		},
+		{
+			name:           "enabled hostUrl empty",
+			remoteAccess:   true,
+			hostUrl:        "",
+			initialMode:    0o600,
+			initialContent: validInput,
+			writeFile:      true,
+			wantErr:        true,
+			wantBytesEqual: true,
+			wantMode:       0o600,
+		},
+		{
+			name:         "enabled missing file",
+			remoteAccess: true,
+			hostUrl:      "host.example.com",
+			writeFile:    false,
+			wantErr:      true,
+			wantErrIs:    []error{ErrRewriteFailed, os.ErrNotExist},
+		},
+		{
+			name:           "enabled malformed YAML",
+			remoteAccess:   true,
+			hostUrl:        "host.example.com",
+			initialMode:    0o600,
+			initialContent: "this is not yaml: [unclosed",
+			writeFile:      true,
+			wantErr:        true,
+			wantErrIs:      []error{ErrRewriteFailed},
+			wantBytesEqual: true,
+			wantMode:       0o600,
+		},
+		{
+			name:         "enabled URL already correct (idempotent)",
+			remoteAccess: true,
+			hostUrl:      "host.example.com",
+			initialMode:  0o600,
+			initialContent: `apiVersion: v1
+clusters:
+- cluster:
+    server: https://host.example.com:6443
+  name: kubernetes
+kind: Config
+`,
+			writeFile:    true,
+			wantScheme:   "https",
+			wantHostname: "host.example.com",
+			wantPort:     "6443",
+			wantMode:     0o600,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "kubeconfig")
+
+			var initialBytes []byte
+			if tt.writeFile {
+				initialBytes = []byte(tt.initialContent)
+				require.NoError(t, os.WriteFile(path, initialBytes, tt.initialMode))
+			}
+
+			cfg := &v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						RemoteAccess: tt.remoteAccess,
+					},
+				},
+			}
+
+			err := ApplyRemoteAccess(cfg, tt.hostUrl, path)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				for _, target := range tt.wantErrIs {
+					assert.ErrorIs(t, err, target, "err must wrap %v", target)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+
+			// File-state assertions only apply when the file existed.
+			if !tt.writeFile {
+				return
+			}
+
+			info, statErr := os.Stat(path)
+			require.NoError(t, statErr)
+			if tt.wantMode != 0 {
+				assert.Equal(t, tt.wantMode, info.Mode().Perm(),
+					"file mode must equal %o", tt.wantMode)
+			}
+
+			data, readErr := os.ReadFile(path) //nolint:gosec // test temp file
+			require.NoError(t, readErr)
+
+			if tt.wantBytesEqual {
+				assert.True(t, bytes.Equal(initialBytes, data),
+					"file bytes must be unchanged")
+			}
+
+			if tt.wantScheme != "" {
+				var kc kubeConfig
+				require.NoError(t, yaml.Unmarshal(data, &kc),
+					"output kubeconfig must be valid YAML")
+				require.NotEmpty(t, kc.Clusters,
+					"output kubeconfig must have at least one cluster")
+				u, parseErr := url.Parse(kc.Clusters[0].Cluster.Server)
+				require.NoError(t, parseErr,
+					"server URL must be parseable: %q", kc.Clusters[0].Cluster.Server)
+				assert.Equal(t, tt.wantScheme, u.Scheme)
+				assert.Equal(t, tt.wantHostname, u.Hostname())
+				assert.Equal(t, tt.wantPort, u.Port())
 			}
 		})
 	}

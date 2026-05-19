@@ -26,3 +26,9 @@ spec:
   kubernetes:
     install: true
     installer: kubeadm
+    # remoteAccess: true
+    # Set when the kubeconfig must be usable from outside the VPC
+    # (e.g., a GitHub Actions runner). Rewrites the server URL to the
+    # node's public endpoint and chowns the kubeconfig file to the
+    # bind-mounted workspace owner. File mode stays 0600. Linux/Darwin
+    # only.

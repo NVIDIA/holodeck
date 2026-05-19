@@ -128,6 +128,42 @@ holodeck status <instance-id>
 holodeck dryrun -f ./examples/v1alpha1_environment.yaml
 ```
 
+### Remote-access kubeconfig (opt-in)
+
+By default, the kubeconfig holodeck produces is configured for in-VM
+use: file mode `0600` owned by the holodeck process user, and the
+server URL points at the cluster's internal IP. To run `kubectl` from
+outside the VPC (e.g., a GitHub Actions runner that provisioned the
+cluster), set `kubernetes.remoteAccess: true`:
+
+```yaml
+spec:
+  kubernetes:
+    install: true
+    installer: kubeadm
+    remoteAccess: true
+```
+
+What changes when this is `true`:
+
+- The kubeconfig server URL is rewritten to `https://<PublicDnsName>:6443`.
+- The kubeconfig file is chowned to the bind-mounted workspace owner
+  so the runner user (not just the action container's root) can read
+  it. File mode stays `0600`.
+
+What does **not** change:
+
+- The security group still opens `6443` only to the auto-detected
+  caller egress IP (`utils.GetIPAddress()`), not `0.0.0.0/0`.
+- The embedded cluster admin cert is owner-only.
+
+Platform: Linux/Darwin. On Windows, the chown step is a no-op.
+
+**For downstream CI repos** (gpu-operator, k8s-device-plugin): set
+`remoteAccess: true` in your `holodeck.yaml` and replace any
+`rsync + ssh + remote-run` blocks in your workflow with a direct
+`kubectl --kubeconfig=$GITHUB_WORKSPACE/kubeconfig …` step.
+
 ## 📂 More
 
 - [Examples](docs/examples/)

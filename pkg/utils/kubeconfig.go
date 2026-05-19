@@ -17,6 +17,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -46,6 +47,38 @@ type kubeConfigClusterEntry struct {
 type kubeConfigCluster struct {
 	Server                   string `json:"server"`
 	CertificateAuthorityData string `json:"certificate-authority-data,omitempty"`
+}
+
+// Errors returned by ApplyRemoteAccess so callers and tests can
+// distinguish failure modes via errors.Is without string matching.
+var (
+	ErrRewriteFailed = errors.New("kubeconfig server URL rewrite failed")
+	ErrChownFailed   = errors.New("kubeconfig chown failed")
+)
+
+// ApplyRemoteAccess rewrites the kubeconfig server URL to a publicly
+// reachable endpoint and chowns the file to the bind-mounted workspace
+// owner. No-op when Spec.Kubernetes.RemoteAccess is false.
+//
+// Ordering: rewrite first, then chown. If rewrite fails, the file is
+// left untouched. If rewrite succeeds but chown fails, the file has
+// the new server URL but the original ownership; the caller must
+// treat the kubeconfig as garbage and abort.
+func ApplyRemoteAccess(cfg *v1alpha1.Environment, hostUrl, path string) error {
+	if !cfg.Spec.Kubernetes.RemoteAccess {
+		return nil
+	}
+	if hostUrl == "" {
+		return fmt.Errorf("ApplyRemoteAccess: hostUrl is empty")
+	}
+	serverURL := fmt.Sprintf("https://%s:6443", hostUrl)
+	if err := RewriteKubeConfigServer(path, serverURL); err != nil {
+		return fmt.Errorf("%w: %w", ErrRewriteFailed, err)
+	}
+	if err := chownToWorkspaceOwner(path); err != nil {
+		return fmt.Errorf("%w: %w", ErrChownFailed, err)
+	}
+	return nil
 }
 
 // RewriteKubeConfigServer rewrites the server URL in a kubeconfig file.
@@ -82,7 +115,7 @@ func RewriteKubeConfigServer(path string, serverURL string) error {
 }
 
 // GetKubeConfig downloads the kubeconfig file from the remote host
-func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl string, dest string, desiredServerURL string) error {
+func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl string, dest string) error {
 	remoteFilePath := "${HOME}/.kube/config"
 
 	// Create a new ssh session
@@ -130,13 +163,6 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	}
 
 	log.Info(fmt.Sprintf("Kubeconfig saved to %s\n", dest))
-
-	if desiredServerURL != "" {
-		if err := RewriteKubeConfigServer(dest, desiredServerURL); err != nil {
-			return fmt.Errorf("failed to rewrite kubeconfig server URL: %w", err)
-		}
-		log.Info(fmt.Sprintf("Kubeconfig server URL rewritten to %s\n", desiredServerURL))
-	}
 
 	return nil
 }

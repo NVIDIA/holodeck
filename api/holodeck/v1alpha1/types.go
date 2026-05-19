@@ -804,6 +804,20 @@ type Kubernetes struct {
 
 	KubernetesInstaller string `json:"Installer,omitempty"`
 
+	// RemoteAccess controls whether the kubeconfig is configured for use
+	// from outside the VPC. When true, holodeck:
+	//   - rewrites the kubeconfig server URL to https://<host>:6443
+	//   - chowns the file to the bind-mounted workspace owner so the
+	//     GitHub Actions runner user (not just the action container's
+	//     root) can read it
+	// File mode stays 0600 — the embedded cluster admin cert remains
+	// owner-only.
+	//
+	// Default: false (kubeconfig is for in-VM use; ssh + kubectl pattern).
+	// Linux/Darwin only; on Windows the chown step is a no-op.
+	// +optional
+	RemoteAccess bool `json:"remoteAccess,omitempty"`
+
 	// KubeConfig is the path to the kubeconfig file on the local machine.
 	// +optional
 	// +optional
