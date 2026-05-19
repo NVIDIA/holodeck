@@ -22,6 +22,20 @@ import (
 
 // registry contains the mapping of OS identifiers to their metadata.
 var registry = map[string]OSImage{
+	"ubuntu-26.04": {
+		ID:              "ubuntu-26.04",
+		Name:            "Ubuntu 26.04 LTS (Resolute Raccoon)",
+		Family:          OSFamilyDebian,
+		SSHUsername:     "ubuntu",
+		PackageManager:  PackageManagerAPT,
+		MinRootVolumeGB: 20,
+		OwnerID:         "099720109477",
+		NamePattern:     "ubuntu/images/hvm-ssd-gp3/ubuntu-resolute-26.04-%s-server-*",
+		SSMPath: "/aws/service/canonical/ubuntu/server/26.04/stable/" +
+			"current/%s/hvm/ebs-gp3/ami-id",
+		NameArchMap:   map[string]string{"x86_64": "amd64"},
+		Architectures: []string{"x86_64", "arm64"},
+	},
 	"ubuntu-24.04": {
 		ID:              "ubuntu-24.04",
 		Name:            "Ubuntu 24.04 LTS (Noble Numbat)",
