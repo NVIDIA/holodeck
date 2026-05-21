@@ -31,7 +31,7 @@ finale ships once the upstream catalog and platform gaps close.
   [AICR installation](https://github.com/NVIDIA/aicr/blob/main/docs/user/installation.md))
 - AWS account with credentials in your environment and `g6e` quota in
   `us-west-2` (request via the EC2 service quotas console)
-- `kubectl`, `yq`, and `jq` on your path
+- `kubectl` and `yq` on your path
 - ~$2 of AWS spend budget (g6e.xlarge is roughly $1.86/hr on-demand
   in `us-west-2`)
 
@@ -110,8 +110,9 @@ For a pre-flight check that does not touch AWS:
 holodeck dryrun -f ./my-env.yaml
 ```
 
-On success, holodeck records the instance with `PROVISIONED: true`.
-Note the instance ID (an 8-char hex string) printed at the end.
+On success, the instance shows `true` under the `PROVISIONED` column
+of `holodeck list`. Note the instance ID (an 8-char hex string)
+printed at the end.
 
 ### 1.3 Fetch the kubeconfig
 
@@ -178,9 +179,11 @@ aicr recipe --snapshot snapshot.yaml \
   --output recipe.yaml
 ```
 
-AICR matches the snapshot against its overlay catalog and emits a
-recipe describing the components it would install for the requested
-intent + platform. Inspect the resulting component list:
+The accelerator (L40S here) is inferred from the snapshot — no
+`--accelerator` flag is needed. AICR matches the snapshot against its
+overlay catalog and emits a recipe describing the components it would
+install for the requested intent + platform. Inspect the resulting
+component list:
 
 ```bash
 yq '.componentRefs[].name' recipe.yaml
@@ -240,10 +243,12 @@ The flag must precede the positional ID:
 the reverse order despite what the `--help` examples show. Same
 ordering applies to `holodeck get kubeconfig -o <path> <id>`.
 
-**Security group is `0.0.0.0/0` instead of your public IP.** Holodeck
-falls back to `0.0.0.0/0` when it cannot detect your public IP. Either
-edit the security group post-create in the EC2 console, or run
-`holodeck create` from a network that exposes a routable IP.
+**`holodeck create` fails with "could not detect public IP".**
+Holodeck derives the security-group ingress CIDR from the caller's
+public IP and aborts rather than opening the SG to the world when
+detection fails. Either set `spec.ingressIpRanges` explicitly in
+your `env.yaml`, or re-run `holodeck create` from a network with a
+routable public IP.
 
 **`aicr snapshot` fails to read kernel config.** The agent emits a
 non-fatal `failed to read kconfig` warning on holodeck-provisioned
