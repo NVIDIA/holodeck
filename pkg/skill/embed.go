@@ -42,8 +42,10 @@ func Catalog() ([]Skill, error) {
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", p, err)
 		}
-		// Skill name comes from the parent directory name (one level up
-		// from SKILL.md): data/skills/<name>/SKILL.md.
+		// fileName is the parent directory name (data/skills/<name>/SKILL.md)
+		// and is used only as an error-message prefix; the canonical skill
+		// name is parsed from the frontmatter `name:` field by parseSkill
+		// and validated against skillNameRE.
 		fileName := path.Base(path.Dir(p))
 		s, err := parseSkill(fileName, raw)
 		if err != nil {
