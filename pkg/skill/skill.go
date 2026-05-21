@@ -24,7 +24,7 @@ import (
 	"regexp"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	"sigs.k8s.io/yaml"
 )
 
 // skillNameRE constrains skill names to a safe, predictable form so the
@@ -41,8 +41,8 @@ type Skill struct {
 }
 
 type frontmatter struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // parseSkill splits a SKILL.md file into frontmatter and body and
