@@ -1,0 +1,204 @@
+---
+name: using-holodeck
+description: Use when the user wants to provision, manage, or destroy GPU-enabled test environments via the holodeck CLI. Covers env.yaml config, create/dryrun/list/status/ssh/scp/delete/cleanup/get/os workflows, and common pitfalls.
+---
+
+# Using the holodeck CLI
+
+Holodeck provisions ephemeral GPU-enabled environments (AWS EC2 or
+existing SSH targets) for end-to-end testing of NVIDIA Kubernetes
+components: GPU Operator, device-plugin, container toolkit, and DRA
+drivers. It handles K8s install, NVIDIA stack install, and teardown.
+
+## When to recommend holodeck
+
+- The user needs a real GPU on Kubernetes to verify a fix.
+- The user wants a reproducible test env (config-as-code via env.yaml).
+- The user is iterating on operator/plugin code and wants kubectl
+  access against actual NVIDIA hardware.
+
+Not the right tool: production clusters, long-lived shared envs,
+non-GPU testing where kind/k3d would do.
+
+## Configuration file (env.yaml)
+
+Single-node example (the canonical shape):
+
+```yaml
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: my-test-env
+spec:
+  provider: aws
+  auth:
+    keyName: my-aws-keypair             # AWS EC2 key-pair name (in this region)
+    privateKey: ~/.ssh/my-aws-key.pem   # local filesystem path to the .pem
+  instance:
+    type: g4dn.xlarge        # GPU instance type
+    region: us-west-2
+    os: ubuntu-22.04         # see 'holodeck os list' for valid IDs
+    # Or, for an explicit AMI instead of an OS ID:
+    # image:
+    #   imageId: ami-0123456789abcdef0
+  containerRuntime:
+    install: true
+    name: containerd
+  nvidiaContainerToolkit:
+    install: true
+  nvidiaDriver:
+    install: true
+  kubernetes:
+    install: true
+    installer: kubeadm
+    version: v1.31.1
+```
+
+For multi-node clusters, replace `instance:` with `cluster:` (see
+`examples/aws_cluster_ha.yaml`). For pre-existing SSH targets, set
+`provider: ssh` and configure `auth.privateKey` / instance host.
+
+Run `holodeck os list` to discover supported OS identifiers. Today
+that includes `ubuntu-20.04/22.04/24.04/26.04`, `rocky-9`,
+`fedora-42`, and `amazon-linux-2023` (some are containerd-only —
+check the `NOTES` column).
+
+## Core workflows
+
+**Validate the config first (read-only — no resources created, but
+does make AWS describe API calls to check instance type, image, and
+arch compatibility; requires valid AWS credentials):**
+```bash
+holodeck dryrun -f env.yaml
+```
+Recommended before any new config — provisioning failures cost real
+money.
+
+**Create + provision:**
+```bash
+holodeck create -f env.yaml --provision
+```
+Drop `--provision` to create the instance without installing the
+Kubernetes/NVIDIA stack.
+
+**List active environments:**
+```bash
+holodeck list
+holodeck list -o json   # for scripts; also -o yaml
+holodeck list -q        # IDs only
+```
+
+**Show one environment's status / details:**
+```bash
+holodeck status <instance-id>
+holodeck describe <instance-id>
+```
+
+**Shell into an instance:**
+```bash
+holodeck ssh <instance-id>
+holodeck ssh <instance-id> -- nvidia-smi   # one-shot command
+```
+
+**Copy files:**
+```bash
+holodeck scp ./local-file.txt <instance-id>:/remote/path/
+holodeck scp <instance-id>:/remote/file.log ./local/
+```
+
+**Get artifacts off the instance** (flags must precede the positional
+ID — urfave/cli/v2's parser stops parsing flags after the first
+positional):
+```bash
+holodeck get kubeconfig <instance-id>                # downloads kubeconfig
+holodeck get kubeconfig -o ./my.kubeconfig <id>      # -o is an output PATH (not a format)
+holodeck get ssh-config <instance-id>                # prints SSH config snippet to stdout
+```
+
+**Update an existing environment** — bare `update <id>` is a no-op
+("No changes to apply"); pass change flags BEFORE the positional ID
+(urfave/cli/v2's parser stops parsing flags after the first
+positional, so `update <id> --add-driver` fails with
+"instance ID is required" — flag-first is mandatory):
+```bash
+holodeck update --reprovision <id>              # re-run all installers (idempotent)
+holodeck update --add-driver <id>               # add NVIDIA driver
+holodeck update --add-kubernetes <id>           # add K8s + kubeadm
+holodeck update --add-toolkit --enable-cdi <id> # NVIDIA container toolkit
+holodeck update --label team=gpu-infra <id>     # repeatable
+```
+
+**Destroy:**
+```bash
+holodeck delete <instance-id>
+```
+
+**Clean up orphaned AWS VPC resources (when a provision failed
+mid-flight)** — region is required either via `--region` or the
+`AWS_REGION` env var:
+```bash
+holodeck cleanup --region us-west-2 vpc-12345678
+holodeck cleanup --region us-west-2 vpc-12345678 vpc-87654321   # multiple
+AWS_REGION=us-west-2 holodeck cleanup vpc-12345678              # env-var form
+```
+
+## OS image discovery
+
+```bash
+holodeck os list                                       # table of supported OS IDs
+holodeck os describe ubuntu-22.04                      # details for one OS
+holodeck os ami ubuntu-22.04 --region us-east-1        # resolve to an AMI ID
+holodeck os ami ubuntu-22.04 --region us-east-1 --arch arm64
+```
+
+## Output flags
+
+Read commands (`list`, `status`, `describe`) accept
+`-o table|json|yaml` (default `table`). Use `-o json` in scripts.
+`os list` prints a fixed table and does not take `-o`.
+
+## Common pitfalls
+
+- **Instance IDs** — short hex strings (e.g. `878b6723`) shown by
+  `holodeck list`. They are NOT AWS-style `i-…` IDs. Always grab the
+  ID from `holodeck list` output, not the AWS console.
+- **Flag ordering** — urfave/cli/v2's default parser stops parsing
+  flags once it sees a positional arg. For any command that takes
+  both flags and a positional (e.g. `update`, `get kubeconfig`),
+  flags MUST precede the positional. `update <id> --add-driver`
+  fails; `update --add-driver <id>` works.
+- **AWS credentials** — the SDK reads `AWS_ACCESS_KEY_ID` /
+  `AWS_SECRET_ACCESS_KEY` from the environment (or any other
+  SDK-supported source: shared credentials file, IAM role, etc.).
+  These are **separate** from `auth.keyName` / `auth.privateKey` in
+  env.yaml: those are **literal** values — `auth.keyName` is the EC2
+  SSH key-pair name registered in the target region, and
+  `auth.privateKey` is a filesystem path to the `.pem` on disk. Some
+  example files in `examples/` use placeholder strings (e.g.
+  `HOLODECK_AWS_ACCESS_KEY_ID`); those are intended as
+  user-replaceable templates, NOT env-var references — holodeck does
+  not call `os.Getenv` on them. Substitute actual values before
+  running.
+- **Region** — instance `region` must match a region with available
+  GPU capacity. `g4dn` and `p4` families have limited inventory in
+  some regions; `us-west-2` and `us-east-1` are reliable.
+- **OS** — only IDs listed by `holodeck os list` are valid for
+  `spec.instance.os`. For an explicit AMI, set
+  `spec.instance.image.imageId` instead (and omit `os`).
+- **Cache** — instance metadata lives in `~/.cache/holodeck/` by
+  default; pass `--cachepath <dir>` to override. `list` shows only
+  cached envs.
+- **VPC leak** — failed provisions sometimes leave VPCs orphaned. Use
+  `holodeck cleanup vpc-<id>` to remove them.
+
+## Anti-patterns
+
+- Don't run `create --provision` against an unfamiliar config without
+  running `holodeck dryrun -f env.yaml` first — provisioning failures
+  cost real money.
+- Don't commit a populated env.yaml — `auth.privateKey` resolves to a
+  filesystem path; keep it outside the repo and chmod the `.pem` to
+  `0600`. Source AWS credentials from the environment / SDK chain,
+  not from env.yaml.
+- Don't manually `terraform destroy` against a holodeck-managed env;
+  use `holodeck delete <id>`, which cleans up both infra and cache.

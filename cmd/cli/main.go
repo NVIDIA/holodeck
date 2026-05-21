@@ -28,6 +28,7 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/cli/list"
 	oscmd "github.com/NVIDIA/holodeck/cmd/cli/os"
 	"github.com/NVIDIA/holodeck/cmd/cli/scp"
+	"github.com/NVIDIA/holodeck/cmd/cli/skill"
 	"github.com/NVIDIA/holodeck/cmd/cli/ssh"
 	"github.com/NVIDIA/holodeck/cmd/cli/status"
 	"github.com/NVIDIA/holodeck/cmd/cli/update"
@@ -146,6 +147,7 @@ Examples:
 		list.NewCommand(log),
 		oscmd.NewCommand(log),
 		scp.NewCommand(log),
+		skill.NewCommand(log),
 		ssh.NewCommand(log),
 		status.NewCommand(log),
 		update.NewCommand(log),
