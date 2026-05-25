@@ -181,6 +181,23 @@ holodeck create -f examples/aws_arm64.yaml
 
 ---
 
+## End-to-End Integration Examples
+
+### 20. AICR Integration Demo
+
+**Folder:** [`examples/aicr-demo/`](../../examples/aicr-demo/)
+
+Companion example for the
+[AICR Integration guide](../guides/aicr-integration.md). Contains a
+Holodeck Environment for `g6e.xlarge` (1× NVIDIA L40S) sized for the
+guide's snapshot + recipe walkthrough.
+
+```bash
+holodeck create -f examples/aicr-demo/environment.yaml --provision
+```
+
+---
+
 ## Updated AWS Examples
 
 The example configurations now show that `ingressIpRanges` is optional:
