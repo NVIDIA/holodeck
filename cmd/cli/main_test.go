@@ -26,8 +26,12 @@ func TestNewApp(t *testing.T) {
 	log := logger.NewLogger()
 	app := NewApp(log)
 
-	if app.Version != "0.3.2" {
-		t.Errorf("expected app version %q, got %q", "0.3.2", app.Version)
+	// ProgramVersion is injected at build time via -ldflags (see .goreleaser.yaml).
+	// `go test` builds without that flag, so app.Version falls back to the
+	// package default "dev". Assert non-emptiness rather than a literal so
+	// the test doesn't need bumping on every release tag.
+	if app.Version == "" {
+		t.Errorf("expected app version to be non-empty, got %q", app.Version)
 	}
 	if app.Name != "holodeck" {
 		t.Errorf("expected app name %q, got %q", "holodeck", app.Name)
