@@ -29,7 +29,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X main.version={{ .Version }}
+      - -X main.ProgramVersion={{ .Version }}
 
   - id: holodeck-action
     main: ./cmd/action
