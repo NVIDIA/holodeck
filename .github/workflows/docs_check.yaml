@@ -34,5 +34,12 @@ jobs:
         run: gem install mdl -v 0.13.0
 
       - name: Run Markdown lint
+        # Excluded paths:
+        #   docs/vendor       — vendored third-party content.
+        #   docs/superpowers  — internal AI-assisted planning artifacts
+        #                       (specs and implementation plans). These are
+        #                       work-in-progress authoring docs, not
+        #                       user-facing documentation, and are not held
+        #                       to mdl style rules.
         run: |
-          find docs/ -path docs/vendor -prune -false -o -name '*.md' | xargs mdl -s docs/mdl-style.rb
+          find docs/ \( -path docs/vendor -o -path docs/superpowers \) -prune -false -o -name '*.md' -print | xargs mdl -s docs/mdl-style.rb
