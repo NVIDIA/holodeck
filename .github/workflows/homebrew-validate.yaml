@@ -1,0 +1,32 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+# Licensed under the Apache License, Version 2.0.
+
+name: homebrew-validate
+
+on:
+  pull_request:
+    paths:
+      - 'Formula/**'
+  push:
+    branches: [main]
+    paths:
+      - 'Formula/**'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit & Style
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Audit formula
+        run: |
+          brew audit --strict --online Formula/holodeck.rb
+
+      - name: Style check
+        run: |
+          brew style Formula/holodeck.rb
