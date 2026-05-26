@@ -8,7 +8,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-.PHONY: build fmt verify release lint vendor mod-tidy mod-vendor mod-verify check-vendor mdlint
+.PHONY: build fmt verify snapshot lint vendor mod-tidy mod-vendor mod-verify check-vendor mdlint
 
 CONTAINER_RUN_CMD ?= docker run
 GO_CMD ?= go
@@ -96,21 +96,12 @@ mdlint:
 	ruby:slim \
 	/workdir/scripts/mdlint.sh
 
-release:
-	@rm -rf bin
-	@mkdir -p bin
-	@for os in linux darwin; do \
-		for arch in amd64 arm64; do \
-			echo "Building $$os-$$arch"; \
-			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-action-$$os-$$arch cmd/action/main.go; \
-		done; \
-	done
-	@for os in linux darwin; do \
-		for arch in amd64 arm64; do \
-			echo "Building $$os-$$arch"; \
-			GOOS=$$os GOARCH=$$arch $(GO_CMD) build -o bin/$(BINARY_NAME)-$$os-$$arch cmd/cli/main.go; \
-		done; \
-	done
+# snapshot runs GoReleaser in dry-run mode: cross-builds binaries,
+# produces archives + a draft Formula/holodeck.rb under ./dist, but
+# does NOT publish to GitHub or push the formula. Use this before
+# tagging a release to validate the build matrix and formula shape.
+snapshot:
+	goreleaser release --snapshot --clean --skip=publish
 
 .PHONY: generate
 generate: controller-gen
