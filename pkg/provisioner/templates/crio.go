@@ -151,6 +151,20 @@ POLICY
 unqualified-search-registries = ["docker.io"]
 REGISTRIES
         fi
+        # Expose the opensuse CRI-O package's bundled runtimes on PATH.
+        # Without this, 'nvidia-ctk runtime configure --runtime=crio' (run
+        # later by the container-toolkit step) logs
+        #   "Could not infer options from runtimes [runc crun]"
+        # and writes /etc/crio/crio.conf.d/99-nvidia.toml that omits the
+        # runc/crun runtime tables, leaving crio with no usable runtime on
+        # restart. See: nvidia-container-toolkit 1.19.1+ behavior change.
+        for bin in runc crun conmon pinns; do
+            src="/usr/libexec/crio/${bin}"
+            dst="/usr/bin/${bin}"
+            if [[ -x "${src}" && ! -e "${dst}" ]]; then
+                sudo ln -s "${src}" "${dst}"
+            fi
+        done
         ;;
     rhel)
         holodeck_retry 3 "$COMPONENT" pkg_install cri-o crun containers-common

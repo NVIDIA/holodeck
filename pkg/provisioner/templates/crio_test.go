@@ -177,6 +177,17 @@ func TestCriO_Execute_PackageTemplate_OSFamilyBranching(t *testing.T) {
 		"Amazon Linux must create policy.json for CRI-O")
 	assert.Contains(t, out, "/etc/containers/registries.conf",
 		"Amazon Linux must create registries.conf")
+	// AL2023 must expose bundled runtimes on PATH so nvidia-ctk runtime
+	// configure can infer existing runc/crun entries and preserve them in
+	// /etc/crio/crio.conf.d/99-nvidia.toml. Without this, nvidia-ctk logs
+	// "Could not infer options from runtimes [runc crun]" and writes a
+	// drop-in that omits the runtimes, leaving crio with no usable runtime.
+	assert.Contains(t, out, "/usr/libexec/crio/",
+		"Amazon Linux must reference bundled runtimes under /usr/libexec/crio/")
+	assert.Regexp(t, `for bin in runc crun( |\b)`, out,
+		"Amazon Linux must iterate at least runc and crun when exposing bundled runtimes")
+	assert.Contains(t, out, "ln -s",
+		"Amazon Linux must symlink bundled runtimes onto PATH")
 
 	// RHEL uses crun + containers-common
 	assert.Contains(t, out, "pkg_install cri-o crun containers-common",
