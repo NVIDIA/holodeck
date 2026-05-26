@@ -105,7 +105,10 @@ brews:
     commit_author:
       name: nvidia-ci
       email: nvidia-ci@users.noreply.github.com
-    commit_msg_template: "chore(brew): bump {{ .ProjectName }} to {{ .Tag }}"
+    commit_msg_template: |
+      chore(brew): bump {{ .ProjectName }} to {{ .Tag }}
+
+      Signed-off-by: nvidia-ci <nvidia-ci@users.noreply.github.com>
     install: |
       bin.install "holodeck"
     test: |

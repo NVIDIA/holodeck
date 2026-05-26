@@ -23,6 +23,10 @@ The workflow's default `GITHUB_TOKEN` cannot do this because:
   its own PR).
 - Main branch protection requires signed commits — commits authored via
   the GitHub API (which a PAT enables) are server-signed and satisfy this.
+- Main branch protection requires DCO sign-off — the `commit_msg_template`
+  in `.goreleaser.yaml` includes a `Signed-off-by:` trailer for the
+  `nvidia-ci` identity to satisfy this. Without the trailer the
+  formula-bump PR is opened but cannot merge.
 
 **Setup steps:**
 
