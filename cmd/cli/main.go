@@ -40,9 +40,11 @@ import (
 const (
 	// ProgramName is the canonical name of this program
 	ProgramName = "holodeck"
-	// ProgramVersion is the current version of the program
-	ProgramVersion = "0.3.2"
 )
+
+// ProgramVersion is the program version. It is set at build time via
+// -ldflags "-X main.ProgramVersion=..." (see .goreleaser.yaml).
+var ProgramVersion = "dev"
 
 type config struct {
 	Debug   bool
