@@ -81,6 +81,9 @@ changelog:
       - '^test:'
 
 release:
+  github:
+    owner: NVIDIA
+    name: holodeck
   draft: false
   prerelease: auto
 

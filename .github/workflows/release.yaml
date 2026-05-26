@@ -27,6 +27,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify HOMEBREW_TAP_GITHUB_TOKEN secret is configured
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_GITHUB_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_GITHUB_TOKEN repo secret is not set."
+            echo "::error::The release would publish but the Homebrew formula PR would not open."
+            echo "::error::See docs/release.md (One-time setup) for PAT creation steps."
+            exit 1
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
