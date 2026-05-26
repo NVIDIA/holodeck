@@ -1,0 +1,112 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+# Licensed under the Apache License, Version 2.0.
+#
+# GoReleaser config for cross-building holodeck binaries, publishing
+# them as GitHub Release assets, and auto-updating the Homebrew formula
+# at Formula/holodeck.rb on every v* tag.
+#
+# See docs/release.md for the release process.
+
+version: 2
+
+project_name: holodeck
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: holodeck
+    main: ./cmd/cli
+    binary: holodeck
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+
+  - id: holodeck-action
+    main: ./cmd/action
+    binary: holodeck-action
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: holodeck
+    ids:
+      - holodeck
+    name_template: "holodeck_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+  - id: holodeck-action
+    ids:
+      - holodeck-action
+    name_template: "holodeck-action_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+source:
+  enabled: true
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^chore:'
+      - '^test:'
+
+release:
+  draft: false
+  prerelease: auto
+
+brews:
+  - name: holodeck
+    ids:
+      - holodeck
+    repository:
+      owner: NVIDIA
+      name: holodeck
+      branch: main
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/NVIDIA/holodeck"
+    description: "Tool for creating and managing GPU-ready cloud test environments"
+    license: "Apache-2.0"
+    commit_author:
+      name: nvidia-ci
+      email: nvidia-ci@users.noreply.github.com
+    commit_msg_template: "chore(brew): bump {{ .ProjectName }} to {{ .Tag }}"
+    install: |
+      bin.install "holodeck"
+    test: |
+      system "#{bin}/holodeck", "--version"
