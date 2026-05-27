@@ -1,5 +1,6 @@
 kubeconfig
 bin
+dist/
 .DS_Store
 e2e_logs
 coverage.out*

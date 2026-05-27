@@ -1,0 +1,49 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+# Licensed under the Apache License, Version 2.0.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # publish GitHub Release + tag artifacts
+
+jobs:
+  goreleaser:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # GoReleaser needs full history for the changelog
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify HOMEBREW_TAP_GITHUB_TOKEN secret is configured
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_GITHUB_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_GITHUB_TOKEN repo secret is not set."
+            echo "::error::The release would publish but the Homebrew formula PR would not open."
+            echo "::error::See docs/release.md (One-time setup) for PAT creation steps."
+            exit 1
+          fi
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

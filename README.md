@@ -42,6 +42,20 @@ A tool for creating and managing GPU-ready Cloud test environments.
 
 See [docs/quick-start.md](docs/quick-start.md) for a full walkthrough.
 
+### Install via Homebrew (macOS, Linux)
+
+```bash
+brew tap nvidia/holodeck https://github.com/NVIDIA/holodeck
+brew install nvidia/holodeck/holodeck
+holodeck --help
+```
+
+Pre-built binaries for macOS (arm64, amd64) and Linux (arm64, amd64) are
+downloaded from the [GitHub Releases page](https://github.com/NVIDIA/holodeck/releases/latest).
+Run `brew upgrade nvidia/holodeck/holodeck` to update.
+
+### Install from source
+
 ```bash
 make build
 sudo mv ./bin/holodeck /usr/local/bin/holodeck
