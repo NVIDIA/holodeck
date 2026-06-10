@@ -33,7 +33,9 @@ jobs:
         run: |
           if [ -z "$HOMEBREW_TAP_GITHUB_TOKEN" ]; then
             echo "::error::HOMEBREW_TAP_GITHUB_TOKEN repo secret is not set."
-            echo "::error::The release would publish but the Homebrew formula PR would not open."
+            echo "::error::The release would publish but the Homebrew Cask"
+            echo "::error::(Casks/holodeck.rb) and Formula (Formula/holodeck.rb)"
+            echo "::error::bumps would not land on main."
             echo "::error::See docs/release.md (One-time setup) for PAT creation steps."
             exit 1
           fi
