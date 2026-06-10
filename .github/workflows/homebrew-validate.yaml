@@ -7,10 +7,12 @@ on:
   pull_request:
     paths:
       - 'Formula/**'
+      - 'Casks/**'
   push:
     branches: [main]
     paths:
       - 'Formula/**'
+      - 'Casks/**'
 
 permissions:
   contents: read
@@ -24,9 +26,21 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Audit formula
+        if: hashFiles('Formula/holodeck.rb') != ''
         run: |
           brew audit --strict --online Formula/holodeck.rb
 
-      - name: Style check
+      - name: Audit cask
+        if: hashFiles('Casks/holodeck.rb') != ''
+        run: |
+          brew audit --cask --strict --online Casks/holodeck.rb
+
+      - name: Style check (formula)
+        if: hashFiles('Formula/holodeck.rb') != ''
         run: |
           brew style Formula/holodeck.rb
+
+      - name: Style check (cask)
+        if: hashFiles('Casks/holodeck.rb') != ''
+        run: |
+          brew style Casks/holodeck.rb

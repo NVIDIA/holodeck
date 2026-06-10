@@ -5,9 +5,19 @@ pushing a `v*` git tag. The pipeline cross-builds the CLI (linux/darwin ×
 amd64/arm64) and the action binary (linux × amd64/arm64) with
 `CGO_ENABLED=0`, packages each binary as a tar.gz (bundling `LICENSE`
 plus the README for the CLI), computes SHA256 checksums, publishes
-everything to the GitHub Release for the tag, and opens a PR updating
-`Formula/holodeck.rb` with the new version, archive URLs, and SHA256
-sums.
+everything to the GitHub Release for the tag, and bumps **two**
+tap artifacts in lockstep:
+
+- `Casks/holodeck.rb` — Homebrew **Cask** for macOS (arm64 + amd64).
+  Casks bypass brew's Formula build-sandbox, which avoids the
+  `PTY.open` failure that breaks Formula installs on macOS Tahoe
+  (26.x) + brew 5.1.x + portable-ruby 4.0.x.
+- `Formula/holodeck.rb` — Homebrew **Formula** for Linux (arm64 +
+  amd64). The Formula carries `depends_on :linux` so brew refuses to
+  install it on macOS even if a user tries `--formula`.
+
+`brew install nvidia/holodeck/holodeck` resolves to the Cask on macOS
+and the Formula on Linux automatically.
 
 [goreleaser]: https://goreleaser.com/
 
@@ -55,9 +65,10 @@ make snapshot
 ```
 
 Inspect `dist/` — it should contain 6 archive tar.gz files plus
-`checksums.txt` plus a source tarball. The generated formula at
-`dist/homebrew/Formula/holodeck.rb` should be a syntactically valid
-Ruby class.
+`checksums.txt` plus a source tarball. Both the generated
+`dist/homebrew/Casks/holodeck.rb` (macOS-only, with the `postflight`
+`xattr` hook) and `dist/homebrew/Formula/holodeck.rb` (Linux-only,
+declares `depends_on :linux`) should be syntactically valid Ruby.
 
 ### 2. Tag and push
 
@@ -86,8 +97,13 @@ checksums.txt
 holodeck-X.Y.Z.tar.gz   (source archive, auto-attached)
 ```
 
-A new PR titled `chore(brew): bump holodeck to vX.Y.Z` should also be
-open. Review and merge it.
+Two PRs (or two direct commits, depending on whether branch protection
+forces PR mode for the `nvidia-ci` PAT) should also land on `main`:
+
+- `chore(brew): bump holodeck cask to vX.Y.Z`    — touches `Casks/holodeck.rb`
+- `chore(brew): bump holodeck formula to vX.Y.Z` — touches `Formula/holodeck.rb`
+
+Review and merge any that aren't direct commits.
 
 [release-tag]: https://github.com/NVIDIA/holodeck/releases
 
@@ -104,13 +120,17 @@ holodeck --version
 ```
 
 Install should complete in under 30 seconds (no Go toolchain build),
-and `holodeck --version` should print `holodeck version vX.Y.Z`.
+and `holodeck --version` should print `holodeck version vX.Y.Z`. On
+macOS the Cask's `postflight` hook removes the `com.apple.quarantine`
+xattr automatically — no manual `xattr -d` required.
 
-If install fails, common causes: the formula-bump PR has not been
-merged yet (users hit the previous version); the formula audit failed
-(check the `homebrew-validate` workflow on the formula-bump PR); or an
+If install fails, common causes: the cask/formula bump hasn't landed on
+main yet (users hit the previous version); the cask/formula audit
+failed (check the `homebrew-validate` workflow on the bump PR); an
 archive URL returns 404 (the release wasn't fully published — re-run
-the workflow).
+the workflow); or, if `holodeck` is killed on first launch by
+Gatekeeper, the `postflight` hook didn't run (re-install with
+`HOMEBREW_NO_INSTALL_FROM_API=1 brew reinstall` and inspect output).
 
 ### 5. Cleanup if a release goes wrong
 
@@ -132,11 +152,18 @@ Then fix the underlying issue and re-tag.
 `--skip=announce` to the snapshot command (already done in the
 Makefile), and ensure your local git has at least one tag.
 
-**Formula PR not opened:** check that `HOMEBREW_TAP_GITHUB_TOKEN` is
-set and not expired. Check the release workflow logs for the `brews`
-step output.
+**Formula/Cask bump not landing on main:** check that
+`HOMEBREW_TAP_GITHUB_TOKEN` is set and not expired. Check the release
+workflow logs for the `homebrew formula` and `homebrew cask` step
+output.
 
 **`brew install` builds from source instead of using the binary:** the
 formula isn't pointing at a valid archive URL. Inspect
-`Formula/holodeck.rb` and confirm the URL for your platform returns
-200.
+`Formula/holodeck.rb` (Linux) or `Casks/holodeck.rb` (macOS) and
+confirm the URL for your platform returns 200.
+
+**macOS install fails with `can't get Master/Slave device`:** the user
+is hitting the Tahoe brew Formula sandbox bug. Confirm they're on the
+Cask path (`brew info --cask nvidia/holodeck/holodeck` should show the
+cask). If brew picked the Formula instead, `brew uninstall holodeck &&
+brew install --cask nvidia/holodeck/holodeck` forces the Cask.

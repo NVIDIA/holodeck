@@ -1,9 +1,14 @@
 # Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 # Licensed under the Apache License, Version 2.0.
 #
-# GoReleaser config for cross-building holodeck binaries, publishing
-# them as GitHub Release assets, and auto-updating the Homebrew formula
-# at Formula/holodeck.rb on every v* tag.
+# GoReleaser config for cross-building holodeck binaries, publishing them as
+# GitHub Release assets, and auto-updating the Homebrew tap on every v* tag.
+#
+# Homebrew distribution split:
+#   - macOS  → Cask at Casks/holodeck.rb   (avoids brew's Formula sandbox
+#                                            PTY bug on macOS Tahoe 26.x; see
+#                                            docs/release.md)
+#   - Linux  → Formula at Formula/holodeck.rb
 #
 # See docs/release.md for the release process.
 
@@ -16,13 +21,28 @@ before:
     - go mod tidy
 
 builds:
-  - id: holodeck
+  # Split the holodeck CLI into per-OS builds so the Linux Formula and macOS
+  # Cask can each target only their platform via archive ids.
+  - id: holodeck-linux
     main: ./cmd/cli
     binary: holodeck
     env:
       - CGO_ENABLED=0
     goos:
       - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.ProgramVersion={{ .Version }}
+
+  - id: holodeck-darwin
+    main: ./cmd/cli
+    binary: holodeck
+    env:
+      - CGO_ENABLED=0
+    goos:
       - darwin
     goarch:
       - amd64
@@ -45,9 +65,19 @@ builds:
       - -s -w
 
 archives:
-  - id: holodeck
+  - id: holodeck-linux
     ids:
-      - holodeck
+      - holodeck-linux
+    name_template: "holodeck_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+  - id: holodeck-darwin
+    ids:
+      - holodeck-darwin
     name_template: "holodeck_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
@@ -87,10 +117,11 @@ release:
   draft: false
   prerelease: auto
 
+# Linux-only Homebrew Formula. macOS users install via the Cask block below.
 brews:
   - name: holodeck
     ids:
-      - holodeck
+      - holodeck-linux
     repository:
       owner: NVIDIA
       name: holodeck
@@ -109,10 +140,52 @@ brews:
       name: nvidia-ci
       email: nvidia-ci@users.noreply.github.com
     commit_msg_template: |
-      chore(brew): bump {{ .ProjectName }} to {{ .Tag }}
+      chore(brew): bump {{ .ProjectName }} formula to {{ .Tag }}
 
       Signed-off-by: nvidia-ci <nvidia-ci@users.noreply.github.com>
     install: |
       bin.install "holodeck"
     test: |
       system "#{bin}/holodeck", "--version"
+
+# macOS-only Homebrew Cask. Casks skip brew's Formula build sandbox, which
+# avoids the PTY.open failure that breaks Formula installs on macOS Tahoe
+# 26.x with brew 5.1.x + portable-ruby 4.0.x. The xattr hook strips the
+# com.apple.quarantine attribute Gatekeeper attaches to downloads of
+# unsigned binaries — until we set up Apple Developer signing/notarization,
+# this is what lets `brew install nvidia/holodeck/holodeck` run cleanly.
+homebrew_casks:
+  - name: holodeck
+    ids:
+      - holodeck-darwin
+    binaries:
+      - holodeck
+    repository:
+      owner: NVIDIA
+      name: holodeck
+      branch: main
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/NVIDIA/holodeck"
+    description: "Tool for creating and managing GPU-ready cloud test environments"
+    license: "Apache-2.0"
+    commit_author:
+      name: nvidia-ci
+      email: nvidia-ci@users.noreply.github.com
+    commit_msg_template: |
+      chore(brew): bump {{ .ProjectName }} cask to {{ .Tag }}
+
+      Signed-off-by: nvidia-ci <nvidia-ci@users.noreply.github.com>
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/holodeck"],
+                           sudo: false
+          end
