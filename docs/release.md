@@ -115,7 +115,10 @@ amd64 are good-to-haves but not blocking.
 
 ```bash
 brew tap nvidia/holodeck https://github.com/NVIDIA/holodeck
-brew install nvidia/holodeck/holodeck
+# macOS:
+brew install --cask nvidia/holodeck/holodeck
+# Linux:
+brew install --formula nvidia/holodeck/holodeck
 holodeck --version
 ```
 
