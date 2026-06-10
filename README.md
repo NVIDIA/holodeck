@@ -42,34 +42,47 @@ A tool for creating and managing GPU-ready Cloud test environments.
 
 See [docs/quick-start.md](docs/quick-start.md) for a full walkthrough.
 
-### Install via Homebrew (macOS, Linux)
+### Install via Homebrew
 
 ```bash
 brew tap nvidia/holodeck https://github.com/NVIDIA/holodeck
-brew install nvidia/holodeck/holodeck
+```
+
+**macOS** (arm64 / amd64) — installs via Cask:
+
+```bash
+brew install --cask nvidia/holodeck/holodeck
 holodeck --help
 ```
 
-Pre-built binaries for macOS (arm64, amd64) and Linux (arm64, amd64) are
-downloaded from the [GitHub Releases page](https://github.com/NVIDIA/holodeck/releases/latest).
-Run `brew upgrade nvidia/holodeck/holodeck` to update.
+**Linux** (arm64 / amd64) — installs via Formula:
 
-> **How the install works**
->
-> Behind the scenes the tap ships two artifacts, both auto-bumped by
-> GoReleaser on every release:
+```bash
+brew install --formula nvidia/holodeck/holodeck
+holodeck --help
+```
+
+The `--cask` / `--formula` flags are required to disambiguate: the tap
+ships both an `holodeck` Cask (macOS-only) and an `holodeck` Formula
+(Linux-only, declares `depends_on :linux`), and brew defaults to the
+Formula when both exist by the same name. Pre-built binaries for both
+platforms are downloaded from the [GitHub Releases
+page](https://github.com/NVIDIA/holodeck/releases/latest). Run
+`brew upgrade --cask nvidia/holodeck/holodeck` (macOS) or
+`brew upgrade --formula nvidia/holodeck/holodeck` (Linux) to update.
+
+> **Why the platform split?** macOS uses a Cask because brew's Formula
+> build-sandbox triggers a `PTY.open` failure on macOS Tahoe (26.x) +
+> brew 5.1.x + portable-ruby 4.0.x. Casks skip that sandbox path, so
+> `brew install --cask` works cleanly. Until Apple Developer code signing
+> and notarization are wired up, the Cask's `postflight` hook removes the
+> `com.apple.quarantine` xattr so Gatekeeper doesn't block the unsigned
+> binary.
 >
 > | Platform | Mechanism | File |
 > | --- | --- | --- |
 > | macOS (arm64 / amd64) | Homebrew **Cask** | `Casks/holodeck.rb` |
 > | Linux (arm64 / amd64) | Homebrew **Formula** | `Formula/holodeck.rb` |
->
-> macOS uses a Cask because brew's Formula build-sandbox triggers a
-> `PTY.open` failure on macOS Tahoe (26.x) + brew 5.1.x + portable-ruby
-> 4.0.x. Casks skip that sandbox path, so `brew install` works cleanly.
-> Until we wire up Apple Developer code signing + notarization, the Cask's
-> `postflight` hook removes the `com.apple.quarantine` xattr so Gatekeeper
-> doesn't block the unsigned binary.
 
 ### Install from source
 
