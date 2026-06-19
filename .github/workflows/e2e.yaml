@@ -52,7 +52,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
 
     - name: Install Go
       uses: actions/setup-go@v6
@@ -100,7 +100,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
 
     - name: Install Go
       uses: actions/setup-go@v6
@@ -130,7 +130,7 @@ jobs:
     runs-on: linux-amd64-cpu4
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Set up Holodeck
       uses: NVIDIA/holodeck@main
       with:
@@ -145,7 +145,7 @@ jobs:
     if: failure()
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
 
     - name: Create or update failure issue
       env:
