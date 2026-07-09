@@ -17,9 +17,7 @@
 package aws
 
 import (
-	"context"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -27,70 +25,27 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 )
+
+// seedTestImage seeds an available x86_64 image so resolveImageForNode and
+// describeImageRootDevice resolve for an explicit spec.image.imageId.
+func seedTestImage(f *awsfake.Fake, id string) {
+	f.Store.SeedImage(types.Image{
+		ImageId:        aws.String(id),
+		Architecture:   types.ArchitectureValuesX8664,
+		RootDeviceName: aws.String("/dev/sda1"),
+		State:          types.ImageStateAvailable,
+	})
+}
 
 // TestCreateInstancesSetsPublicIP verifies that createInstances sets
 // AssociatePublicIpAddress=true in the RunInstancesInput for cluster mode.
 func TestCreateInstancesSetsPublicIP(t *testing.T) {
-	var mu sync.Mutex
-	var captured []*ec2.RunInstancesInput
+	f := awsfake.New()
+	seedTestImage(f, "ami-test-123")
 
-	mock := NewMockEC2Client()
-
-	// Capture RunInstances calls
-	mock.RunInstancesFunc = func(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
-		mu.Lock()
-		captured = append(captured, params)
-		mu.Unlock()
-		return &ec2.RunInstancesOutput{
-			Instances: []types.Instance{
-				{
-					InstanceId:       aws.String("i-test-12345"),
-					PrivateIpAddress: aws.String("10.0.0.10"),
-					NetworkInterfaces: []types.InstanceNetworkInterface{
-						{NetworkInterfaceId: aws.String("eni-test-12345")},
-					},
-				},
-			},
-		}, nil
-	}
-
-	// Mock DescribeInstances for the waiter — return instance in "running" state
-	mock.DescribeInstsFunc = func(ctx context.Context, params *ec2.DescribeInstancesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
-		return &ec2.DescribeInstancesOutput{
-			Reservations: []types.Reservation{
-				{
-					Instances: []types.Instance{
-						{
-							InstanceId:       aws.String("i-test-12345"),
-							State:            &types.InstanceState{Name: types.InstanceStateNameRunning},
-							PublicDnsName:    aws.String(""),
-							PublicIpAddress:  nil,
-							PrivateIpAddress: aws.String("10.0.0.10"),
-							NetworkInterfaces: []types.InstanceNetworkInterface{
-								{NetworkInterfaceId: aws.String("eni-test-12345")},
-							},
-						},
-					},
-				},
-			},
-		}, nil
-	}
-
-	// Mock DescribeImages for resolveImageForNode and describeImageRootDevice
-	mock.DescribeImagesFunc = func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-		return &ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:        aws.String("ami-test-123"),
-					Architecture:   types.ArchitectureValuesX8664,
-					RootDeviceName: aws.String("/dev/sda1"),
-				},
-			},
-		}, nil
-	}
-
-	provider := newTestProvider(mock)
+	provider := newTestProvider(f.EC2)
 	cache := &ClusterCache{
 		AWS: AWS{
 			Subnetid:              "subnet-private",
@@ -117,18 +72,16 @@ func TestCreateInstancesSetsPublicIP(t *testing.T) {
 		t.Fatalf("expected 1 instance, got %d", len(instances))
 	}
 
-	// Verify no public IP
-	mu.Lock()
-	defer mu.Unlock()
-	if len(captured) != 1 {
-		t.Fatalf("expected 1 RunInstances call, got %d", len(captured))
+	// Inspect the RunInstances arguments.
+	runCalls := f.Store.Inputs("RunInstances")
+	if len(runCalls) != 1 {
+		t.Fatalf("expected 1 RunInstances call, got %d", len(runCalls))
 	}
-
-	nis := captured[0].NetworkInterfaces
+	nis := runCalls[0].(*ec2.RunInstancesInput).NetworkInterfaces
 	if len(nis) == 0 {
 		t.Fatal("expected NetworkInterfaces in RunInstancesInput")
 	}
-	if nis[0].AssociatePublicIpAddress == nil || *nis[0].AssociatePublicIpAddress != true {
+	if nis[0].AssociatePublicIpAddress == nil || !*nis[0].AssociatePublicIpAddress {
 		t.Error("AssociatePublicIpAddress should be true for cluster instances")
 	}
 
@@ -152,51 +105,10 @@ func TestCreateInstancesUsesRoleSecurityGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var mu sync.Mutex
-			var captured *ec2.RunInstancesInput
+			f := awsfake.New()
+			seedTestImage(f, "ami-test")
 
-			mock := NewMockEC2Client()
-			mock.RunInstancesFunc = func(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
-				mu.Lock()
-				captured = params
-				mu.Unlock()
-				return &ec2.RunInstancesOutput{
-					Instances: []types.Instance{
-						{
-							InstanceId:       aws.String("i-test"),
-							PrivateIpAddress: aws.String("10.0.0.10"),
-							NetworkInterfaces: []types.InstanceNetworkInterface{
-								{NetworkInterfaceId: aws.String("eni-test")},
-							},
-						},
-					},
-				}, nil
-			}
-			mock.DescribeInstsFunc = func(ctx context.Context, params *ec2.DescribeInstancesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
-				return &ec2.DescribeInstancesOutput{
-					Reservations: []types.Reservation{{
-						Instances: []types.Instance{{
-							InstanceId:       aws.String("i-test"),
-							State:            &types.InstanceState{Name: types.InstanceStateNameRunning},
-							PrivateIpAddress: aws.String("10.0.0.10"),
-							NetworkInterfaces: []types.InstanceNetworkInterface{
-								{NetworkInterfaceId: aws.String("eni-test")},
-							},
-						}},
-					}},
-				}, nil
-			}
-			mock.DescribeImagesFunc = func(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-				return &ec2.DescribeImagesOutput{
-					Images: []types.Image{{
-						ImageId:        aws.String("ami-test"),
-						Architecture:   types.ArchitectureValuesX8664,
-						RootDeviceName: aws.String("/dev/sda1"),
-					}},
-				}, nil
-			}
-
-			provider := newTestProvider(mock)
+			provider := newTestProvider(f.EC2)
 			cache := &ClusterCache{
 				AWS: AWS{
 					Subnetid:              "subnet-private",
@@ -210,12 +122,11 @@ func TestCreateInstancesUsesRoleSecurityGroup(t *testing.T) {
 				t.Fatalf("createInstances failed: %v", err)
 			}
 
-			mu.Lock()
-			defer mu.Unlock()
-			if captured == nil {
-				t.Fatal("RunInstances was not called")
+			runCalls := f.Store.Inputs("RunInstances")
+			if len(runCalls) != 1 {
+				t.Fatalf("RunInstances was called %d times, want 1", len(runCalls))
 			}
-			gotSG := captured.NetworkInterfaces[0].Groups[0]
+			gotSG := runCalls[0].(*ec2.RunInstancesInput).NetworkInterfaces[0].Groups[0]
 			if gotSG != tt.wantSG {
 				t.Errorf("SecurityGroup = %q, want %q", gotSG, tt.wantSG)
 			}
@@ -226,15 +137,9 @@ func TestCreateInstancesUsesRoleSecurityGroup(t *testing.T) {
 // TestPrivateRouteTableRoutesToNATGW verifies that createPrivateRouteTable
 // routes 0.0.0.0/0 to the NAT Gateway (not the Internet Gateway).
 func TestPrivateRouteTableRoutesToNATGW(t *testing.T) {
-	var capturedRoute *ec2.CreateRouteInput
+	f := awsfake.New()
 
-	mock := NewMockEC2Client()
-	mock.CreateRouteFunc = func(ctx context.Context, params *ec2.CreateRouteInput, optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
-		capturedRoute = params
-		return &ec2.CreateRouteOutput{}, nil
-	}
-
-	provider := newTestProvider(mock)
+	provider := newTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:        "vpc-test",
 		Subnetid:     "subnet-private",
@@ -246,9 +151,11 @@ func TestPrivateRouteTableRoutesToNATGW(t *testing.T) {
 		t.Fatalf("createPrivateRouteTable failed: %v", err)
 	}
 
-	if capturedRoute == nil {
+	routeCalls := f.Store.Inputs("CreateRoute")
+	if len(routeCalls) == 0 {
 		t.Fatal("CreateRoute was not called")
 	}
+	capturedRoute := routeCalls[0].(*ec2.CreateRouteInput)
 
 	// Must route to NAT GW, not IGW
 	if capturedRoute.NatGatewayId == nil || *capturedRoute.NatGatewayId != "nat-test-123" {
@@ -263,20 +170,9 @@ func TestPrivateRouteTableRoutesToNATGW(t *testing.T) {
 // TestPublicRouteTableRoutesToIGW verifies that createPublicRouteTable
 // routes 0.0.0.0/0 to the Internet Gateway and associates with the public subnet.
 func TestPublicRouteTableRoutesToIGW(t *testing.T) {
-	var capturedRoute *ec2.CreateRouteInput
-	var capturedAssoc *ec2.AssociateRouteTableInput
+	f := awsfake.New()
 
-	mock := NewMockEC2Client()
-	mock.CreateRouteFunc = func(ctx context.Context, params *ec2.CreateRouteInput, optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
-		capturedRoute = params
-		return &ec2.CreateRouteOutput{}, nil
-	}
-	mock.AssociateRTFunc = func(ctx context.Context, params *ec2.AssociateRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error) {
-		capturedAssoc = params
-		return &ec2.AssociateRouteTableOutput{}, nil
-	}
-
-	provider := newTestProvider(mock)
+	provider := newTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:          "vpc-test",
 		PublicSubnetid: "subnet-public",
@@ -288,17 +184,21 @@ func TestPublicRouteTableRoutesToIGW(t *testing.T) {
 	}
 
 	// Verify route targets IGW
-	if capturedRoute == nil {
+	routeCalls := f.Store.Inputs("CreateRoute")
+	if len(routeCalls) == 0 {
 		t.Fatal("CreateRoute was not called")
 	}
+	capturedRoute := routeCalls[0].(*ec2.CreateRouteInput)
 	if capturedRoute.GatewayId == nil || *capturedRoute.GatewayId != "igw-test-456" {
 		t.Errorf("Route should target IGW igw-test-456, got GatewayId=%v", aws.ToString(capturedRoute.GatewayId))
 	}
 
 	// Verify association with public subnet (not private)
-	if capturedAssoc == nil {
+	assocCalls := f.Store.Inputs("AssociateRouteTable")
+	if len(assocCalls) == 0 {
 		t.Fatal("AssociateRouteTable was not called")
 	}
+	capturedAssoc := assocCalls[0].(*ec2.AssociateRouteTableInput)
 	if aws.ToString(capturedAssoc.SubnetId) != "subnet-public" {
 		t.Errorf("Route table associated with %q, want public subnet %q",
 			aws.ToString(capturedAssoc.SubnetId), "subnet-public")
@@ -308,17 +208,9 @@ func TestPublicRouteTableRoutesToIGW(t *testing.T) {
 // TestPublicSubnetCreatedInCorrectCIDR verifies that createPublicSubnet
 // creates a subnet in the 10.0.1.0/24 CIDR and stores it in PublicSubnetid.
 func TestPublicSubnetCreatedInCorrectCIDR(t *testing.T) {
-	var capturedSubnet *ec2.CreateSubnetInput
+	f := awsfake.New()
 
-	mock := NewMockEC2Client()
-	mock.CreateSubnetFunc = func(ctx context.Context, params *ec2.CreateSubnetInput, optFns ...func(*ec2.Options)) (*ec2.CreateSubnetOutput, error) {
-		capturedSubnet = params
-		return &ec2.CreateSubnetOutput{
-			Subnet: &types.Subnet{SubnetId: aws.String("subnet-public-123")},
-		}, nil
-	}
-
-	provider := newTestProvider(mock)
+	provider := newTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test",
 	}
@@ -327,47 +219,36 @@ func TestPublicSubnetCreatedInCorrectCIDR(t *testing.T) {
 		t.Fatalf("createPublicSubnet failed: %v", err)
 	}
 
-	if capturedSubnet == nil {
+	subnetCalls := f.Store.Inputs("CreateSubnet")
+	if len(subnetCalls) == 0 {
 		t.Fatal("CreateSubnet was not called")
 	}
-	if aws.ToString(capturedSubnet.CidrBlock) != "10.0.1.0/24" {
-		t.Errorf("Public subnet CIDR = %q, want %q", aws.ToString(capturedSubnet.CidrBlock), "10.0.1.0/24")
+	if got := aws.ToString(subnetCalls[0].(*ec2.CreateSubnetInput).CidrBlock); got != "10.0.1.0/24" {
+		t.Errorf("Public subnet CIDR = %q, want %q", got, "10.0.1.0/24")
 	}
 
-	// Verify stored in PublicSubnetid (not Subnetid)
-	if cache.PublicSubnetid != "subnet-public-123" {
-		t.Errorf("cache.PublicSubnetid = %q, want %q", cache.PublicSubnetid, "subnet-public-123")
+	// Verify the created subnet's ID was stored in PublicSubnetid (not Subnetid).
+	if len(f.Store.Subnets) != 1 {
+		t.Fatalf("expected exactly 1 subnet in store, got %d", len(f.Store.Subnets))
+	}
+	var createdID string
+	for id := range f.Store.Subnets {
+		createdID = id
+	}
+	if cache.PublicSubnetid != createdID {
+		t.Errorf("cache.PublicSubnetid = %q, want created subnet %q", cache.PublicSubnetid, createdID)
+	}
+	if cache.Subnetid != "" {
+		t.Errorf("cache.Subnetid = %q, want empty (public subnet must not overwrite it)", cache.Subnetid)
 	}
 }
 
 // TestNATGatewayCreatedInPublicSubnet verifies that createNATGateway
 // places the NAT gateway in the public subnet.
 func TestNATGatewayCreatedInPublicSubnet(t *testing.T) {
-	var capturedNAT *ec2.CreateNatGatewayInput
+	f := awsfake.New()
 
-	mock := NewMockEC2Client()
-	mock.CreateNatGatewayFunc = func(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
-		capturedNAT = params
-		return &ec2.CreateNatGatewayOutput{
-			NatGateway: &types.NatGateway{
-				NatGatewayId: aws.String("nat-test-123"),
-				State:        types.NatGatewayStateAvailable,
-			},
-		}, nil
-	}
-	// Mock DescribeNatGateways for the wait loop
-	mock.DescribeNatGatewaysFunc = func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
-		return &ec2.DescribeNatGatewaysOutput{
-			NatGateways: []types.NatGateway{
-				{
-					NatGatewayId: aws.String("nat-test-123"),
-					State:        types.NatGatewayStateAvailable,
-				},
-			},
-		}, nil
-	}
-
-	provider := newTestProvider(mock)
+	provider := newTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:          "vpc-test",
 		PublicSubnetid: "subnet-public",
@@ -378,46 +259,23 @@ func TestNATGatewayCreatedInPublicSubnet(t *testing.T) {
 		t.Fatalf("createNATGateway failed: %v", err)
 	}
 
-	if capturedNAT == nil {
+	natCalls := f.Store.Inputs("CreateNatGateway")
+	if len(natCalls) == 0 {
 		t.Fatal("CreateNatGateway was not called")
 	}
-	if aws.ToString(capturedNAT.SubnetId) != "subnet-public" {
-		t.Errorf("NAT GW placed in %q, want public subnet %q",
-			aws.ToString(capturedNAT.SubnetId), "subnet-public")
+	if got := aws.ToString(natCalls[0].(*ec2.CreateNatGatewayInput).SubnetId); got != "subnet-public" {
+		t.Errorf("NAT GW placed in %q, want public subnet %q", got, "subnet-public")
 	}
 }
 
 // TestNATGatewayWaitsForAvailable verifies that createNATGateway polls
 // DescribeNatGateways until the NAT GW transitions from pending to available.
 func TestNATGatewayWaitsForAvailable(t *testing.T) {
-	describeCalls := 0
+	f := awsfake.New()
+	// Report pending on the first observation, available on the second.
+	f.Store.SeedNextNatGatewayState(1, types.NatGatewayStateAvailable)
 
-	mock := NewMockEC2Client()
-	mock.CreateNatGatewayFunc = func(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
-		return &ec2.CreateNatGatewayOutput{
-			NatGateway: &types.NatGateway{
-				NatGatewayId: aws.String("nat-pending-123"),
-				State:        types.NatGatewayStatePending,
-			},
-		}, nil
-	}
-	mock.DescribeNatGatewaysFunc = func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
-		describeCalls++
-		state := types.NatGatewayStatePending
-		if describeCalls >= 2 {
-			state = types.NatGatewayStateAvailable
-		}
-		return &ec2.DescribeNatGatewaysOutput{
-			NatGateways: []types.NatGateway{
-				{
-					NatGatewayId: aws.String("nat-pending-123"),
-					State:        state,
-				},
-			},
-		}, nil
-	}
-
-	provider := newTestProvider(mock)
+	provider := newTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:          "vpc-test",
 		PublicSubnetid: "subnet-public",
@@ -428,38 +286,30 @@ func TestNATGatewayWaitsForAvailable(t *testing.T) {
 		t.Fatalf("createNATGateway failed: %v", err)
 	}
 
-	if describeCalls < 2 {
-		t.Errorf("Expected at least 2 DescribeNatGateways calls for polling, got %d", describeCalls)
+	if got := f.Store.CallsTo("DescribeNatGateways"); got < 2 {
+		t.Errorf("Expected at least 2 DescribeNatGateways calls for polling, got %d", got)
 	}
-	if cache.NatGatewayid != "nat-pending-123" {
-		t.Errorf("cache.NatGatewayid = %q, want %q", cache.NatGatewayid, "nat-pending-123")
+	// The provider records the created NAT gateway's ID in the cache.
+	if len(f.Store.NatGateways) != 1 {
+		t.Fatalf("expected exactly 1 NAT gateway in store, got %d", len(f.Store.NatGateways))
+	}
+	var createdID string
+	for id := range f.Store.NatGateways {
+		createdID = id
+	}
+	if cache.NatGatewayid != createdID {
+		t.Errorf("cache.NatGatewayid = %q, want created NAT %q", cache.NatGatewayid, createdID)
 	}
 }
 
 // TestNATGatewayFailedState verifies that createNATGateway returns an error
 // if the NAT GW transitions to the failed state.
 func TestNATGatewayFailedState(t *testing.T) {
-	mock := NewMockEC2Client()
-	mock.CreateNatGatewayFunc = func(ctx context.Context, params *ec2.CreateNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
-		return &ec2.CreateNatGatewayOutput{
-			NatGateway: &types.NatGateway{
-				NatGatewayId: aws.String("nat-fail-123"),
-				State:        types.NatGatewayStatePending,
-			},
-		}, nil
-	}
-	mock.DescribeNatGatewaysFunc = func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
-		return &ec2.DescribeNatGatewaysOutput{
-			NatGateways: []types.NatGateway{
-				{
-					NatGatewayId: aws.String("nat-fail-123"),
-					State:        types.NatGatewayStateFailed,
-				},
-			},
-		}, nil
-	}
+	f := awsfake.New()
+	// The NAT gateway reports failed immediately.
+	f.Store.SeedNextNatGatewayState(0, types.NatGatewayStateFailed)
 
-	provider := newTestProvider(mock)
+	provider := newTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:          "vpc-test",
 		PublicSubnetid: "subnet-public",

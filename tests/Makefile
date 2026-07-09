@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: test $(GINKGO_BIN)
+.PHONY: test ginkgo $(GINKGO_BIN)
 
 GINKGO_ARGS ?=
 LOG_ARTIFACT_DIR ?= $(CURDIR)/e2e_logs
@@ -29,6 +29,10 @@ test: $(GINKGO_BIN)
 	GINKGO_FOCUS=$(GINKGO_FOCUS) \
 	$(GINKGO_BIN) $(GINKGO_ARGS) -v ./tests/...
 
+# ginkgo builds the CLI at the version pinned in go.mod (no @latest), so the
+# suite runner matches the compiled ginkgo/v2 library version.
+ginkgo: $(GINKGO_BIN)
+
 $(GINKGO_BIN):
 	mkdir -p $(CURDIR)/bin
-	GOBIN=$(CURDIR)/bin go install github.com/onsi/ginkgo/v2/ginkgo@latest
+	GOBIN=$(CURDIR)/bin go install github.com/onsi/ginkgo/v2/ginkgo

@@ -25,13 +25,13 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 )
 
-func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile string) (provider.Provider, error) {
+func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile string, opts ...aws.Option) (provider.Provider, error) {
 	var provider provider.Provider
 	var err error
 
 	switch cfg.Spec.Provider {
 	case v1alpha1.ProviderAWS:
-		provider, err = newAwsProvider(log, cfg, cacheFile)
+		provider, err = newAwsProvider(log, cfg, cacheFile, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -42,8 +42,8 @@ func newProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile stri
 	return provider, nil
 }
 
-func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile string) (*aws.Provider, error) {
-	a, err := aws.New(log, cfg, cacheFile)
+func newAwsProvider(log *logger.FunLogger, cfg v1alpha1.Environment, cacheFile string, opts ...aws.Option) (*aws.Provider, error) {
+	a, err := aws.New(log, cfg, cacheFile, opts...)
 	if err != nil {
 		return nil, err
 	}

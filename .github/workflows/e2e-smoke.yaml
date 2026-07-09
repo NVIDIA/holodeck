@@ -25,13 +25,9 @@ on:
         required: true
 
 jobs:
-  e2e-smoke:
+  e2e-mock:
     runs-on: linux-amd64-cpu4
-    strategy:
-      fail-fast: false
-      matrix:
-        label: ["default && !rpm", "cluster && minimal", "nvidia-driver"]
-    name: E2E Smoke (${{ matrix.label }})
+    name: E2E Mock
 
     steps:
     - name: Checkout code
@@ -48,7 +44,40 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y make
 
-    - name: Run smoke e2e test for ${{ matrix.label }}
+    - name: Run mock e2e test
+      env:
+        LOG_ARTIFACT_DIR: e2e_logs
+      run: |
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='mock' --json-report ginkgo.json"
+
+    - name: Archive Ginkgo logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ginkgo-mock-logs
+        path: ginkgo.json
+        retention-days: 15
+
+  e2e-real-smoke:
+    runs-on: linux-amd64-cpu4
+    name: E2E Real Smoke
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Install Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+        check-latest: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make
+
+    - name: Run smoke e2e test
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -59,12 +88,12 @@ jobs:
         echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
         chmod 600 "$e2e_ssh_key"
         export E2E_SSH_KEY="$e2e_ssh_key"
-        make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}' --json-report ginkgo.json"
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='real-aws && default && !rpm' --json-report ginkgo.json"
 
     - name: Archive Ginkgo logs
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ginkgo-smoke-logs-${{ strategy.job-index }}
+        name: ginkgo-smoke-logs
         path: ginkgo.json
         retention-days: 15

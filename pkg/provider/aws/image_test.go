@@ -33,10 +33,13 @@ import (
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/ami"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
-// mockSSMClient implements ami.SSMParameterGetter for testing.
+// mockSSMClient implements ami.SSMParameterGetter for testing. The AMI resolver
+// takes an SSM getter (not the EC2 client), so the SSM path stays a lightweight
+// path-aware stub while the EC2 side is driven by the stateful awsfake.
 type mockSSMClient struct {
 	GetParameterFunc func(ctx context.Context, params *ssm.GetParameterInput,
 		optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
@@ -54,6 +57,24 @@ func (m *mockSSMClient) GetParameter(ctx context.Context, params *ssm.GetParamet
 	}, nil
 }
 
+// describeImagesArchFilter returns the architecture value from the last
+// DescribeImages call, so findLegacyAMI's arch-filter correctness stays covered
+// even though the fake's DescribeImages does not itself filter on architecture.
+func describeImagesArchFilter(t *testing.T, f *awsfake.Fake) string {
+	t.Helper()
+	calls := f.Store.Inputs("DescribeImages")
+	if len(calls) == 0 {
+		t.Fatal("DescribeImages was not called")
+	}
+	in := calls[len(calls)-1].(*ec2.DescribeImagesInput)
+	for _, filter := range in.Filters {
+		if aws.ToString(filter.Name) == "architecture" && len(filter.Values) > 0 {
+			return filter.Values[0]
+		}
+	}
+	return ""
+}
+
 func TestResolveImageForNode(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -61,7 +82,7 @@ func TestResolveImageForNode(t *testing.T) {
 		image          *v1alpha1.Image
 		arch           string
 		instanceOS     string // p.Spec.Instance.OS fallback
-		setupMock      func(*MockEC2Client, *mockSSMClient)
+		setupMock      func(*awsfake.Fake, *mockSSMClient)
 		wantImageID    string
 		wantSSHUser    string
 		wantErr        bool
@@ -74,19 +95,11 @@ func TestResolveImageForNode(t *testing.T) {
 				ImageId:      aws.String("ami-explicit-123"),
 				Architecture: "x86_64",
 			},
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
-				ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      aws.String("ami-explicit-123"),
-								Architecture: types.ArchitectureValuesX8664,
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
+				f.Store.SetImages(types.Image{
+					ImageId:      aws.String("ami-explicit-123"),
+					Architecture: types.ArchitectureValuesX8664,
+				})
 			},
 			wantImageID: "ami-explicit-123",
 			wantSSHUser: "", // Must be provided in auth config
@@ -96,7 +109,7 @@ func TestResolveImageForNode(t *testing.T) {
 			name:  "OS specified resolves via AMI resolver (SSM)",
 			os:    "ubuntu-22.04",
 			image: &v1alpha1.Image{Architecture: "x86_64"},
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
 				ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
 					optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
 					return &ssm.GetParameterOutput{
@@ -114,19 +127,11 @@ func TestResolveImageForNode(t *testing.T) {
 			name:  "OS specified resolves via DescribeImages fallback",
 			os:    "rocky-9", // Rocky has no SSM path
 			image: &v1alpha1.Image{Architecture: "x86_64"},
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
-				ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      aws.String("ami-rocky9-latest"),
-								CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
+				f.Store.SetImages(types.Image{
+					ImageId:      aws.String("ami-rocky9-latest"),
+					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+				})
 			},
 			wantImageID: "ami-rocky9-latest",
 			wantSSHUser: "rocky",
@@ -137,7 +142,7 @@ func TestResolveImageForNode(t *testing.T) {
 			os:         "", // No node-specific OS
 			image:      nil,
 			instanceOS: "ubuntu-24.04",
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
 				ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
 					optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
 					return &ssm.GetParameterOutput{
@@ -156,23 +161,17 @@ func TestResolveImageForNode(t *testing.T) {
 			os:         "",
 			image:      nil,
 			instanceOS: "", // No Instance.OS either
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
-				ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      aws.String("ami-legacy-ubuntu"),
-								CreationDate: aws.String("2026-01-15T00:00:00.000Z"),
-							},
-							{
-								ImageId:      aws.String("ami-legacy-ubuntu-older"),
-								CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
+				f.Store.SetImages(
+					types.Image{
+						ImageId:      aws.String("ami-legacy-ubuntu"),
+						CreationDate: aws.String("2026-01-15T00:00:00.000Z"),
+					},
+					types.Image{
+						ImageId:      aws.String("ami-legacy-ubuntu-older"),
+						CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+					},
+				)
 			},
 			wantImageID: "ami-legacy-ubuntu", // Newest by creation date
 			wantSSHUser: "ubuntu",
@@ -182,7 +181,7 @@ func TestResolveImageForNode(t *testing.T) {
 			name:  "architecture from image parameter",
 			os:    "ubuntu-22.04",
 			image: &v1alpha1.Image{Architecture: "arm64"},
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
 				ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
 					optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
 					// Verify arm64 is in the SSM path
@@ -205,7 +204,7 @@ func TestResolveImageForNode(t *testing.T) {
 			os:    "ubuntu-22.04",
 			image: &v1alpha1.Image{Architecture: "x86_64"}, // Should be overridden
 			arch:  "arm64",
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
 				ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
 					optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
 					return &ssm.GetParameterOutput{
@@ -224,7 +223,7 @@ func TestResolveImageForNode(t *testing.T) {
 			os:    "ubuntu-22.04",
 			image: nil,
 			arch:  "",
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
 				ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
 					optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
 					// SSM uses "amd64" for x86_64
@@ -254,7 +253,7 @@ func TestResolveImageForNode(t *testing.T) {
 			os:    "ubuntu-22.04",
 			image: nil,
 			arch:  "ppc64le", // Not supported
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
 				// Should not reach SSM
 			},
 			wantErr:        true,
@@ -265,12 +264,8 @@ func TestResolveImageForNode(t *testing.T) {
 			os:         "",
 			image:      nil,
 			instanceOS: "",
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
-				ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return nil, fmt.Errorf("EC2 API error")
-				}
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
+				f.Store.FailNext("DescribeImages", fmt.Errorf("EC2 API error"))
 			},
 			wantErr:        true,
 			wantErrContain: "failed to describe images",
@@ -282,7 +277,7 @@ func TestResolveImageForNode(t *testing.T) {
 				ImageId:      aws.String(""), // Empty string
 				Architecture: "x86_64",
 			},
-			setupMock: func(ec2Mock *MockEC2Client, ssmMock *mockSSMClient) {
+			setupMock: func(f *awsfake.Fake, ssmMock *mockSSMClient) {
 				ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
 					optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
 					return &ssm.GetParameterOutput{
@@ -300,16 +295,15 @@ func TestResolveImageForNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mocks
-			ec2Mock := NewMockEC2Client()
+			f := awsfake.New()
 			ssmMock := &mockSSMClient{}
 
 			if tt.setupMock != nil {
-				tt.setupMock(ec2Mock, ssmMock)
+				tt.setupMock(f, ssmMock)
 			}
 
-			// Create AMI resolver with mocks
-			resolver := ami.NewResolver(ec2Mock, ssmMock, "us-east-1")
+			// Create AMI resolver with the fake EC2 client and the SSM stub.
+			resolver := ami.NewResolver(f.EC2, ssmMock, "us-east-1")
 
 			// Create provider with minimal config
 			env := v1alpha1.Environment{
@@ -326,7 +320,7 @@ func TestResolveImageForNode(t *testing.T) {
 
 			p := &Provider{
 				Environment: &env,
-				ec2:         ec2Mock,
+				ec2:         f.EC2,
 				amiResolver: resolver,
 			}
 
@@ -356,22 +350,14 @@ func TestResolveImageForNode_DoesNotMutateState(t *testing.T) {
 	// This test verifies the P0 fix: resolveImageForNode should not mutate
 	// provider state, making it safe for cluster mode with heterogeneous nodes.
 
-	ec2Mock := NewMockEC2Client()
-	ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-		params *ec2.DescribeImagesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-		return &ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:      aws.String("ami-legacy-fallback"),
-					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-				},
-			},
-		}, nil
-	}
+	f := awsfake.New()
+	f.Store.SetImages(types.Image{
+		ImageId:      aws.String("ami-legacy-fallback"),
+		CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+	})
 
 	ssmMock := &mockSSMClient{}
-	resolver := ami.NewResolver(ec2Mock, ssmMock, "us-east-1")
+	resolver := ami.NewResolver(f.EC2, ssmMock, "us-east-1")
 
 	env := v1alpha1.Environment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -387,7 +373,7 @@ func TestResolveImageForNode_DoesNotMutateState(t *testing.T) {
 
 	p := &Provider{
 		Environment: &env,
-		ec2:         ec2Mock,
+		ec2:         f.EC2,
 		amiResolver: resolver,
 	}
 
@@ -410,95 +396,58 @@ func TestFindLegacyAMI(t *testing.T) {
 		name           string
 		arch           string
 		imageArch      string // p.Spec.Image.Architecture
-		setupMock      func(*MockEC2Client)
+		setupMock      func(*awsfake.Fake)
 		wantImageID    string
+		wantArchFilter string // architecture value the lookup must pass to DescribeImages
 		wantErr        bool
 		wantErrContain string
 	}{
 		{
 			name: "finds newest Ubuntu 22.04 x86_64",
 			arch: "x86_64",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      aws.String("ami-older"),
-								CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-							},
-							{
-								ImageId:      aws.String("ami-newest"),
-								CreationDate: aws.String("2026-01-15T00:00:00.000Z"),
-							},
-							{
-								ImageId:      aws.String("ami-middle"),
-								CreationDate: aws.String("2026-01-10T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(
+					types.Image{ImageId: aws.String("ami-older"), CreationDate: aws.String("2026-01-01T00:00:00.000Z")},
+					types.Image{ImageId: aws.String("ami-newest"), CreationDate: aws.String("2026-01-15T00:00:00.000Z")},
+					types.Image{ImageId: aws.String("ami-middle"), CreationDate: aws.String("2026-01-10T00:00:00.000Z")},
+				)
 			},
-			wantImageID: "ami-newest",
-			wantErr:     false,
+			wantImageID:    "ami-newest",
+			wantArchFilter: "x86_64",
+			wantErr:        false,
 		},
 		{
 			name: "finds arm64 AMI",
 			arch: "arm64",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					// Verify arm64 filter is passed
-					for _, f := range params.Filters {
-						if *f.Name == "architecture" && f.Values[0] == "arm64" {
-							return &ec2.DescribeImagesOutput{
-								Images: []types.Image{
-									{
-										ImageId:      aws.String("ami-arm64"),
-										CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-									},
-								},
-							}, nil
-						}
-					}
-					return nil, fmt.Errorf("expected arm64 architecture filter")
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(types.Image{
+					ImageId:      aws.String("ami-arm64"),
+					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+				})
 			},
-			wantImageID: "ami-arm64",
-			wantErr:     false,
+			wantImageID:    "ami-arm64",
+			wantArchFilter: "arm64",
+			wantErr:        false,
 		},
 		{
 			name:      "uses provider architecture when arch param empty",
 			arch:      "",
 			imageArch: "arm64",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      aws.String("ami-from-provider-arch"),
-								CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(types.Image{
+					ImageId:      aws.String("ami-from-provider-arch"),
+					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+				})
 			},
-			wantImageID: "ami-from-provider-arch",
-			wantErr:     false,
+			wantImageID:    "ami-from-provider-arch",
+			wantArchFilter: "arm64",
+			wantErr:        false,
 		},
 		{
 			name: "returns error when no images found",
 			arch: "x86_64",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return nil, fmt.Errorf("no images found")
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages() // empty catalog
 			},
 			wantErr:        true,
 			wantErrContain: "no images found",
@@ -506,12 +455,8 @@ func TestFindLegacyAMI(t *testing.T) {
 		{
 			name: "returns error on EC2 API failure",
 			arch: "x86_64",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return nil, fmt.Errorf("EC2 API unavailable")
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.FailNext("DescribeImages", fmt.Errorf("EC2 API unavailable"))
 			},
 			wantErr:        true,
 			wantErrContain: "failed to describe images",
@@ -526,9 +471,9 @@ func TestFindLegacyAMI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ec2Mock := NewMockEC2Client()
+			f := awsfake.New()
 			if tt.setupMock != nil {
-				tt.setupMock(ec2Mock)
+				tt.setupMock(f)
 			}
 
 			env := v1alpha1.Environment{
@@ -545,7 +490,7 @@ func TestFindLegacyAMI(t *testing.T) {
 
 			p := &Provider{
 				Environment: &env,
-				ec2:         ec2Mock,
+				ec2:         f.EC2,
 			}
 
 			imageID, err := p.findLegacyAMI(tt.arch)
@@ -560,6 +505,8 @@ func TestFindLegacyAMI(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantImageID, imageID)
+			// The lookup must filter DescribeImages by the resolved architecture.
+			assert.Equal(t, tt.wantArchFilter, describeImagesArchFilter(t, f))
 		})
 	}
 }
@@ -568,7 +515,7 @@ func TestDescribeImageArch(t *testing.T) {
 	tests := []struct {
 		name           string
 		imageID        string
-		setupMock      func(*MockEC2Client)
+		setupMock      func(*awsfake.Fake)
 		wantArch       string
 		wantErr        bool
 		wantErrContain string
@@ -576,19 +523,11 @@ func TestDescribeImageArch(t *testing.T) {
 		{
 			name:    "returns x86_64 architecture",
 			imageID: "ami-x86-123",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      aws.String("ami-x86-123"),
-								Architecture: types.ArchitectureValuesX8664,
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(types.Image{
+					ImageId:      aws.String("ami-x86-123"),
+					Architecture: types.ArchitectureValuesX8664,
+				})
 			},
 			wantArch: "x86_64",
 			wantErr:  false,
@@ -596,19 +535,11 @@ func TestDescribeImageArch(t *testing.T) {
 		{
 			name:    "returns arm64 architecture",
 			imageID: "ami-arm-456",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      aws.String("ami-arm-456"),
-								Architecture: types.ArchitectureValuesArm64,
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(types.Image{
+					ImageId:      aws.String("ami-arm-456"),
+					Architecture: types.ArchitectureValuesArm64,
+				})
 			},
 			wantArch: "arm64",
 			wantErr:  false,
@@ -616,14 +547,8 @@ func TestDescribeImageArch(t *testing.T) {
 		{
 			name:    "error when image not found",
 			imageID: "ami-missing",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages() // empty catalog
 			},
 			wantErr:        true,
 			wantErrContain: "not found",
@@ -631,12 +556,8 @@ func TestDescribeImageArch(t *testing.T) {
 		{
 			name:    "error on EC2 API failure",
 			imageID: "ami-fail",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return nil, fmt.Errorf("EC2 API error")
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.FailNext("DescribeImages", fmt.Errorf("EC2 API error"))
 			},
 			wantErr:        true,
 			wantErrContain: "failed to describe image",
@@ -645,9 +566,9 @@ func TestDescribeImageArch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ec2Mock := NewMockEC2Client()
+			f := awsfake.New()
 			if tt.setupMock != nil {
-				tt.setupMock(ec2Mock)
+				tt.setupMock(f)
 			}
 
 			env := v1alpha1.Environment{
@@ -663,7 +584,7 @@ func TestDescribeImageArch(t *testing.T) {
 
 			p := &Provider{
 				Environment: &env,
-				ec2:         ec2Mock,
+				ec2:         f.EC2,
 			}
 
 			arch, err := p.describeImageArch(tt.imageID)
@@ -686,7 +607,7 @@ func TestGetInstanceTypeArch(t *testing.T) {
 	tests := []struct {
 		name           string
 		instanceType   string
-		setupMock      func(*MockEC2Client)
+		setupMock      func(*awsfake.Fake)
 		wantArchs      []string
 		wantErr        bool
 		wantErrContain string
@@ -694,62 +615,22 @@ func TestGetInstanceTypeArch(t *testing.T) {
 		{
 			name:         "returns x86_64 for t3.medium",
 			instanceType: "t3.medium",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{
-								InstanceType: types.InstanceTypeT3Medium,
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeX8664,
-									},
-								},
-							},
-						},
-					}, nil
-				}
-			},
+			// t3.* infers x86_64 via the fake's prefix heuristic; no seed needed.
 			wantArchs: []string{"x86_64"},
 			wantErr:   false,
 		},
 		{
 			name:         "returns arm64 for t4g.medium",
 			instanceType: "t4g.medium",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{
-								InstanceType: types.InstanceTypeT4gMedium,
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeArm64,
-									},
-								},
-							},
-						},
-					}, nil
-				}
-			},
+			// t4g.* infers arm64 via the fake's prefix heuristic; no seed needed.
 			wantArchs: []string{"arm64"},
 			wantErr:   false,
 		},
 		{
 			name:         "error when instance type not found",
 			instanceType: "t99.nonexistent",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SeedInstanceTypeAbsent("t99.nonexistent")
 			},
 			wantErr:        true,
 			wantErrContain: "not found",
@@ -757,12 +638,8 @@ func TestGetInstanceTypeArch(t *testing.T) {
 		{
 			name:         "error on EC2 API failure",
 			instanceType: "t3.medium",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return nil, fmt.Errorf("EC2 API error")
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.FailNext("DescribeInstanceTypes", fmt.Errorf("EC2 API error"))
 			},
 			wantErr:        true,
 			wantErrContain: "failed to describe instance type",
@@ -771,9 +648,9 @@ func TestGetInstanceTypeArch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ec2Mock := NewMockEC2Client()
+			f := awsfake.New()
 			if tt.setupMock != nil {
-				tt.setupMock(ec2Mock)
+				tt.setupMock(f)
 			}
 
 			env := v1alpha1.Environment{
@@ -789,7 +666,7 @@ func TestGetInstanceTypeArch(t *testing.T) {
 
 			p := &Provider{
 				Environment: &env,
-				ec2:         ec2Mock,
+				ec2:         f.EC2,
 			}
 
 			archs, err := p.getInstanceTypeArch(tt.instanceType)
@@ -811,21 +688,11 @@ func TestGetInstanceTypeArch(t *testing.T) {
 func TestResolveImageForNode_ExplicitImageId_ReturnsArchitecture(t *testing.T) {
 	// Verify that when an explicit ImageId is provided, the architecture
 	// is queried from EC2 and returned in the result.
-	ec2Mock := NewMockEC2Client()
-	ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-		params *ec2.DescribeImagesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-		// Verify the correct AMI is being queried
-		assert.Equal(t, []string{"ami-arm64-custom"}, params.ImageIds)
-		return &ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:      aws.String("ami-arm64-custom"),
-					Architecture: types.ArchitectureValuesArm64,
-				},
-			},
-		}, nil
-	}
+	f := awsfake.New()
+	f.Store.SetImages(types.Image{
+		ImageId:      aws.String("ami-arm64-custom"),
+		Architecture: types.ArchitectureValuesArm64,
+	})
 
 	env := v1alpha1.Environment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -840,7 +707,7 @@ func TestResolveImageForNode_ExplicitImageId_ReturnsArchitecture(t *testing.T) {
 
 	p := &Provider{
 		Environment: &env,
-		ec2:         ec2Mock,
+		ec2:         f.EC2,
 	}
 
 	image := &v1alpha1.Image{
@@ -852,60 +719,24 @@ func TestResolveImageForNode_ExplicitImageId_ReturnsArchitecture(t *testing.T) {
 	assert.Equal(t, "ami-arm64-custom", result.ImageID)
 	assert.Equal(t, "arm64", result.Architecture)
 	assert.Equal(t, "", result.SSHUsername) // Must be provided in auth config
+
+	// The architecture is queried against the given AMI.
+	calls := f.Store.Inputs("DescribeImages")
+	require.NotEmpty(t, calls)
+	assert.Equal(t, []string{"ami-arm64-custom"}, calls[0].(*ec2.DescribeImagesInput).ImageIds)
 }
 
 func TestDryRun_ArchitectureMismatch(t *testing.T) {
 	// Test that DryRun detects when an arm64 AMI is used with an x86_64 instance type.
-	ec2Mock := NewMockEC2Client()
+	f := awsfake.New()
 
-	// checkInstanceTypes needs to find the instance type
-	ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-		params *ec2.DescribeInstanceTypesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-		// If called with specific InstanceTypes (getInstanceTypeArch), return processor info
-		if len(params.InstanceTypes) > 0 {
-			return &ec2.DescribeInstanceTypesOutput{
-				InstanceTypes: []types.InstanceTypeInfo{
-					{
-						InstanceType: types.InstanceTypeT3Medium,
-						ProcessorInfo: &types.ProcessorInfo{
-							SupportedArchitectures: []types.ArchitectureType{
-								types.ArchitectureTypeX8664,
-							},
-						},
-					},
-				},
-			}, nil
-		}
-		// Paginated scan for checkInstanceTypes
-		return &ec2.DescribeInstanceTypesOutput{
-			InstanceTypes: []types.InstanceTypeInfo{
-				{
-					InstanceType: types.InstanceTypeT3Medium,
-					ProcessorInfo: &types.ProcessorInfo{
-						SupportedArchitectures: []types.ArchitectureType{
-							types.ArchitectureTypeX8664,
-						},
-					},
-				},
-			},
-		}, nil
-	}
-
-	// checkImages -> assertImageIdSupported needs to find the image
-	ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-		params *ec2.DescribeImagesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-		return &ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:      aws.String("ami-arm64-image"),
-					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-					Architecture: types.ArchitectureValuesArm64,
-				},
-			},
-		}, nil
-	}
+	// checkImages -> assertImageIdSupported needs to find the image; the arm64
+	// architecture here mismatches the x86_64-only t3.medium instance type.
+	f.Store.SetImages(types.Image{
+		ImageId:      aws.String("ami-arm64-image"),
+		CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+		Architecture: types.ArchitectureValuesArm64,
+	})
 
 	log := logger.NewLogger()
 
@@ -929,7 +760,7 @@ func TestDryRun_ArchitectureMismatch(t *testing.T) {
 
 	p := &Provider{
 		Environment: &env,
-		ec2:         ec2Mock,
+		ec2:         f.EC2,
 		log:         log,
 	}
 
@@ -942,38 +773,15 @@ func TestDryRun_ArchitectureMismatch(t *testing.T) {
 
 func TestDryRun_ArchitectureMatch(t *testing.T) {
 	// Test that DryRun succeeds when architecture matches.
-	ec2Mock := NewMockEC2Client()
-
-	ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-		params *ec2.DescribeInstanceTypesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-		return &ec2.DescribeInstanceTypesOutput{
-			InstanceTypes: []types.InstanceTypeInfo{
-				{
-					InstanceType: types.InstanceTypeT4gMedium,
-					ProcessorInfo: &types.ProcessorInfo{
-						SupportedArchitectures: []types.ArchitectureType{
-							types.ArchitectureTypeArm64,
-						},
-					},
-				},
-			},
-		}, nil
-	}
-
-	ec2Mock.DescribeImagesFunc = func(ctx context.Context,
-		params *ec2.DescribeImagesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-		return &ec2.DescribeImagesOutput{
-			Images: []types.Image{
-				{
-					ImageId:      aws.String("ami-arm64-image"),
-					CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
-					Architecture: types.ArchitectureValuesArm64,
-				},
-			},
-		}, nil
-	}
+	f := awsfake.New()
+	// t4g.medium is arm64-only but not in the default catalog; seed it so
+	// checkInstanceTypes finds it.
+	f.Store.SeedInstanceType("t4g.medium")
+	f.Store.SetImages(types.Image{
+		ImageId:      aws.String("ami-arm64-image"),
+		CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+		Architecture: types.ArchitectureValuesArm64,
+	})
 
 	log := logger.NewLogger()
 
@@ -997,7 +805,7 @@ func TestDryRun_ArchitectureMatch(t *testing.T) {
 
 	p := &Provider{
 		Environment: &env,
-		ec2:         ec2Mock,
+		ec2:         f.EC2,
 		log:         log,
 	}
 
@@ -1009,79 +817,30 @@ func TestInferArchFromInstanceType(t *testing.T) {
 	tests := []struct {
 		name         string
 		instanceType string
-		setupMock    func(*MockEC2Client)
+		setupMock    func(*awsfake.Fake)
 		wantArch     string
 		wantErr      bool
 	}{
 		{
 			name:         "arm64-only instance type infers arm64",
 			instanceType: "g5g.xlarge",
-			setupMock: func(ec2Mock *MockEC2Client) {
-				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{
-								InstanceType: "g5g.xlarge",
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeArm64,
-									},
-								},
-							},
-						},
-					}, nil
-				}
-			},
+			// g5g.* infers arm64 via the fake's prefix heuristic.
 			wantArch: "arm64",
 			wantErr:  false,
 		},
 		{
 			name:         "x86_64-only instance type infers x86_64",
 			instanceType: "g4dn.xlarge",
-			setupMock: func(ec2Mock *MockEC2Client) {
-				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{
-								InstanceType: "g4dn.xlarge",
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeX8664,
-									},
-								},
-							},
-						},
-					}, nil
-				}
-			},
+			// g4dn.* infers x86_64 via the fake's prefix heuristic.
 			wantArch: "x86_64",
 			wantErr:  false,
 		},
 		{
 			name:         "dual-arch instance type defaults to x86_64",
 			instanceType: "synthetic.dualarch",
-			setupMock: func(ec2Mock *MockEC2Client) {
-				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{
-								InstanceType: "synthetic.dualarch",
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeX8664,
-										types.ArchitectureTypeArm64,
-									},
-								},
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SeedInstanceTypeArchs("synthetic.dualarch",
+					types.ArchitectureTypeX8664, types.ArchitectureTypeArm64)
 			},
 			wantArch: "x86_64",
 			wantErr:  false,
@@ -1089,23 +848,8 @@ func TestInferArchFromInstanceType(t *testing.T) {
 		{
 			name:         "arm64_mac variant infers arm64",
 			instanceType: "mac2-m2.metal",
-			setupMock: func(ec2Mock *MockEC2Client) {
-				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{
-								InstanceType: "mac2-m2.metal",
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeArm64Mac,
-									},
-								},
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SeedInstanceTypeArchs("mac2-m2.metal", types.ArchitectureTypeArm64Mac)
 			},
 			wantArch: "arm64",
 			wantErr:  false,
@@ -1113,23 +857,8 @@ func TestInferArchFromInstanceType(t *testing.T) {
 		{
 			name:         "x86_64_mac variant infers x86_64",
 			instanceType: "mac1.metal",
-			setupMock: func(ec2Mock *MockEC2Client) {
-				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{
-								InstanceType: "mac1.metal",
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeX8664Mac,
-									},
-								},
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SeedInstanceTypeArchs("mac1.metal", types.ArchitectureTypeX8664Mac)
 			},
 			wantArch: "x86_64",
 			wantErr:  false,
@@ -1137,12 +866,8 @@ func TestInferArchFromInstanceType(t *testing.T) {
 		{
 			name:         "API error returns error",
 			instanceType: "unknown.type",
-			setupMock: func(ec2Mock *MockEC2Client) {
-				ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return nil, fmt.Errorf("instance type not found")
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.FailNext("DescribeInstanceTypes", fmt.Errorf("instance type not found"))
 			},
 			wantErr: true,
 		},
@@ -1150,12 +875,12 @@ func TestInferArchFromInstanceType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ec2Mock := NewMockEC2Client()
+			f := awsfake.New()
 			if tt.setupMock != nil {
-				tt.setupMock(ec2Mock)
+				tt.setupMock(f)
 			}
 
-			p := &Provider{ec2: ec2Mock}
+			p := &Provider{ec2: f.EC2}
 			arch, err := p.inferArchFromInstanceType(tt.instanceType)
 
 			if tt.wantErr {
@@ -1171,28 +896,10 @@ func TestInferArchFromInstanceType(t *testing.T) {
 func TestResolveOSToAMI_InfersArchFromInstanceType(t *testing.T) {
 	// When Architecture is empty and instance type is arm64-only,
 	// resolveOSToAMI should infer arm64 and resolve an arm64 AMI.
-	ec2Mock := NewMockEC2Client()
+	f := awsfake.New()
 	ssmMock := &mockSSMClient{}
 
-	// Mock: g5g.xlarge is arm64-only
-	ec2Mock.DescribeInstTypesFunc = func(ctx context.Context,
-		params *ec2.DescribeInstanceTypesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-		return &ec2.DescribeInstanceTypesOutput{
-			InstanceTypes: []types.InstanceTypeInfo{
-				{
-					InstanceType: "g5g.xlarge",
-					ProcessorInfo: &types.ProcessorInfo{
-						SupportedArchitectures: []types.ArchitectureType{
-							types.ArchitectureTypeArm64,
-						},
-					},
-				},
-			},
-		}, nil
-	}
-
-	// Mock: SSM returns arm64 AMI when arm64 is in path
+	// SSM returns the arm64 AMI when arm64 is in the parameter path.
 	ssmMock.GetParameterFunc = func(ctx context.Context, params *ssm.GetParameterInput,
 		optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
 		if params.Name != nil && strings.Contains(*params.Name, "arm64") {
@@ -1205,14 +912,14 @@ func TestResolveOSToAMI_InfersArchFromInstanceType(t *testing.T) {
 		return nil, fmt.Errorf("expected arm64 in SSM path, got: %s", *params.Name)
 	}
 
-	resolver := ami.NewResolver(ec2Mock, ssmMock, "us-east-1")
+	resolver := ami.NewResolver(f.EC2, ssmMock, "us-east-1")
 
 	env := v1alpha1.Environment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-arm64-inference"},
 		Spec: v1alpha1.EnvironmentSpec{
 			Provider: v1alpha1.ProviderAWS,
 			Instance: v1alpha1.Instance{
-				Type:   "g5g.xlarge", // arm64-only instance type
+				Type:   "g5g.xlarge", // arm64-only instance type (prefix heuristic)
 				Region: "us-east-1",
 				OS:     "ubuntu-22.04",
 			},
@@ -1222,7 +929,7 @@ func TestResolveOSToAMI_InfersArchFromInstanceType(t *testing.T) {
 
 	p := &Provider{
 		Environment: &env,
-		ec2:         ec2Mock,
+		ec2:         f.EC2,
 		amiResolver: resolver,
 	}
 
@@ -1242,88 +949,56 @@ func TestDescribeImageRootDevice(t *testing.T) {
 	tests := []struct {
 		name       string
 		imageID    string
-		setupMock  func(*MockEC2Client)
+		setupMock  func(*awsfake.Fake)
 		wantDevice string
 		wantErr    bool
 	}{
 		{
 			name:    "Ubuntu AMI returns /dev/sda1",
 			imageID: "ami-ubuntu-123",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:        aws.String("ami-ubuntu-123"),
-								RootDeviceName: aws.String("/dev/sda1"),
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(types.Image{
+					ImageId:        aws.String("ami-ubuntu-123"),
+					RootDeviceName: aws.String("/dev/sda1"),
+				})
 			},
 			wantDevice: "/dev/sda1",
 		},
 		{
 			name:    "Amazon Linux 2023 AMI returns /dev/xvda",
 			imageID: "ami-al2023-456",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:        aws.String("ami-al2023-456"),
-								RootDeviceName: aws.String("/dev/xvda"),
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(types.Image{
+					ImageId:        aws.String("ami-al2023-456"),
+					RootDeviceName: aws.String("/dev/xvda"),
+				})
 			},
 			wantDevice: "/dev/xvda",
 		},
 		{
 			name:    "empty root device falls back to /dev/sda1",
 			imageID: "ami-no-root-789",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:        aws.String("ami-no-root-789"),
-								RootDeviceName: nil,
-							},
-						},
-					}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages(types.Image{
+					ImageId:        aws.String("ami-no-root-789"),
+					RootDeviceName: nil,
+				})
 			},
 			wantDevice: "/dev/sda1",
 		},
 		{
 			name:    "image not found returns error",
 			imageID: "ami-missing-000",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{Images: []types.Image{}}, nil
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.SetImages() // empty catalog
 			},
 			wantErr: true,
 		},
 		{
 			name:    "DescribeImages API error returns error",
 			imageID: "ami-error-111",
-			setupMock: func(m *MockEC2Client) {
-				m.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return nil, fmt.Errorf("mock API error")
-				}
+			setupMock: func(f *awsfake.Fake) {
+				f.Store.FailNext("DescribeImages", fmt.Errorf("mock API error"))
 			},
 			wantErr: true,
 		},
@@ -1331,10 +1006,10 @@ func TestDescribeImageRootDevice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ec2Mock := &MockEC2Client{}
-			tt.setupMock(ec2Mock)
+			f := awsfake.New()
+			tt.setupMock(f)
 
-			p := &Provider{ec2: ec2Mock}
+			p := &Provider{ec2: f.EC2}
 
 			device, err := p.describeImageRootDevice(tt.imageID)
 			if tt.wantErr {

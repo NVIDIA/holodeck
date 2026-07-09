@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -43,6 +44,12 @@ func testEnvironment() *v1alpha1.Environment {
 			},
 		},
 	}
+}
+
+// seedSG registers a security group in the store under an exact id so a delete
+// path can genuinely remove it (CreateSecurityGroup would assign a fake id).
+func seedSG(f *awsfake.Fake, id string) {
+	f.Store.SecurityGroups[id] = &types.SecurityGroup{GroupId: aws.String(id)}
 }
 
 func TestDeleteConstants(t *testing.T) {
@@ -143,33 +150,29 @@ func TestDeleteVPCResources_ExponentialBackoffDelay(t *testing.T) {
 func TestSecurityGroupExists(t *testing.T) {
 	tests := []struct {
 		name     string
-		sgId     string
-		mock     func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+		setup    func(*awsfake.Fake) string // returns the SG id to check
 		expected bool
 	}{
 		{
 			name: "exists",
-			sgId: "sg-123",
-			mock: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-				return &ec2.DescribeSecurityGroupsOutput{
-					SecurityGroups: []types.SecurityGroup{{GroupId: aws.String("sg-123")}},
-				}, nil
+			setup: func(f *awsfake.Fake) string {
+				sg, _ := f.EC2.CreateSecurityGroup(context.Background(), &ec2.CreateSecurityGroupInput{
+					GroupName: aws.String("g"), VpcId: aws.String("vpc-1"),
+				})
+				return aws.ToString(sg.GroupId)
 			},
 			expected: true,
 		},
 		{
-			name: "not found",
-			sgId: "sg-456",
-			mock: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-				return nil, fmt.Errorf("InvalidGroup.NotFound")
-			},
+			name:     "not found",
+			setup:    func(f *awsfake.Fake) string { return "sg-456" }, // never created -> InvalidGroup.NotFound
 			expected: false,
 		},
 		{
 			name: "error",
-			sgId: "sg-789",
-			mock: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-				return nil, fmt.Errorf("some error")
+			setup: func(f *awsfake.Fake) string {
+				f.Store.FailNext("DescribeSecurityGroups", fmt.Errorf("some error"))
+				return "sg-789"
 			},
 			expected: false,
 		},
@@ -177,15 +180,11 @@ func TestSecurityGroupExists(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider := &Provider{
-				ec2: &MockEC2Client{
-					DescribeSGsFunc: tt.mock,
-				},
-				log:   mockLogger(),
-				sleep: noopSleep,
-			}
-			if got := provider.securityGroupExists(tt.sgId); got != tt.expected {
-				t.Errorf("securityGroupExists(%s) = %v, want %v", tt.sgId, got, tt.expected)
+			f := awsfake.New()
+			sgID := tt.setup(f)
+			provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
+			if got := provider.securityGroupExists(sgID); got != tt.expected {
+				t.Errorf("securityGroupExists(%s) = %v, want %v", sgID, got, tt.expected)
 			}
 		})
 	}
@@ -202,12 +201,10 @@ func TestDeleteNATGateway_Empty(t *testing.T) {
 }
 
 func TestDeleteNATGateway_AlreadyDeleted(t *testing.T) {
-	mock := &MockEC2Client{
-		DeleteNatGatewayFunc: func(ctx context.Context, params *ec2.DeleteNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error) {
-			return nil, fmt.Errorf("NatGatewayNotFound: nat-gone")
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	// An absent NAT gateway makes DeleteNatGateway return NatGatewayNotFound,
+	// which deleteNATGateway treats as success.
+	f := awsfake.New()
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{NatGatewayid: "nat-gone"}
 	if err := provider.deleteNATGateway(cache); err != nil {
 		t.Fatalf("expected no error for NatGatewayNotFound, got: %v", err)
@@ -215,46 +212,31 @@ func TestDeleteNATGateway_AlreadyDeleted(t *testing.T) {
 }
 
 func TestDeleteNATGateway_WaitsForDeletedState(t *testing.T) {
-	describeCalls := 0
-	mock := &MockEC2Client{
-		DeleteNatGatewayFunc: func(ctx context.Context, params *ec2.DeleteNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error) {
-			return &ec2.DeleteNatGatewayOutput{}, nil
-		},
-		DescribeNatGatewaysFunc: func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
-			describeCalls++
-			state := types.NatGatewayStateDeleting
-			if describeCalls >= 2 {
-				state = types.NatGatewayStateDeleted
-			}
-			return &ec2.DescribeNatGatewaysOutput{
-				NatGateways: []types.NatGateway{
-					{NatGatewayId: aws.String("nat-123"), State: state},
-				},
-			}, nil
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &AWS{NatGatewayid: "nat-123"}
+	f := awsfake.New()
+	nat, _ := f.EC2.CreateNatGateway(context.Background(), &ec2.CreateNatGatewayInput{SubnetId: aws.String("subnet-1")})
+	natID := aws.ToString(nat.NatGateway.NatGatewayId)
+	// Report "deleting" on the first describe, gone on the second.
+	f.Store.SeedNextNatGatewayDeleteState(1)
+
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
+	cache := &AWS{NatGatewayid: natID}
 	if err := provider.deleteNATGateway(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if describeCalls < 2 {
-		t.Errorf("expected at least 2 DescribeNatGateways calls for polling, got %d", describeCalls)
+	if got := f.Store.CallsTo("DescribeNatGateways"); got < 2 {
+		t.Errorf("expected at least 2 DescribeNatGateways calls for polling, got %d", got)
 	}
 }
 
 func TestDeleteNATGateway_EmptyDescribeBreaksLoop(t *testing.T) {
-	mock := &MockEC2Client{
-		DeleteNatGatewayFunc: func(ctx context.Context, params *ec2.DeleteNatGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error) {
-			return &ec2.DeleteNatGatewayOutput{}, nil
-		},
-		DescribeNatGatewaysFunc: func(ctx context.Context, params *ec2.DescribeNatGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
-			// Empty response = NAT GW fully gone
-			return &ec2.DescribeNatGatewaysOutput{}, nil
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &AWS{NatGatewayid: "nat-123"}
+	// Default delete removes the gateway immediately, so the first describe
+	// returns empty and the wait loop breaks without error.
+	f := awsfake.New()
+	nat, _ := f.EC2.CreateNatGateway(context.Background(), &ec2.CreateNatGatewayInput{SubnetId: aws.String("subnet-1")})
+	natID := aws.ToString(nat.NatGateway.NatGatewayId)
+
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
+	cache := &AWS{NatGatewayid: natID}
 	if err := provider.deleteNATGateway(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -269,30 +251,33 @@ func TestReleaseElasticIP_Empty(t *testing.T) {
 }
 
 func TestReleaseElasticIP_Success(t *testing.T) {
-	var releasedID string
-	mock := &MockEC2Client{
-		ReleaseAddressFunc: func(ctx context.Context, params *ec2.ReleaseAddressInput, optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
-			releasedID = aws.ToString(params.AllocationId)
-			return &ec2.ReleaseAddressOutput{}, nil
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &AWS{EIPAllocationid: "eipalloc-test-123"}
+	f := awsfake.New()
+	alloc, _ := f.EC2.AllocateAddress(context.Background(), &ec2.AllocateAddressInput{})
+	eipID := aws.ToString(alloc.AllocationId)
+
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
+	cache := &AWS{EIPAllocationid: eipID}
 	if err := provider.releaseElasticIP(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if releasedID != "eipalloc-test-123" {
-		t.Errorf("expected release of eipalloc-test-123, got %s", releasedID)
+
+	releaseCalls := f.Store.Inputs("ReleaseAddress")
+	if len(releaseCalls) == 0 {
+		t.Fatal("ReleaseAddress was not called")
+	}
+	if got := aws.ToString(releaseCalls[0].(*ec2.ReleaseAddressInput).AllocationId); got != eipID {
+		t.Errorf("expected release of %q, got %q", eipID, got)
+	}
+	if len(f.Store.Addresses) != 0 {
+		t.Errorf("expected the EIP to be released, %d address(es) remain", len(f.Store.Addresses))
 	}
 }
 
 func TestReleaseElasticIP_AlreadyReleased(t *testing.T) {
-	mock := &MockEC2Client{
-		ReleaseAddressFunc: func(ctx context.Context, params *ec2.ReleaseAddressInput, optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
-			return nil, fmt.Errorf("InvalidAllocationID.NotFound")
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	// An absent allocation makes ReleaseAddress return InvalidAllocationID.NotFound,
+	// which releaseElasticIP treats as success.
+	f := awsfake.New()
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{EIPAllocationid: "eipalloc-gone"}
 	if err := provider.releaseElasticIP(cache); err != nil {
 		t.Fatalf("expected no error for already-released EIP, got: %v", err)
@@ -308,20 +293,25 @@ func TestDeletePublicRouteTable_Empty(t *testing.T) {
 }
 
 func TestDeletePublicRouteTable_Success(t *testing.T) {
-	var deletedID string
-	mock := &MockEC2Client{
-		DeleteRTFunc: func(ctx context.Context, params *ec2.DeleteRouteTableInput, optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error) {
-			deletedID = aws.ToString(params.RouteTableId)
-			return &ec2.DeleteRouteTableOutput{}, nil
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &AWS{PublicRouteTable: "rtb-public-123"}
+	f := awsfake.New()
+	rt, _ := f.EC2.CreateRouteTable(context.Background(), &ec2.CreateRouteTableInput{VpcId: aws.String("vpc-1")})
+	rtID := aws.ToString(rt.RouteTable.RouteTableId)
+
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
+	cache := &AWS{PublicRouteTable: rtID}
 	if err := provider.deletePublicRouteTable(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if deletedID != "rtb-public-123" {
-		t.Errorf("expected deletion of rtb-public-123, got %s", deletedID)
+
+	deleteCalls := f.Store.Inputs("DeleteRouteTable")
+	if len(deleteCalls) == 0 {
+		t.Fatal("DeleteRouteTable was not called")
+	}
+	if got := aws.ToString(deleteCalls[0].(*ec2.DeleteRouteTableInput).RouteTableId); got != rtID {
+		t.Errorf("expected deletion of %q, got %q", rtID, got)
+	}
+	if _, ok := f.Store.RouteTables[rtID]; ok {
+		t.Error("route table was not removed from the store")
 	}
 }
 
@@ -334,20 +324,25 @@ func TestDeletePublicSubnet_Empty(t *testing.T) {
 }
 
 func TestDeletePublicSubnet_Success(t *testing.T) {
-	var deletedID string
-	mock := &MockEC2Client{
-		DeleteSubnetFunc: func(ctx context.Context, params *ec2.DeleteSubnetInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error) {
-			deletedID = aws.ToString(params.SubnetId)
-			return &ec2.DeleteSubnetOutput{}, nil
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &AWS{PublicSubnetid: "subnet-public-123"}
+	f := awsfake.New()
+	sn, _ := f.EC2.CreateSubnet(context.Background(), &ec2.CreateSubnetInput{VpcId: aws.String("vpc-1"), CidrBlock: aws.String("10.0.1.0/24")})
+	snID := aws.ToString(sn.Subnet.SubnetId)
+
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
+	cache := &AWS{PublicSubnetid: snID}
 	if err := provider.deletePublicSubnet(cache); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if deletedID != "subnet-public-123" {
-		t.Errorf("expected deletion of subnet-public-123, got %s", deletedID)
+
+	deleteCalls := f.Store.Inputs("DeleteSubnet")
+	if len(deleteCalls) == 0 {
+		t.Fatal("DeleteSubnet was not called")
+	}
+	if got := aws.ToString(deleteCalls[0].(*ec2.DeleteSubnetInput).SubnetId); got != snID {
+		t.Errorf("expected deletion of %q, got %q", snID, got)
+	}
+	if _, ok := f.Store.Subnets[snID]; ok {
+		t.Error("subnet was not removed from the store")
 	}
 }
 
@@ -361,56 +356,53 @@ func TestDeleteSecurityGroup_EmptyID(t *testing.T) {
 }
 
 func TestDeleteSecurityGroup_AlreadyDeleted(t *testing.T) {
-	mock := &MockEC2Client{
-		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
-			return nil, fmt.Errorf("InvalidGroup.NotFound: sg-gone")
-		},
-		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-			return nil, fmt.Errorf("InvalidGroup.NotFound")
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	// An absent SG makes DeleteSecurityGroup return InvalidGroup.NotFound, which
+	// deleteSecurityGroup treats as success.
+	f := awsfake.New()
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 	if err := provider.deleteSecurityGroup("sg-gone", "control-plane"); err != nil {
 		t.Fatalf("expected no error for InvalidGroup.NotFound, got: %v", err)
 	}
 }
 
 func TestDeleteSecurityGroup_Success(t *testing.T) {
-	var deletedID string
-	mock := &MockEC2Client{
-		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
-			deletedID = aws.ToString(params.GroupId)
-			return &ec2.DeleteSecurityGroupOutput{}, nil
-		},
-		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-			return nil, fmt.Errorf("InvalidGroup.NotFound")
-		},
-	}
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	f := awsfake.New()
+	seedSG(f, "sg-cp-123")
+
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 	if err := provider.deleteSecurityGroup("sg-cp-123", "control-plane"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if deletedID != "sg-cp-123" {
-		t.Errorf("expected deletion of sg-cp-123, got %s", deletedID)
+
+	deleteCalls := f.Store.Inputs("DeleteSecurityGroup")
+	if len(deleteCalls) == 0 {
+		t.Fatal("DeleteSecurityGroup was not called")
 	}
+	if got := aws.ToString(deleteCalls[0].(*ec2.DeleteSecurityGroupInput).GroupId); got != "sg-cp-123" {
+		t.Errorf("expected deletion of sg-cp-123, got %q", got)
+	}
+	if _, ok := f.Store.SecurityGroups["sg-cp-123"]; ok {
+		t.Error("security group was not removed from the store")
+	}
+}
+
+// deleteOrder returns the GroupIds passed to DeleteSecurityGroup, in call order.
+func deleteOrder(f *awsfake.Fake) []string {
+	calls := f.Store.Inputs("DeleteSecurityGroup")
+	out := make([]string, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, aws.ToString(c.(*ec2.DeleteSecurityGroupInput).GroupId))
+	}
+	return out
 }
 
 func TestDeleteSecurityGroups_DualSG_DeleteOrder(t *testing.T) {
 	// Verify Worker SG is deleted before CP SG (dependency order)
-	var deleteOrder []string
-	mock := &MockEC2Client{
-		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
-			deleteOrder = append(deleteOrder, aws.ToString(params.GroupId))
-			return &ec2.DeleteSecurityGroupOutput{}, nil
-		},
-		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-			return nil, fmt.Errorf("InvalidGroup.NotFound")
-		},
-	}
+	f := awsfake.New()
 
 	env := testEnvironment()
 	provider := &Provider{
-		ec2:         mock,
+		ec2:         f.EC2,
 		log:         mockLogger(),
 		Environment: env,
 		sleep:       noopSleep,
@@ -425,37 +417,29 @@ func TestDeleteSecurityGroups_DualSG_DeleteOrder(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(deleteOrder) != 3 {
-		t.Fatalf("expected 3 deletions, got %d: %v", len(deleteOrder), deleteOrder)
+	order := deleteOrder(f)
+	if len(order) != 3 {
+		t.Fatalf("expected 3 deletions, got %d: %v", len(order), order)
 	}
 	// Worker must come before CP, both before shared
-	if deleteOrder[0] != "sg-worker" {
-		t.Errorf("expected sg-worker deleted first, got %s", deleteOrder[0])
+	if order[0] != "sg-worker" {
+		t.Errorf("expected sg-worker deleted first, got %s", order[0])
 	}
-	if deleteOrder[1] != "sg-cp" {
-		t.Errorf("expected sg-cp deleted second, got %s", deleteOrder[1])
+	if order[1] != "sg-cp" {
+		t.Errorf("expected sg-cp deleted second, got %s", order[1])
 	}
-	if deleteOrder[2] != "sg-shared" {
-		t.Errorf("expected sg-shared deleted third, got %s", deleteOrder[2])
+	if order[2] != "sg-shared" {
+		t.Errorf("expected sg-shared deleted third, got %s", order[2])
 	}
 }
 
 func TestDeleteSecurityGroups_SingleNode_EmptyCPAndWorker(t *testing.T) {
 	// Single-node mode: CP and Worker SG IDs are empty, only shared SG exists
-	var deletedIDs []string
-	mock := &MockEC2Client{
-		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
-			deletedIDs = append(deletedIDs, aws.ToString(params.GroupId))
-			return &ec2.DeleteSecurityGroupOutput{}, nil
-		},
-		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-			return nil, fmt.Errorf("InvalidGroup.NotFound")
-		},
-	}
+	f := awsfake.New()
 
 	env := testEnvironment()
 	provider := &Provider{
-		ec2:         mock,
+		ec2:         f.EC2,
 		log:         mockLogger(),
 		Environment: env,
 		sleep:       noopSleep,
@@ -470,11 +454,12 @@ func TestDeleteSecurityGroups_SingleNode_EmptyCPAndWorker(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(deletedIDs) != 1 {
-		t.Fatalf("expected 1 deletion (shared SG only), got %d: %v", len(deletedIDs), deletedIDs)
+	order := deleteOrder(f)
+	if len(order) != 1 {
+		t.Fatalf("expected 1 deletion (shared SG only), got %d: %v", len(order), order)
 	}
-	if deletedIDs[0] != "sg-shared" {
-		t.Errorf("expected sg-shared, got %s", deletedIDs[0])
+	if order[0] != "sg-shared" {
+		t.Errorf("expected sg-shared, got %s", order[0])
 	}
 }
 
@@ -495,20 +480,11 @@ func TestDeleteSecurityGroups_AllEmpty(t *testing.T) {
 func TestDeleteSecurityGroups_SharedSameAsCP(t *testing.T) {
 	// When SecurityGroupid == CPSecurityGroupid (single-node mode where both
 	// point to the same SG), the shared SG should NOT be double-deleted.
-	var deletedSGs []string
-	mock := &MockEC2Client{
-		DeleteSGFunc: func(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
-			deletedSGs = append(deletedSGs, aws.ToString(params.GroupId))
-			return &ec2.DeleteSecurityGroupOutput{}, nil
-		},
-		DescribeSGsFunc: func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-			return nil, fmt.Errorf("InvalidGroup.NotFound")
-		},
-	}
+	f := awsfake.New()
 
 	env := testEnvironment()
 	provider := &Provider{
-		ec2:         mock,
+		ec2:         f.EC2,
 		log:         mockLogger(),
 		Environment: env,
 		sleep:       noopSleep,
@@ -525,127 +501,168 @@ func TestDeleteSecurityGroups_SharedSameAsCP(t *testing.T) {
 	}
 
 	// Should delete worker and CP, but NOT double-delete the shared SG
-	if len(deletedSGs) != 2 {
-		t.Fatalf("expected 2 delete calls, got %d: %v", len(deletedSGs), deletedSGs)
+	order := deleteOrder(f)
+	if len(order) != 2 {
+		t.Fatalf("expected 2 delete calls, got %d: %v", len(order), order)
 	}
-	if deletedSGs[0] != "sg-worker-002" {
-		t.Errorf("first delete should be worker SG, got %s", deletedSGs[0])
+	if order[0] != "sg-worker-002" {
+		t.Errorf("first delete should be worker SG, got %s", order[0])
 	}
-	if deletedSGs[1] != "sg-same-001" {
-		t.Errorf("second delete should be CP SG (same as shared), got %s", deletedSGs[1])
+	if order[1] != "sg-same-001" {
+		t.Errorf("second delete should be CP SG (same as shared), got %s", order[1])
+	}
+}
+
+// TestDeleteSecurityGroups_DualSG_RevokesCrossReferencePair pins the
+// bug caught by delete.go:272-279: deleteSecurityGroups must revoke each
+// cross-referencing security group's ingress rules before any
+// DeleteSecurityGroup call is issued for the CP/worker pair. This fake
+// tolerates DeleteSecurityGroup even while cross-SG ingress rules still
+// reference the deleted group, so a silently dropped revoke step passes here
+// but fails against real AWS with DependencyViolation (worker SG references
+// CP SG, and vice versa, per createControlPlaneSecurityGroup/
+// createWorkerSecurityGroup). awsfake.Store's recorder (Inputs/CallsTo) only
+// tracks per-method call order/counts, not a cross-method timeline, so the
+// strongest available pin (without modifying awsfake) is: both revokes
+// actually fire, targeting exactly the CP/worker pair.
+func TestDeleteSecurityGroups_DualSG_RevokesCrossReferencePair(t *testing.T) {
+	f := awsfake.New()
+
+	// Seed CP and Worker SGs with mutual ingress cross-references, mirroring
+	// createControlPlaneSecurityGroup/createWorkerSecurityGroup's UserIdGroupPairs.
+	f.Store.SecurityGroups["sg-cp"] = &types.SecurityGroup{
+		GroupId: aws.String("sg-cp"),
+		IpPermissions: []types.IpPermission{
+			{
+				IpProtocol:       aws.String("tcp"),
+				FromPort:         aws.Int32(6443),
+				ToPort:           aws.Int32(6443),
+				UserIdGroupPairs: []types.UserIdGroupPair{{GroupId: aws.String("sg-worker")}},
+			},
+		},
+	}
+	f.Store.SecurityGroups["sg-worker"] = &types.SecurityGroup{
+		GroupId: aws.String("sg-worker"),
+		IpPermissions: []types.IpPermission{
+			{
+				IpProtocol:       aws.String("tcp"),
+				FromPort:         aws.Int32(10250),
+				ToPort:           aws.Int32(10250),
+				UserIdGroupPairs: []types.UserIdGroupPair{{GroupId: aws.String("sg-cp")}},
+			},
+		},
+	}
+
+	env := testEnvironment()
+	provider := &Provider{
+		ec2:         f.EC2,
+		log:         mockLogger(),
+		Environment: env,
+		sleep:       noopSleep,
+	}
+	cache := &AWS{
+		SecurityGroupid:       "sg-cp",
+		CPSecurityGroupid:     "sg-cp",
+		WorkerSecurityGroupid: "sg-worker",
+	}
+
+	if err := provider.deleteSecurityGroups(cache); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	revokeCalls := f.Store.Inputs("RevokeSecurityGroupIngress")
+	if len(revokeCalls) != 2 {
+		t.Fatalf("expected 2 RevokeSecurityGroupIngress calls (CP + worker), got %d: %v", len(revokeCalls), revokeCalls)
+	}
+	revoked := map[string]bool{}
+	for _, c := range revokeCalls {
+		revoked[aws.ToString(c.(*ec2.RevokeSecurityGroupIngressInput).GroupId)] = true
+	}
+	if !revoked["sg-cp"] || !revoked["sg-worker"] {
+		t.Errorf("expected RevokeSecurityGroupIngress for both sg-cp and sg-worker, got %v", revoked)
+	}
+
+	// Also confirm both groups were subsequently deleted (sg-cp doubles as
+	// the shared SG here, so only 2 deletes: worker, then cp).
+	order := deleteOrder(f)
+	if len(order) != 2 {
+		t.Fatalf("expected 2 DeleteSecurityGroup calls, got %d: %v", len(order), order)
 	}
 }
 
 func TestRevokeSecurityGroupRules_RevokesIngressOnly(t *testing.T) {
-	var ingressCalls []ec2.RevokeSecurityGroupIngressInput
-	var egressCalls []ec2.RevokeSecurityGroupEgressInput
-
-	mock := NewMockEC2Client()
-	mock.DescribeSGsFunc = func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-		return &ec2.DescribeSecurityGroupsOutput{
-			SecurityGroups: []types.SecurityGroup{
-				{
-					GroupId: aws.String("sg-worker"),
-					IpPermissions: []types.IpPermission{
-						{
-							IpProtocol: aws.String("-1"),
-							UserIdGroupPairs: []types.UserIdGroupPair{
-								{GroupId: aws.String("sg-cp")},
-							},
-						},
-					},
-					IpPermissionsEgress: []types.IpPermission{
-						{
-							IpProtocol: aws.String("-1"),
-							IpRanges: []types.IpRange{
-								{CidrIp: aws.String("0.0.0.0/0")},
-							},
-						},
-					},
+	f := awsfake.New()
+	// Seed a worker SG with both an ingress rule and an egress rule.
+	f.Store.SecurityGroups["sg-worker"] = &types.SecurityGroup{
+		GroupId: aws.String("sg-worker"),
+		IpPermissions: []types.IpPermission{
+			{
+				IpProtocol: aws.String("-1"),
+				UserIdGroupPairs: []types.UserIdGroupPair{
+					{GroupId: aws.String("sg-cp")},
 				},
 			},
-		}, nil
-	}
-	mock.RevokeSGIngressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput,
-		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
-		ingressCalls = append(ingressCalls, *params)
-		return &ec2.RevokeSecurityGroupIngressOutput{}, nil
-	}
-	mock.RevokeSGEgressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput,
-		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
-		egressCalls = append(egressCalls, *params)
-		return &ec2.RevokeSecurityGroupEgressOutput{}, nil
+		},
+		IpPermissionsEgress: []types.IpPermission{
+			{
+				IpProtocol: aws.String("-1"),
+				IpRanges: []types.IpRange{
+					{CidrIp: aws.String("0.0.0.0/0")},
+				},
+			},
+		},
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.revokeSecurityGroupRules("sg-worker")
 	if err != nil {
 		t.Fatalf("revokeSecurityGroupRules failed: %v", err)
 	}
 
+	ingressCalls := f.Store.Inputs("RevokeSecurityGroupIngress")
 	if len(ingressCalls) != 1 {
 		t.Fatalf("Expected 1 RevokeSecurityGroupIngress call, got %d", len(ingressCalls))
 	}
-	if *ingressCalls[0].GroupId != "sg-worker" {
-		t.Errorf("Expected GroupId 'sg-worker', got %q", *ingressCalls[0].GroupId)
+	if got := aws.ToString(ingressCalls[0].(*ec2.RevokeSecurityGroupIngressInput).GroupId); got != "sg-worker" {
+		t.Errorf("Expected GroupId 'sg-worker', got %q", got)
 	}
 
 	// Egress revocation is intentionally skipped — CI IAM user lacks
 	// ec2:RevokeSecurityGroupEgress, and the default egress rule does not
 	// create cross-SG dependencies that block DeleteSecurityGroup.
-	if len(egressCalls) != 0 {
-		t.Errorf("Expected 0 RevokeSecurityGroupEgress calls (egress skipped), got %d", len(egressCalls))
+	if got := f.Store.CallsTo("RevokeSecurityGroupEgress"); got != 0 {
+		t.Errorf("Expected 0 RevokeSecurityGroupEgress calls (egress skipped), got %d", got)
 	}
 }
 
 func TestRevokeSecurityGroupRules_SkipsEmptyRules(t *testing.T) {
-	var ingressCalls []ec2.RevokeSecurityGroupIngressInput
-	var egressCalls []ec2.RevokeSecurityGroupEgressInput
-
-	mock := NewMockEC2Client()
-	mock.DescribeSGsFunc = func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-		return &ec2.DescribeSecurityGroupsOutput{
-			SecurityGroups: []types.SecurityGroup{
-				{
-					GroupId:             aws.String("sg-empty"),
-					IpPermissions:       nil,
-					IpPermissionsEgress: nil,
-				},
-			},
-		}, nil
-	}
-	mock.RevokeSGIngressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput,
-		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
-		ingressCalls = append(ingressCalls, *params)
-		return &ec2.RevokeSecurityGroupIngressOutput{}, nil
-	}
-	mock.RevokeSGEgressFunc = func(ctx context.Context, params *ec2.RevokeSecurityGroupEgressInput,
-		optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
-		egressCalls = append(egressCalls, *params)
-		return &ec2.RevokeSecurityGroupEgressOutput{}, nil
+	f := awsfake.New()
+	// A security group with no ingress/egress rules.
+	f.Store.SecurityGroups["sg-empty"] = &types.SecurityGroup{
+		GroupId:             aws.String("sg-empty"),
+		IpPermissions:       nil,
+		IpPermissionsEgress: nil,
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.revokeSecurityGroupRules("sg-empty")
 	if err != nil {
 		t.Fatalf("revokeSecurityGroupRules failed: %v", err)
 	}
 
-	if len(ingressCalls) != 0 {
-		t.Errorf("Expected no RevokeSecurityGroupIngress calls for empty rules, got %d", len(ingressCalls))
+	if got := f.Store.CallsTo("RevokeSecurityGroupIngress"); got != 0 {
+		t.Errorf("Expected no RevokeSecurityGroupIngress calls for empty rules, got %d", got)
 	}
-	if len(egressCalls) != 0 {
-		t.Errorf("Expected no RevokeSecurityGroupEgress calls for empty rules, got %d", len(egressCalls))
+	if got := f.Store.CallsTo("RevokeSecurityGroupEgress"); got != 0 {
+		t.Errorf("Expected no RevokeSecurityGroupEgress calls for empty rules, got %d", got)
 	}
 }
 
 func TestRevokeSecurityGroupRules_SkipsEmptyID(t *testing.T) {
-	mock := NewMockEC2Client()
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	f := awsfake.New()
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.revokeSecurityGroupRules("")
 	if err != nil {
@@ -654,15 +671,11 @@ func TestRevokeSecurityGroupRules_SkipsEmptyID(t *testing.T) {
 }
 
 func TestRevokeSecurityGroupRules_DescribeError(t *testing.T) {
-	mock := NewMockEC2Client()
-	mock.DescribeSGsFunc = func(ctx context.Context, params *ec2.DescribeSecurityGroupsInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-		return nil, fmt.Errorf("InvalidGroup.NotFound")
-	}
+	// An absent SG makes DescribeSecurityGroups return InvalidGroup.NotFound;
+	// revokeSecurityGroupRules treats a gone SG as nothing to revoke.
+	f := awsfake.New()
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
-
-	// NotFound is not an error — SG is already gone
 	err := provider.revokeSecurityGroupRules("sg-gone")
 	if err != nil {
 		t.Fatalf("revokeSecurityGroupRules should handle NotFound gracefully, got: %v", err)
@@ -670,15 +683,9 @@ func TestRevokeSecurityGroupRules_DescribeError(t *testing.T) {
 }
 
 func TestWaitForENIsDrained_NoENIs(t *testing.T) {
-	mock := NewMockEC2Client()
-	mock.DescribeNIsFunc = func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
-		return &ec2.DescribeNetworkInterfacesOutput{
-			NetworkInterfaces: []types.NetworkInterface{},
-		}, nil
-	}
-
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	// No interfaces in the VPC — DescribeNetworkInterfaces returns empty.
+	f := awsfake.New()
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("vpc-123")
 	if err != nil {
@@ -687,8 +694,8 @@ func TestWaitForENIsDrained_NoENIs(t *testing.T) {
 }
 
 func TestWaitForENIsDrained_SkipsEmptyVPC(t *testing.T) {
-	mock := NewMockEC2Client()
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	f := awsfake.New()
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("")
 	if err != nil {
@@ -700,55 +707,31 @@ func TestWaitForENIsDrained_ENIsDrainOnSecondPoll(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping: poll loop sleeps 10s between calls")
 	}
-	callCount := 0
-	mock := NewMockEC2Client()
-	mock.DescribeNIsFunc = func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
-		callCount++
-		if callCount == 1 {
-			// First call: ENI still in-use
-			return &ec2.DescribeNetworkInterfacesOutput{
-				NetworkInterfaces: []types.NetworkInterface{
-					{
-						NetworkInterfaceId: aws.String("eni-123"),
-						Status:             types.NetworkInterfaceStatusInUse,
-					},
-				},
-			}, nil
-		}
-		// Second call: all drained
-		return &ec2.DescribeNetworkInterfacesOutput{
-			NetworkInterfaces: []types.NetworkInterface{},
-		}, nil
-	}
+	f := awsfake.New()
+	// One in-use ENI that blocks the first poll, then drains.
+	f.Store.SeedDrainingENI("vpc-123", 1)
 
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("vpc-123")
 	if err != nil {
 		t.Fatalf("waitForENIsDrained should succeed after ENIs drain, got: %v", err)
 	}
-	if callCount < 2 {
-		t.Errorf("Expected at least 2 DescribeNetworkInterfaces calls, got %d", callCount)
+	if got := f.Store.CallsTo("DescribeNetworkInterfaces"); got < 2 {
+		t.Errorf("Expected at least 2 DescribeNetworkInterfaces calls, got %d", got)
 	}
 }
 
 func TestWaitForENIsDrained_AvailableENIsIgnored(t *testing.T) {
-	mock := NewMockEC2Client()
-	mock.DescribeNIsFunc = func(ctx context.Context, params *ec2.DescribeNetworkInterfacesInput,
-		optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
-		// ENI exists but is in "available" state (detached) — not blocking
-		return &ec2.DescribeNetworkInterfacesOutput{
-			NetworkInterfaces: []types.NetworkInterface{
-				{
-					NetworkInterfaceId: aws.String("eni-avail"),
-					Status:             types.NetworkInterfaceStatusAvailable,
-				},
-			},
-		}, nil
+	// An ENI exists but is in "available" state (detached) — not blocking.
+	f := awsfake.New()
+	f.Store.NetworkInterfaces["eni-avail"] = &types.NetworkInterface{
+		NetworkInterfaceId: aws.String("eni-avail"),
+		VpcId:              aws.String("vpc-123"),
+		Status:             types.NetworkInterfaceStatusAvailable,
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 
 	err := provider.waitForENIsDrained("vpc-123")
 	if err != nil {

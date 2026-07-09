@@ -42,18 +42,26 @@ func TestMain(t *testing.T) {
 	)
 }
 
-// cleanup cleans up the test environment
+// getTestEnv reads the shared suite environment. It does NOT require any
+// real-AWS credentials so that credential-free mock specs can run; specs that
+// touch real AWS gate themselves via requireRealAWSEnv.
 func getTestEnv() {
 	var err error
 
 	LogArtifactDir = os.Getenv("LOG_ARTIFACT_DIR")
 
 	sshKey = os.Getenv("E2E_SSH_KEY")
-	Expect(sshKey).NotTo(BeEmpty(), "E2E_SSH_KEY is not set")
 
 	// Get current working directory
 	cwd, err = os.Getwd()
 	Expect(err).NotTo(HaveOccurred())
+}
+
+// requireRealAWSEnv gates specs that provision against real AWS. Mock specs
+// never call it, so they run without an SSH key or AWS credentials.
+func requireRealAWSEnv() {
+	GinkgoHelper()
+	Expect(sshKey).NotTo(BeEmpty(), "E2E_SSH_KEY must be set for real-aws specs")
 }
 
 // BeforeSuite runs before the test suite

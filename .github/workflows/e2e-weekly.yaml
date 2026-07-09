@@ -1,0 +1,227 @@
+# Copyright 2026 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: E2E Weekly Full Matrix
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      label_filter:
+        description: 'Ginkgo label filter to run (e.g. rpm-rocky, "cluster && ha")'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  issues: write
+
+jobs:
+  e2e-matrix:
+    runs-on: linux-amd64-cpu4
+    if: github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        label:
+          - legacy
+          - dra
+          - kernel
+          - ctk-git
+          - k8s-git
+          - k8s-kind-git
+          - k8s-latest
+          - "cluster && gpu && !minimal && !ha && !dedicated"
+          - "cluster && dedicated"
+          - "cluster && ha"
+          - rpm-rocky
+          - rpm-al2023
+          - rpm-fedora
+          - custom-template
+          - nvidia-driver
+    name: E2E Test (${{ matrix.label }})
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Install Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+        check-latest: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make
+
+    - name: Run e2e test for ${{ matrix.label }}
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+        LOG_ARTIFACT_DIR: e2e_logs
+      run: |
+        e2e_ssh_key=$(mktemp)
+        echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
+        chmod 600 "$e2e_ssh_key"
+        export E2E_SSH_KEY="$e2e_ssh_key"
+        EXTRA_ARGS="--json-report ginkgo.json"
+        # RPM suites run both single-node and cluster tests (~60min total);
+        # increase timeout from the 1h default to avoid cleanup timeouts.
+        case "${{ matrix.label }}" in
+          rpm-*) EXTRA_ARGS="$EXTRA_ARGS --timeout=90m" ;;
+        esac
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}' $EXTRA_ARGS"
+
+    - name: Archive Ginkgo logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ginkgo-weekly-logs-${{ strategy.job-index }}
+        path: ginkgo.json
+        retention-days: 15
+
+  e2e-dispatch:
+    runs-on: linux-amd64-cpu4
+    if: github.event_name == 'workflow_dispatch' && inputs.label_filter != ''
+    name: E2E Dispatch (${{ inputs.label_filter }})
+    env:
+      LABEL_FILTER: ${{ inputs.label_filter }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Install Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+        check-latest: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make
+
+    - name: Run e2e test for ${{ env.LABEL_FILTER }}
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+        LOG_ARTIFACT_DIR: e2e_logs
+      run: |
+        e2e_ssh_key=$(mktemp)
+        echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
+        chmod 600 "$e2e_ssh_key"
+        export E2E_SSH_KEY="$e2e_ssh_key"
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='$LABEL_FILTER' --json-report ginkgo.json --timeout=90m"
+
+    - name: Archive Ginkgo logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ginkgo-dispatch-logs
+        path: ginkgo.json
+        retention-days: 15
+
+  e2e-arm64:
+    runs-on: linux-amd64-cpu4
+    if: github.event_name == 'schedule'
+    name: E2E Test (arm64)
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Install Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+        check-latest: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make
+
+    - name: Run ARM64 GPU e2e test
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+        LOG_ARTIFACT_DIR: e2e_logs
+      run: |
+        e2e_ssh_key=$(mktemp)
+        echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
+        chmod 600 "$e2e_ssh_key"
+        export E2E_SSH_KEY="$e2e_ssh_key"
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='arm64'"
+
+  integration-test:
+    runs-on: linux-amd64-cpu4
+    if: github.event_name == 'schedule'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+    - name: Set up Holodeck
+      uses: NVIDIA/holodeck@main
+      with:
+        aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws_ssh_key: ${{ secrets.AWS_SSH_KEY }}
+        holodeck_config: "tests/data/test_aws.yml"
+
+  create-issue:
+    runs-on: ubuntu-latest
+    needs: [e2e-matrix, e2e-arm64, integration-test]
+    if: failure()
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Create or update failure issue
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        SHA_SHORT="${GITHUB_SHA:0:8}"
+        TITLE="Weekly E2E failure on ${SHA_SHORT}"
+        BODY=$(cat <<EOF
+        ## Weekly E2E Failure
+
+        **Commit:** ${GITHUB_SHA}
+        **Actor:** ${GITHUB_ACTOR}
+        **Branch:** ${GITHUB_REF_NAME}
+        **Run:** ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+        Check the workflow run for details on which test(s) failed.
+        EOF
+        )
+
+        # Check for existing open issue
+        EXISTING=$(gh issue list --label e2e-failure --label automated --state open --json number --jq '.[0].number // empty')
+
+        if [ -n "$EXISTING" ]; then
+          echo "Adding comment to existing issue #${EXISTING}"
+          gh issue comment "$EXISTING" --body "$BODY"
+        else
+          echo "Creating new issue"
+          gh issue create \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --label "e2e-failure" \
+            --label "automated"
+        fi
