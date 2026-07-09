@@ -138,25 +138,25 @@ only when the push lands on `main` or a `release-*` branch:
 **Weekly tier** — `.github/workflows/e2e-weekly.yaml`, on a Monday 06:00 UTC
 cron or manual `workflow_dispatch`:
 
-- `e2e-matrix` (schedule only) — the full real-AWS label matrix:
+- `e2e-matrix` (schedule only) — the full real-AWS label matrix below.
 
-  | Matrix label | What it covers |
-  |---|---|
-  | `legacy` | Kubernetes using a legacy version |
-  | `dra` | Dynamic Resource Allocation enabled |
-  | `kernel` | Kernel features / custom kernel |
-  | `ctk-git` | Container Toolkit installed from git source |
-  | `k8s-git` | Kubernetes built from git (kubeadm) |
-  | `k8s-kind-git` | Kubernetes built from git (KIND) |
-  | `k8s-latest` | Kubernetes tracking master branch |
-  | `cluster && gpu && !minimal && !ha && !dedicated` | Standard GPU cluster |
-  | `cluster && dedicated` | Cluster with dedicated CPU control-plane |
-  | `cluster && ha` | HA cluster (3 control-plane nodes) |
-  | `rpm-rocky` | Rocky Linux 9 — multiple container runtimes |
-  | `rpm-al2023` | Amazon Linux 2023 — multiple container runtimes |
-  | `rpm-fedora` | Fedora 42 — multiple container runtimes |
-  | `custom-template` | Custom instance template |
-  | `nvidia-driver` | NVIDIA driver installation path |
+| Matrix label | What it covers |
+|---|---|
+| `legacy` | Kubernetes using a legacy version |
+| `dra` | Dynamic Resource Allocation enabled |
+| `kernel` | Kernel features / custom kernel |
+| `ctk-git` | Container Toolkit installed from git source |
+| `k8s-git` | Kubernetes built from git (kubeadm) |
+| `k8s-kind-git` | Kubernetes built from git (KIND) |
+| `k8s-latest` | Kubernetes tracking master branch |
+| `cluster && gpu && !minimal && !ha && !dedicated` | Standard GPU cluster |
+| `cluster && dedicated` | Cluster with dedicated CPU control-plane |
+| `cluster && ha` | HA cluster (3 control-plane nodes) |
+| `rpm-rocky` | Rocky Linux 9 — multiple container runtimes |
+| `rpm-al2023` | Amazon Linux 2023 — multiple container runtimes |
+| `rpm-fedora` | Fedora 42 — multiple container runtimes |
+| `custom-template` | Custom instance template |
+| `nvidia-driver` | NVIDIA driver installation path |
 
 - `e2e-arm64` (schedule only) — `--label-filter='arm64'`. No spec
   currently carries `Label("arm64")`, so this job is a zero-spec no-op
@@ -247,11 +247,11 @@ and `e2e.yaml`.
    its last argument. The topic labels determine which CI tiers pick it
    up — a label is only run in a scheduled or gated tier if that tier's
    workflow selects it:
-   - Listed in `e2e-weekly.yaml`'s `e2e-matrix` label list → runs weekly.
-   - Matches `default && !rpm` → also runs in the PR smoke job.
-   - Matches `cluster && minimal` → also runs in the post-merge job.
-   - Otherwise it is reachable only via manual `workflow_dispatch`
-     (`e2e-dispatch`) with a matching `label_filter`.
+  - Listed in `e2e-weekly.yaml`'s `e2e-matrix` label list → runs weekly.
+  - Matches `default && !rpm` → also runs in the PR smoke job.
+  - Matches `cluster && minimal` → also runs in the post-merge job.
+  - Otherwise it is reachable only via manual `workflow_dispatch`
+    (`e2e-dispatch`) with a matching `label_filter`.
 
    Nothing is selected implicitly: a new topic label needs an explicit
    entry in a workflow filter or matrix to run anywhere but manual dispatch.
