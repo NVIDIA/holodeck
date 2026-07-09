@@ -37,8 +37,8 @@ Targets: --claude, --cursor, --codex, --gemini (or --all-agents).
 Skill selection: positional <skill-name>, or --all for every skill.
 
 Examples:
-  holodeck skill add --claude using-holodeck
-  holodeck skill add --claude --cursor --global using-holodeck
+  holodeck skill add using-holodeck --claude
+  holodeck skill add using-holodeck --claude --cursor --global
   holodeck skill add --all --all-agents`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "claude", Usage: "install for Claude Code", Destination: &c.claude},

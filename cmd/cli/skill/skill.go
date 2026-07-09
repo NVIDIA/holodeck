@@ -73,10 +73,10 @@ Examples:
   holodeck skill list
 
   # Install one skill for Claude Code in the current project
-  holodeck skill add --claude using-holodeck
+  holodeck skill add using-holodeck --claude
 
   # Install for multiple agents
-  holodeck skill add --claude --cursor using-holodeck
+  holodeck skill add using-holodeck --claude --cursor
 
   # Install every skill for all four agents user-wide
   holodeck skill add --all --all-agents --global`,

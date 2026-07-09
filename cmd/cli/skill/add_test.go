@@ -170,23 +170,17 @@ func TestRunAdd_AllAgents_SetsAllFour(t *testing.T) {
 	}
 }
 
-// TestBuildAddCommand_DescriptionUsesFlagFirstExamples guards against
-// docs regression: urfave/cli/v2's default parser stops parsing flags
-// after the first non-flag arg, so 'skill add using-holodeck --claude'
-// is rejected with "must specify at least one of --claude/...". The
-// in-binary --help text MUST therefore show flag-first ordering.
-func TestBuildAddCommand_DescriptionUsesFlagFirstExamples(t *testing.T) {
+// TestBuildAddCommand_DescriptionUsesNaturalOrderExamples verifies the
+// in-binary --help shows natural (positional-first) ordering now that v3
+// parses interspersed flags (#813). Guards against reverting the examples to
+// the flag-first ordering the #812 workaround required. Reverting the example
+// in add.go to "skill add --claude using-holodeck" turns this RED.
+func TestBuildAddCommand_DescriptionUsesNaturalOrderExamples(t *testing.T) {
 	c := &command{log: logger.NewLogger()}
-	cmd := c.buildAddCommand()
-	desc := cmd.Description
-	if !strings.Contains(desc, "--claude using-holodeck") {
-		t.Errorf("Description missing flag-first example %q; got:\n%s",
-			"--claude using-holodeck", desc)
-	}
-	if strings.Contains(desc, "using-holodeck --claude") {
-		t.Errorf("Description still contains broken positional-first example "+
-			"%q; the urfave/cli/v2 parser rejects this ordering. Description:\n%s",
-			"using-holodeck --claude", desc)
+	desc := c.buildAddCommand().Description
+	if !strings.Contains(desc, "skill add using-holodeck --claude") {
+		t.Errorf("Description missing natural-order example %q; got:\n%s",
+			"skill add using-holodeck --claude", desc)
 	}
 }
 

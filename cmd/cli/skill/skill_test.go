@@ -17,7 +17,6 @@
 package skill
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 
@@ -87,33 +86,19 @@ func TestNewCommand_MainGoWiringContract(t *testing.T) {
 	}
 }
 
-// TestNewCommand_DescriptionUsesFlagFirstExamples mirrors the same
-// regression guard that add_test.go has for the add subcommand, but
-// for the parent `skill` command's Description (shown by
-// `holodeck skill --help`). urfave/cli/v2's default parser stops
-// parsing flags after the first positional, so any example shown to
-// users in the form `holodeck skill add <name> --claude` will fail
-// with "must specify at least one of --claude/...". This test rejects
-// any positional-then-agent-flag pattern in the Description.
-func TestNewCommand_DescriptionUsesFlagFirstExamples(t *testing.T) {
+// TestNewCommand_DescriptionUsesNaturalOrderExamples mirrors the natural-order
+// docs guard that add_test.go has for the add subcommand, but for the parent
+// `skill` command's Description (shown by `holodeck skill --help`). Now that v3
+// parses interspersed flags (#813), examples use natural (positional-first)
+// ordering. Reverting the example to the old flag-first form
+// "skill add --claude using-holodeck" turns this RED.
+func TestNewCommand_DescriptionUsesNaturalOrderExamples(t *testing.T) {
 	cmd := NewCommand(logger.NewLogger())
 	if cmd == nil {
 		t.Fatal("NewCommand returned nil")
 	}
-	if cmd.Description == "" {
-		t.Fatal("Description is empty; nothing to scan")
-	}
-	// Positional-then-flag pattern: skill name followed by an agent flag.
-	// The skill name token may be any name in the catalog (today only
-	// "using-holodeck", but match any kebab-case name for future-proofing).
-	bad := regexp.MustCompile(`skill add [a-z0-9][a-z0-9-]* --(claude|cursor|codex|gemini|all-agents)`)
-	if loc := bad.FindStringIndex(cmd.Description); loc != nil {
-		excerpt := cmd.Description[loc[0]:loc[1]]
-		t.Errorf("Description contains positional-then-flag example %q; urfave/cli/v2 will reject it. Use flag-first ordering (e.g. 'skill add --claude <name>').", excerpt)
-	}
-	// Sanity: at least one flag-first example must be present so we
-	// don't accidentally pass by removing all examples.
-	if !strings.Contains(cmd.Description, "--claude using-holodeck") {
-		t.Errorf("Description is missing the canonical flag-first example 'skill add --claude using-holodeck'; the regression guard would silently pass with empty examples")
+	if !strings.Contains(cmd.Description, "skill add using-holodeck --claude") {
+		t.Errorf("Description missing natural-order example %q; got:\n%s",
+			"skill add using-holodeck --claude", cmd.Description)
 	}
 }
