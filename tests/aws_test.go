@@ -60,6 +60,7 @@ type testState struct {
 // - Configuration validation
 var _ = DescribeTable("AWS Environment E2E",
 	func(config testConfig) {
+		requireRealAWSEnv()
 		GinkgoWriter.Println("=== Starting test:", config.name, "===")
 
 		// Generate a unique artifact directory for this test
@@ -184,92 +185,92 @@ var _ = DescribeTable("AWS Environment E2E",
 		name:        "Default AWS Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws.yml"),
 		description: "Tests basic AWS environment setup with default configuration",
-	}, Label("default")),
+	}, Label("real-aws", "default")),
 	Entry("Legacy Kubernetes Test", testConfig{
 		name:        "Legacy Kubernetes Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_legacy.yml"),
 		description: "Tests AWS environment with legacy Kubernetes version",
-	}, Label("legacy")),
+	}, Label("real-aws", "legacy")),
 	Entry("DRA Enabled Test", testConfig{
 		name:        "DRA Enabled Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_dra.yml"),
 		description: "Tests AWS environment with Dynamic Resource Allocation enabled",
-	}, Label("dra")),
+	}, Label("real-aws", "dra")),
 	Entry("Kernel Features Test", testConfig{
 		name:        "Kernel Features Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_kernel.yml"),
 		description: "Tests AWS environment with kernel features enabled",
-	}, Label("kernel")),
+	}, Label("real-aws", "kernel")),
 	Entry("Install specific version of NVIDIA Driver package", testConfig{
 		name:        "NVIDIA Driver Package Version Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_driver_package.yml"),
 		description: "Install specific version of NVIDIA Driver package",
-	}, Label("nvidia-driver")),
+	}, Label("real-aws", "nvidia-driver")),
 	Entry("CTK Git Source Test", testConfig{
 		name:        "CTK Git Source Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_ctk_git.yml"),
 		description: "Tests AWS environment with CTK installed from git source",
-	}, Label("ctk-git")),
+	}, Label("real-aws", "ctk-git")),
 	Entry("K8s Git Source Test (kubeadm)", testConfig{
 		name:        "K8s Git Source Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_git.yml"),
 		description: "Tests AWS environment with Kubernetes built from git source using kubeadm",
-	}, Label("k8s-git")),
+	}, Label("real-aws", "k8s-git")),
 	Entry("K8s Git Source Test (KIND)", testConfig{
 		name:        "K8s KIND Git Source Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_kind_git.yml"),
 		description: "Tests AWS environment with Kubernetes built from git source using KIND",
-	}, Label("k8s-kind-git")),
+	}, Label("real-aws", "k8s-kind-git")),
 	Entry("K8s Latest Branch Test", testConfig{
 		name:        "K8s Latest Branch Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_k8s_latest.yml"),
 		description: "Tests AWS environment with Kubernetes tracking master branch",
-	}, Label("k8s-latest")),
+	}, Label("real-aws", "k8s-latest")),
 	Entry("RPM Default Test (Rocky 9)", testConfig{
 		name:        "RPM Default Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_rpm.yml"),
 		description: "Tests RPM-based distro (Rocky 9) with Docker, full GPU stack, and Kubernetes",
-	}, Label("default", "rpm", "rpm-rocky")),
+	}, Label("real-aws", "default", "rpm", "rpm-rocky")),
 	Entry("RPM Rocky 9 Containerd", testConfig{
 		name:        "RPM Rocky 9 Containerd",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_rocky9_containerd.yml"),
 		description: "Tests Rocky 9 with containerd runtime",
-	}, Label("rpm", "rpm-rocky", "post-merge")),
+	}, Label("real-aws", "rpm", "rpm-rocky", "post-merge")),
 	Entry("RPM Rocky 9 CRI-O", testConfig{
 		name:        "RPM Rocky 9 CRI-O",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_rocky9_crio.yml"),
 		description: "Tests Rocky 9 with CRI-O runtime",
-	}, Label("rpm", "rpm-rocky", "post-merge")),
+	}, Label("real-aws", "rpm", "rpm-rocky", "post-merge")),
 	Entry("RPM Amazon Linux 2023 Docker", testConfig{
 		name:        "RPM AL2023 Docker",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_docker.yml"),
 		description: "Tests Amazon Linux 2023 with Docker runtime",
-	}, Label("rpm", "rpm-al2023", "post-merge")),
+	}, Label("real-aws", "rpm", "rpm-al2023", "post-merge")),
 	Entry("RPM Amazon Linux 2023 Containerd", testConfig{
 		name:        "RPM AL2023 Containerd",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_containerd.yml"),
 		description: "Tests Amazon Linux 2023 with containerd runtime",
-	}, Label("rpm", "rpm-al2023", "post-merge")),
+	}, Label("real-aws", "rpm", "rpm-al2023", "post-merge")),
 	Entry("RPM Amazon Linux 2023 CRI-O", testConfig{
 		name:        "RPM AL2023 CRI-O",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_al2023_crio.yml"),
 		description: "Tests Amazon Linux 2023 with CRI-O runtime",
-	}, Label("rpm", "rpm-al2023", "post-merge")),
+	}, Label("real-aws", "rpm", "rpm-al2023", "post-merge")),
 	Entry("RPM Fedora 42 Containerd", testConfig{
 		name:        "RPM Fedora 42 Containerd",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_fedora42_containerd.yml"),
 		description: "Tests Fedora 42 with containerd runtime",
-	}, Label("rpm", "rpm-fedora", "post-merge")),
+	}, Label("real-aws", "rpm", "rpm-fedora", "post-merge")),
 	Entry("RPM Fedora 42 CRI-O", testConfig{
 		name:        "RPM Fedora 42 CRI-O",
 		filePath:    filepath.Join(packagePath, "data", "test_rpm_fedora42_crio.yml"),
 		description: "Tests Fedora 42 with CRI-O runtime",
-	}, Label("rpm", "rpm-fedora", "post-merge")),
+	}, Label("real-aws", "rpm", "rpm-fedora", "post-merge")),
 	Entry("Custom Template Test", testConfig{
 		name:        "Custom Template Test",
 		filePath:    filepath.Join(packagePath, "data", "test_aws_custom_template.yml"),
 		description: "Tests custom template execution during provisioning",
-	}, Label("custom-template", "post-merge")),
+	}, Label("real-aws", "custom-template", "post-merge")),
 )
 
 // Note: To run tests in parallel, use: ginkgo -p or --procs=N

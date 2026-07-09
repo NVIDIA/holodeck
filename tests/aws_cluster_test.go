@@ -61,6 +61,7 @@ type clusterTestState struct {
 // - Resource cleanup
 var _ = DescribeTable("AWS Cluster E2E",
 	func(config clusterTestConfig) {
+		requireRealAWSEnv()
 		GinkgoWriter.Println("=== Starting cluster test:", config.name, "===")
 
 		// Generate a unique artifact directory for this test
@@ -215,30 +216,30 @@ var _ = DescribeTable("AWS Cluster E2E",
 		name:        "3gpu-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_3gpu.yaml"),
 		description: "Tests cluster with 1 non-dedicated CP + 2 GPU workers (all GPU instances)",
-	}, Label("cluster", "multinode", "gpu")),
+	}, Label("real-aws", "cluster", "multinode", "gpu")),
 	Entry("1 CP + 3 GPU Workers", clusterTestConfig{
 		name:        "1cp-3gpu-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_1cp_3gpu.yaml"),
 		description: "Tests cluster with 1 dedicated CPU CP + 3 GPU workers",
-	}, Label("cluster", "multinode", "gpu", "dedicated")),
+	}, Label("real-aws", "cluster", "multinode", "gpu", "dedicated")),
 	Entry("HA Cluster (3 CP + 2 Workers)", clusterTestConfig{
 		name:        "ha-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_ha_3cp_2gpu.yaml"),
 		description: "Tests HA cluster with 3 dedicated CP nodes + 2 GPU workers",
-	}, Label("cluster", "multinode", "ha", "gpu")),
+	}, Label("real-aws", "cluster", "multinode", "ha", "gpu")),
 	Entry("Minimal Cluster (1 CP + 1 Worker)", clusterTestConfig{
 		name:        "minimal-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_minimal.yaml"),
 		description: "Tests smallest valid multinode cluster configuration",
-	}, Label("cluster", "multinode", "minimal")),
+	}, Label("real-aws", "cluster", "multinode", "minimal")),
 	Entry("RPM Rocky 9 Cluster", clusterTestConfig{
 		name:        "rpm-rocky9-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_rpm_rocky9.yaml"),
 		description: "Tests Rocky 9 RPM cluster with 1 CP + 1 GPU worker",
-	}, Label("cluster", "multinode", "rpm", "rpm-rocky", "post-merge")),
+	}, Label("real-aws", "cluster", "multinode", "rpm", "rpm-rocky", "post-merge")),
 	Entry("RPM Amazon Linux 2023 Cluster", clusterTestConfig{
 		name:        "rpm-al2023-cluster",
 		filePath:    filepath.Join(packagePath, "data", "test_cluster_rpm_al2023.yaml"),
 		description: "Tests Amazon Linux 2023 cluster with 1 CP + 1 GPU worker",
-	}, Label("cluster", "multinode", "rpm", "rpm-al2023", "post-merge")),
+	}, Label("real-aws", "cluster", "multinode", "rpm", "rpm-al2023", "post-merge")),
 )
