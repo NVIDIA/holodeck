@@ -40,7 +40,7 @@ func TestNewCommand_HasListSubcommand(t *testing.T) {
 		t.Errorf("Name = %q, want %q", cmd.Name, "skill")
 	}
 	var hasList bool
-	for _, sub := range cmd.Subcommands {
+	for _, sub := range cmd.Commands {
 		if sub.Name == "list" {
 			hasList = true
 			break
@@ -75,7 +75,7 @@ func TestNewCommand_MainGoWiringContract(t *testing.T) {
 		t.Errorf("Usage is empty; the top-level help would render a blank command entry")
 	}
 	want := map[string]bool{"list": false, "add": false}
-	for _, sub := range cmd.Subcommands {
+	for _, sub := range cmd.Commands {
 		if _, ok := want[sub.Name]; ok {
 			want[sub.Name] = true
 		}

@@ -18,13 +18,14 @@ package status_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/status"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -75,12 +76,12 @@ var _ = Describe("Status Command", func() {
 
 		It("should require instance ID argument", func() {
 			cmd := status.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run without instance ID argument
-			err := app.Run([]string{"holodeck", "status"})
+			err := app.Run(context.Background(), []string{"holodeck", "status"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("instance ID is required"))
 		})
@@ -92,12 +93,12 @@ var _ = Describe("Status Command", func() {
 			DeferCleanup(os.RemoveAll, tempDir)
 
 			cmd := status.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run with instance ID but non-existent cache
-			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, "test-instance"})
+			err = app.Run(context.Background(), []string{"holodeck", "status", "--cachepath", tempDir, "test-instance"})
 			Expect(err).To(HaveOccurred())
 			// Should fail because cache file doesn't exist, but validates arg handling
 			Expect(err.Error()).To(ContainSubstring("failed to get instance"))
@@ -115,11 +116,11 @@ var _ = Describe("Status Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := status.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, "test-instance"})
+			err = app.Run(context.Background(), []string{"holodeck", "status", "--cachepath", tempDir, "test-instance"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to"))
 		})
@@ -147,12 +148,12 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := status.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// This should succeed and print instance details
-			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, instanceID})
+			err = app.Run(context.Background(), []string{"holodeck", "status", "--cachepath", tempDir, instanceID})
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -178,13 +179,13 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := status.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// This will first fail GetInstance (no label), then fallback to
 			// GetInstanceByFilename
-			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, instanceID})
+			err = app.Run(context.Background(), []string{"holodeck", "status", "--cachepath", tempDir, instanceID})
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -194,12 +195,12 @@ spec:
 			DeferCleanup(os.RemoveAll, tempDir)
 
 			cmd := status.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Empty string as instance ID
-			err = app.Run([]string{"holodeck", "status", "--cachepath", tempDir, ""})
+			err = app.Run(context.Background(), []string{"holodeck", "status", "--cachepath", tempDir, ""})
 			Expect(err).To(HaveOccurred())
 		})
 	})

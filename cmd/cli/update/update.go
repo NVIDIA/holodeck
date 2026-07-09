@@ -17,6 +17,7 @@
 package update
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -29,7 +30,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -54,7 +55,7 @@ type command struct {
 	k8sVersion    string
 
 	// Label flags
-	labels cli.StringSlice
+	labels []string
 
 	// Reprovision flag
 	reprovision bool
@@ -183,18 +184,18 @@ Examples:
 				Destination: &m.reprovision,
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() != 1 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
-			return m.run(c, c.Args().Get(0))
+			return m.run(cmd, cmd.Args().Get(0))
 		},
 	}
 
 	return &updateCmd
 }
 
-func (m *command) run(c *cli.Context, instanceID string) error {
+func (m *command) run(cmd *cli.Command, instanceID string) error {
 	// Get instance details
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
@@ -235,11 +236,11 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 			configChanged = true
 			needsProvision = true
 		}
-		if c.IsSet("runtime-name") {
+		if cmd.IsSet("runtime-name") {
 			env.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeName(m.runtimeName)
 			configChanged = true
 		}
-		if c.IsSet("runtime-version") {
+		if cmd.IsSet("runtime-version") {
 			env.Spec.ContainerRuntime.Version = m.runtimeVer
 			configChanged = true
 		}
@@ -268,11 +269,11 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 			configChanged = true
 			needsProvision = true
 		}
-		if c.IsSet("k8s-installer") {
+		if cmd.IsSet("k8s-installer") {
 			env.Spec.Kubernetes.KubernetesInstaller = m.k8sInstaller
 			configChanged = true
 		}
-		if c.IsSet("k8s-version") {
+		if cmd.IsSet("k8s-version") {
 			env.Spec.Kubernetes.KubernetesVersion = m.k8sVersion
 			if env.Spec.Kubernetes.Release == nil {
 				env.Spec.Kubernetes.Release = &v1alpha1.K8sReleaseSpec{}
@@ -283,7 +284,7 @@ func (m *command) run(c *cli.Context, instanceID string) error {
 	}
 
 	// Apply labels
-	labels := m.labels.Value()
+	labels := m.labels
 	if len(labels) > 0 {
 		if env.Labels == nil {
 			env.Labels = make(map[string]string)

@@ -17,6 +17,7 @@
 package delete
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/instances"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -54,22 +55,22 @@ func (m command) build() *cli.Command {
 				Value:       filepath.Join(os.Getenv("HOME"), ".cache", "holodeck"),
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() == 0 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() == 0 {
 				return fmt.Errorf("at least one instance ID is required")
 			}
-			return m.run(c)
+			return m.run(cmd)
 		},
 	}
 
 	return &delete
 }
 
-func (m command) run(c *cli.Context) error {
+func (m command) run(cmd *cli.Command) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 
 	// Process each instance ID provided as an argument
-	for _, instanceID := range c.Args().Slice() {
+	for _, instanceID := range cmd.Args().Slice() {
 		// First check if the instance exists
 		instance, err := manager.GetInstance(instanceID)
 		if err != nil {

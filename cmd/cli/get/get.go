@@ -17,6 +17,7 @@
 package get
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,7 +29,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -51,7 +52,7 @@ func (m command) build() *cli.Command {
 	getCmd := cli.Command{
 		Name:  "get",
 		Usage: "Get resources from a Holodeck instance",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			m.buildKubeconfigSubcommand(),
 			m.buildSSHConfigSubcommand(),
 		},
@@ -96,11 +97,11 @@ Examples:
 				Destination: &m.node,
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() != 1 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
-			return m.runKubeconfig(c.Args().Get(0))
+			return m.runKubeconfig(cmd.Args().Get(0))
 		},
 	}
 }
@@ -132,11 +133,11 @@ Examples:
 				Destination: &m.node,
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() != 1 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
-			return m.runSSHConfig(c.Args().Get(0))
+			return m.runSSHConfig(cmd.Args().Get(0))
 		},
 	}
 }

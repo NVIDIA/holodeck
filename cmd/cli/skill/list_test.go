@@ -18,6 +18,7 @@ package skill
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -37,7 +38,7 @@ func TestListAction_TableContainsCatalogEntries(t *testing.T) {
 
 	var buf bytes.Buffer
 	c := &command{log: logger.NewLogger(), outputFormat: "table", out: &buf}
-	if err := c.runList(nil); err != nil {
+	if err := c.runList(context.Background(), nil); err != nil {
 		t.Fatalf("runList: %v", err)
 	}
 	out := buf.String()
@@ -51,7 +52,7 @@ func TestListAction_TableContainsCatalogEntries(t *testing.T) {
 func TestListAction_JSONShape(t *testing.T) {
 	var buf bytes.Buffer
 	c := &command{log: logger.NewLogger(), outputFormat: "json", out: &buf}
-	if err := c.runList(nil); err != nil {
+	if err := c.runList(context.Background(), nil); err != nil {
 		t.Fatalf("runList: %v", err)
 	}
 	var parsed struct {
@@ -71,7 +72,7 @@ func TestListAction_JSONShape(t *testing.T) {
 func TestListAction_InvalidFormat(t *testing.T) {
 	var buf bytes.Buffer
 	c := &command{log: logger.NewLogger(), outputFormat: "xml", out: &buf}
-	err := c.runList(nil)
+	err := c.runList(context.Background(), nil)
 	if err == nil {
 		t.Errorf("expected error for invalid format, got nil")
 	}

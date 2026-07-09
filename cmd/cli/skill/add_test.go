@@ -18,7 +18,7 @@ package skill
 
 import (
 	"bytes"
-	"flag"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,22 +26,39 @@ import (
 
 	"github.com/NVIDIA/holodeck/internal/logger"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
-// newAddContext builds a *cli.Context with the given positional args.
-// The command's flag fields are populated by the caller before invocation.
-func newAddContext(args []string) *cli.Context {
-	app := cli.NewApp()
-	set := flag.NewFlagSet("test", 0)
-	_ = set.Parse(args)
-	return cli.NewContext(app, set, nil)
+// newAddCommand builds a *cli.Command whose positional Args() are the given
+// args. urfave/cli v3 has no exported constructor for a parsed Command, so we
+// run a throwaway root and capture the sub-command from its Action. The
+// command's flag fields are populated by the caller directly on the command
+// struct before invocation, so this helper only needs to carry the positionals.
+func newAddCommand(t *testing.T, args []string) *cli.Command {
+	t.Helper()
+	var captured *cli.Command
+	root := &cli.Command{
+		Name: "holodeck",
+		Commands: []*cli.Command{
+			{
+				Name: "add",
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					captured = cmd
+					return nil
+				},
+			},
+		},
+	}
+	if err := root.Run(context.Background(), append([]string{"holodeck", "add"}, args...)); err != nil {
+		t.Fatalf("building test command with args %v: %v", args, err)
+	}
+	return captured
 }
 
 func TestRunAdd_NoAgentFlag(t *testing.T) {
 	var buf bytes.Buffer
 	c := &command{log: logger.NewLogger(), out: &buf, skillName: "using-holodeck"}
-	err := c.runAdd(newAddContext([]string{"using-holodeck"}))
+	err := c.runAdd(context.Background(), newAddCommand(t, []string{"using-holodeck"}))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -53,7 +70,7 @@ func TestRunAdd_NoAgentFlag(t *testing.T) {
 func TestRunAdd_NoNameNoAll(t *testing.T) {
 	var buf bytes.Buffer
 	c := &command{log: logger.NewLogger(), out: &buf, claude: true}
-	err := c.runAdd(newAddContext(nil))
+	err := c.runAdd(context.Background(), newAddCommand(t, nil))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -65,7 +82,7 @@ func TestRunAdd_NoNameNoAll(t *testing.T) {
 func TestRunAdd_NameAndAll(t *testing.T) {
 	var buf bytes.Buffer
 	c := &command{log: logger.NewLogger(), out: &buf, claude: true, all: true}
-	err := c.runAdd(newAddContext([]string{"using-holodeck"}))
+	err := c.runAdd(context.Background(), newAddCommand(t, []string{"using-holodeck"}))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -77,7 +94,7 @@ func TestRunAdd_NameAndAll(t *testing.T) {
 func TestRunAdd_UnknownSkill(t *testing.T) {
 	var buf bytes.Buffer
 	c := &command{log: logger.NewLogger(), out: &buf, claude: true}
-	err := c.runAdd(newAddContext([]string{"no-such-skill"}))
+	err := c.runAdd(context.Background(), newAddCommand(t, []string{"no-such-skill"}))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -93,7 +110,7 @@ func TestRunAdd_StdoutMultiTarget(t *testing.T) {
 		claude: true, cursor: true,
 		stdout: true,
 	}
-	err := c.runAdd(newAddContext([]string{"using-holodeck"}))
+	err := c.runAdd(context.Background(), newAddCommand(t, []string{"using-holodeck"}))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -117,7 +134,7 @@ func TestRunAdd_DryRun_ClaudeOnly(t *testing.T) {
 		log: logger.NewLogger(), out: &buf,
 		claude: true, dryRun: true,
 	}
-	if err := c.runAdd(newAddContext([]string{"using-holodeck"})); err != nil {
+	if err := c.runAdd(context.Background(), newAddCommand(t, []string{"using-holodeck"})); err != nil {
 		t.Fatalf("runAdd: %v", err)
 	}
 	out := buf.String()
@@ -142,7 +159,7 @@ func TestRunAdd_AllAgents_SetsAllFour(t *testing.T) {
 		log: logger.NewLogger(), out: &buf,
 		allAgents: true, dryRun: true,
 	}
-	if err := c.runAdd(newAddContext([]string{"using-holodeck"})); err != nil {
+	if err := c.runAdd(context.Background(), newAddCommand(t, []string{"using-holodeck"})); err != nil {
 		t.Fatalf("runAdd: %v", err)
 	}
 	out := buf.String()
@@ -182,7 +199,7 @@ func TestNewCommand_HasAddSubcommand(t *testing.T) {
 		t.Fatal("NewCommand returned nil")
 	}
 	var hasAdd bool
-	for _, sub := range cmd.Subcommands {
+	for _, sub := range cmd.Commands {
 		if sub.Name == "add" {
 			hasAdd = true
 			break

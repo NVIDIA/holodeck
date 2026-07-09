@@ -17,13 +17,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"testing"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/ssh"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 // TestInterspersedFlags_SkillAddNaturalOrder is the #813 regression: flags and
@@ -37,7 +38,7 @@ func TestInterspersedFlags_SkillAddNaturalOrder(t *testing.T) {
 	app := NewApp(log)
 
 	// --dry-run so nothing is written; we assert only that parsing succeeds.
-	err := app.Run([]string{"holodeck", "skill", "add", "using-holodeck", "--claude", "--dry-run"})
+	err := app.Run(context.Background(), []string{"holodeck", "skill", "add", "using-holodeck", "--claude", "--dry-run"})
 	if err != nil {
 		t.Fatalf("natural-order `skill add using-holodeck --claude --dry-run` should parse, got error: %v", err)
 	}
@@ -51,7 +52,7 @@ func TestInterspersedFlags_SkillAddFlagFirst(t *testing.T) {
 	log := logger.NewLogger()
 	app := NewApp(log)
 
-	err := app.Run([]string{"holodeck", "skill", "add", "--claude", "--dry-run", "using-holodeck"})
+	err := app.Run(context.Background(), []string{"holodeck", "skill", "add", "--claude", "--dry-run", "using-holodeck"})
 	if err != nil {
 		t.Fatalf("flag-first `skill add --claude --dry-run using-holodeck` should parse, got error: %v", err)
 	}
@@ -70,17 +71,15 @@ func TestInterspersedFlags_SSHPassthroughPreservesRemoteFlags(t *testing.T) {
 	sshCmd := ssh.NewCommand(log)
 
 	var captured []string
-	sshCmd.Action = func(c *cli.Context) error {
+	sshCmd.Action = func(_ context.Context, c *cli.Command) error {
 		captured = c.Args().Slice()
 		return nil
 	}
 
-	app := cli.NewApp()
-	app.Name = "holodeck"
-	app.Commands = []*cli.Command{sshCmd}
+	app := &cli.Command{Name: "holodeck", Commands: []*cli.Command{sshCmd}}
 
 	argv := []string{"holodeck", "ssh", "abc123", "--", "kubectl", "get", "nodes", "--remote-flag"}
-	if err := app.Run(argv); err != nil {
+	if err := app.Run(context.Background(), argv); err != nil {
 		t.Fatalf("ssh passthrough parse failed (--remote-flag likely consumed as an ssh flag): %v", err)
 	}
 

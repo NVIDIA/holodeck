@@ -24,7 +24,7 @@ import (
 
 	"github.com/NVIDIA/holodeck/internal/logger"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -80,7 +80,7 @@ Examples:
 
   # Install every skill for all four agents user-wide
   holodeck skill add --all --all-agents --global`,
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			c.buildListCommand(),
 			c.buildAddCommand(),
 		},

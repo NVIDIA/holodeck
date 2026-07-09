@@ -17,13 +17,14 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -85,27 +86,28 @@ If you need special quoting, wrap the entire command in single quotes:
 				Destination: &m.node,
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() < 1 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() < 1 {
 				return fmt.Errorf("instance ID is required")
 			}
-			instanceID := c.Args().Get(0)
+			instanceID := cmd.Args().Get(0)
 
-			// Check for command after "--"
-			var remoteCmd []string
-			args := c.Args().Slice()
-			for i, arg := range args {
-				if arg == "--" && i+1 < len(args) {
-					remoteCmd = args[i+1:]
-					break
-				}
-			}
-
-			return m.run(instanceID, remoteCmd)
+			return m.run(instanceID, remoteCommand(cmd.Args()))
 		},
 	}
 
 	return &sshCmd
+}
+
+// remoteCommand returns the command to run on the remote host, or nil for an
+// interactive session. In urfave/cli v3 the "--" terminator is consumed by the
+// flag parser (it stops flag parsing and is dropped from the positional args),
+// so every positional argument after the instance ID constitutes the remote
+// command. This preserves the documented `ssh <id> -- <command>` behaviour
+// exactly: the "--" still protects the remote command's own flags from being
+// parsed as ssh flags.
+func remoteCommand(args cli.Args) []string {
+	return args.Tail()
 }
 
 func (m command) run(instanceID string, remoteCmd []string) error {

@@ -17,12 +17,13 @@
 package skill
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	pkgskill "github.com/NVIDIA/holodeck/pkg/skill"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 func (c *command) buildAddCommand() *cli.Command {
@@ -55,7 +56,7 @@ Examples:
 	}
 }
 
-func (c *command) runAdd(ctx *cli.Context) error {
+func (c *command) runAdd(_ context.Context, cmd *cli.Command) error {
 	renderers, err := c.selectedRenderers()
 	if err != nil {
 		return err
@@ -69,7 +70,7 @@ func (c *command) runAdd(ctx *cli.Context) error {
 		return fmt.Errorf("loading catalog: %w", err)
 	}
 
-	skills, err := c.selectedSkills(ctx, catalog)
+	skills, err := c.selectedSkills(cmd, catalog)
 	if err != nil {
 		return err
 	}
@@ -133,10 +134,10 @@ func (c *command) selectedRenderers() ([]pkgskill.Renderer, error) {
 	return rs, nil
 }
 
-func (c *command) selectedSkills(ctx *cli.Context, catalog []pkgskill.Skill) ([]pkgskill.Skill, error) {
+func (c *command) selectedSkills(cmd *cli.Command, catalog []pkgskill.Skill) ([]pkgskill.Skill, error) {
 	name := ""
-	if ctx.NArg() > 0 {
-		name = ctx.Args().First()
+	if cmd.NArg() > 0 {
+		name = cmd.Args().First()
 	}
 	if c.all && name != "" {
 		return nil, fmt.Errorf("--all is mutually exclusive with a skill name")

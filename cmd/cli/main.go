@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"os"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/cleanup"
@@ -34,7 +35,7 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/cli/update"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 const (
@@ -53,10 +54,10 @@ type config struct {
 }
 
 // NewApp creates and configures the CLI application.
-func NewApp(log *logger.FunLogger) *cli.App {
+func NewApp(log *logger.FunLogger) *cli.Command {
 	cfg := config{}
 
-	c := cli.NewApp()
+	c := &cli.Command{}
 	c.Name = ProgramName
 	c.Usage = "Create and manage test environments"
 	c.Description = `
@@ -99,7 +100,7 @@ Examples:
   # Use a custom cache directory
   holodeck --cachepath /path/to/cache create -f env.yaml`
 	c.Version = ProgramVersion
-	c.EnableBashCompletion = true
+	c.EnableShellCompletion = true
 
 	// Setup the flags for this command
 	c.Flags = []cli.Flag{
@@ -119,23 +120,23 @@ Examples:
 			Aliases:     []string{"d"},
 			Usage:       "Enable debug-level logging",
 			Destination: &cfg.Debug,
-			EnvVars:     []string{"DEBUG"},
+			Sources:     cli.EnvVars("DEBUG"),
 		},
 	}
 
 	// Set verbosity based on flags (precedence: debug > verbose > quiet)
-	c.Before = func(ctx *cli.Context) error {
+	c.Before = func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 		switch {
-		case ctx.Bool("debug"):
+		case cmd.Bool("debug"):
 			log.SetVerbosity(logger.VerbosityDebug)
-		case ctx.Bool("verbose"):
+		case cmd.Bool("verbose"):
 			log.SetVerbosity(logger.VerbosityVerbose)
-		case ctx.Bool("quiet"):
+		case cmd.Bool("quiet"):
 			log.SetVerbosity(logger.VerbosityQuiet)
 		default:
 			log.SetVerbosity(logger.VerbosityNormal)
 		}
-		return nil
+		return ctx, nil
 	}
 
 	// Define the subcommands
@@ -163,11 +164,11 @@ func main() {
 	c := NewApp(log)
 
 	// Custom help template
-	c.CustomAppHelpTemplate = `NAME:
+	c.CustomRootCommandHelpTemplate = `NAME:
    {{.Name}} - {{.Usage}}
 
 USAGE:
-   {{.HelpName}} [global options] command [command options] [arguments...]
+   {{.FullName}} [global options] command [command options] [arguments...]
 
 VERSION:
    {{.Version}}
@@ -176,10 +177,10 @@ DESCRIPTION:
    {{.Description}}
 
 COMMANDS:
-{{range .Commands}}{{if not .HideHelp}}   {{join .Names ", "}}{{ "\t"}}{{.Usage}}{{ "\n" }}{{end}}{{end}}
+{{range .VisibleCommands}}   {{join .Names ", "}}{{ "\t"}}{{.Usage}}{{ "\n" }}{{end}}
 
 GLOBAL OPTIONS:
-   {{range .Flags}}{{.}}
+   {{range .VisibleFlags}}{{.}}
    {{end}}
 
 EXAMPLES:
@@ -217,7 +218,7 @@ For more information about a command, run:
    {{.Name}} help <command>
 `
 
-	err := c.Run(os.Args)
+	err := c.Run(context.Background(), os.Args)
 	if err != nil {
 		log.Error(err)
 		log.Exit(1)

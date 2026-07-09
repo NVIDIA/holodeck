@@ -27,7 +27,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/cleanup"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 // Default timeout for cleanup operations (15 minutes per VPC)
@@ -101,18 +101,18 @@ Examples:
 				Destination: &m.timeout,
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() == 0 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() == 0 {
 				return fmt.Errorf("at least one VPC ID is required")
 			}
-			return m.run(c)
+			return m.run(cmd)
 		},
 	}
 
 	return &cleanup
 }
 
-func (m *command) run(c *cli.Context) error {
+func (m *command) run(cmd *cli.Command) error {
 	// Determine the region
 	region := m.region
 	if region == "" {
@@ -145,7 +145,7 @@ func (m *command) run(c *cli.Context) error {
 	successCount := 0
 	failCount := 0
 
-	for _, vpcID := range c.Args().Slice() {
+	for _, vpcID := range cmd.Args().Slice() {
 		// Check if context was cancelled before starting next VPC
 		if ctx.Err() != nil {
 			m.log.Warning("Cleanup cancelled, skipping remaining VPCs")

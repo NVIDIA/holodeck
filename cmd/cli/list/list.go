@@ -17,6 +17,7 @@
 package list
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/output"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -129,7 +130,7 @@ func (m *command) build() *cli.Command {
 	return &list
 }
 
-func (m *command) run(c *cli.Context) error {
+func (m *command) run(_ context.Context, _ *cli.Command) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instList, err := manager.ListInstances()
 	if err != nil {

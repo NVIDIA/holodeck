@@ -18,6 +18,7 @@ package create
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +33,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -82,7 +83,7 @@ func (m command) build() *cli.Command {
 				Aliases:     []string{"n"},
 				Usage:       "Run in non-interactive mode (skip all prompts, use defaults)",
 				Destination: &opts.nonInteractive,
-				EnvVars:     []string{"HOLODECK_NONINTERACTIVE"},
+				Sources:     cli.EnvVars("HOLODECK_NONINTERACTIVE"),
 			},
 			&cli.StringFlag{
 				Name:        "kubeconfig",
@@ -103,12 +104,12 @@ func (m command) build() *cli.Command {
 				Destination: &opts.envFile,
 			},
 		},
-		Before: func(c *cli.Context) error {
+		Before: func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 			// Read the config file
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				return fmt.Errorf("error reading config file: %w", err)
+				return ctx, fmt.Errorf("error reading config file: %w", err)
 			}
 
 			// if no containerruntime is specified, default to none
@@ -124,17 +125,17 @@ func (m command) build() *cli.Command {
 				}
 			}
 
-			return nil
+			return ctx, nil
 		},
-		Action: func(c *cli.Context) error {
-			return m.run(c, &opts)
+		Action: func(_ context.Context, _ *cli.Command) error {
+			return m.run(&opts)
 		},
 	}
 
 	return &create
 }
 
-func (m command) run(c *cli.Context, opts *options) error {
+func (m command) run(opts *options) error {
 	var provider provider.Provider
 	var err error
 

@@ -30,7 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -61,7 +61,7 @@ in your environment configuration:
 
 Use these commands to discover available operating systems and their
 corresponding AMI IDs for specific regions.`,
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			c.buildListCommand(),
 			c.buildDescribeCommand(),
 			c.buildAMICommand(),
@@ -85,7 +85,7 @@ Example:
 	}
 }
 
-func (c *command) runList(_ *cli.Context) error {
+func (c *command) runList(_ context.Context, _ *cli.Command) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if _, err := fmt.Fprintln(w, "ID\tFAMILY\tSSH USER\tPACKAGE MGR\tARCHITECTURES\tNOTES"); err != nil {
 		return fmt.Errorf("error writing header: %w", err)
@@ -124,12 +124,12 @@ Example:
 	}
 }
 
-func (c *command) runDescribe(ctx *cli.Context) error {
-	if ctx.NArg() < 1 {
+func (c *command) runDescribe(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return fmt.Errorf("OS identifier required (run 'holodeck os list' for options)")
 	}
 
-	osID := ctx.Args().First()
+	osID := cmd.Args().First()
 	img, ok := ami.Get(osID)
 	if !ok {
 		return fmt.Errorf(
@@ -179,7 +179,7 @@ Examples:
 				Usage:       "AWS region (required)",
 				Destination: &region,
 				Required:    true,
-				EnvVars:     []string{"AWS_REGION"},
+				Sources:     cli.EnvVars("AWS_REGION"),
 			},
 			&cli.StringFlag{
 				Name:        "arch",
@@ -189,18 +189,18 @@ Examples:
 				Value:       "x86_64",
 			},
 		},
-		Action: func(ctx *cli.Context) error {
-			return c.runAMI(ctx, region, arch)
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			return c.runAMI(cmd, region, arch)
 		},
 	}
 }
 
-func (c *command) runAMI(ctx *cli.Context, region, arch string) error {
-	if ctx.NArg() < 1 {
+func (c *command) runAMI(cmd *cli.Command, region, arch string) error {
+	if cmd.NArg() < 1 {
 		return fmt.Errorf("OS identifier required (run 'holodeck os list' for options)")
 	}
 
-	osID := ctx.Args().First()
+	osID := cmd.Args().First()
 
 	// Load AWS config
 	cfg, err := config.LoadDefaultConfig(

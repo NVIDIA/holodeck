@@ -17,6 +17,7 @@
 package scp
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -32,7 +33,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -92,11 +93,11 @@ Examples:
 				Destination: &m.recursive,
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() != 2 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 2 {
 				return fmt.Errorf("source and destination are required")
 			}
-			return m.run(c.Args().Get(0), c.Args().Get(1))
+			return m.run(cmd.Args().Get(0), cmd.Args().Get(1))
 		},
 	}
 
