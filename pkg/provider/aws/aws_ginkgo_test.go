@@ -17,11 +17,9 @@
 package aws
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,17 +27,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
 var _ = Describe("AWS Provider", func() {
 	var (
-		mockClient *MockEC2Client
-		log        *logger.FunLogger
+		f   *awsfake.Fake
+		log *logger.FunLogger
 	)
 
 	BeforeEach(func() {
-		mockClient = NewMockEC2Client()
+		f = awsfake.New()
 		log = logger.NewLogger()
 	})
 
@@ -67,10 +66,10 @@ var _ = Describe("AWS Provider", func() {
 
 			cacheFile := filepath.Join(tmpDir, "cache.yaml")
 
-			provider, err := New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+			provider, err := New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(provider).NotTo(BeNil())
-			Expect(provider.ec2).To(Equal(mockClient))
+			Expect(provider.ec2).To(Equal(f.EC2))
 		})
 	})
 
@@ -331,7 +330,7 @@ status:
 				},
 			}
 
-			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+			provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -340,46 +339,14 @@ status:
 		})
 
 		It("should succeed when instance type is available", func() {
-			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-				params *ec2.DescribeInstanceTypesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-				return &ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []types.InstanceTypeInfo{
-						{InstanceType: types.InstanceTypeT3Medium,
-							ProcessorInfo: &types.ProcessorInfo{
-								SupportedArchitectures: []types.ArchitectureType{
-									types.ArchitectureTypeX8664,
-								},
-							}},
-					},
-				}, nil
-			}
-
+			// The default catalog contains t3.medium.
 			err := provider.checkInstanceTypes()
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should fail when instance type is not available", func() {
-			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-				params *ec2.DescribeInstanceTypesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-				return &ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []types.InstanceTypeInfo{
-						{InstanceType: types.InstanceTypeT3Large,
-							ProcessorInfo: &types.ProcessorInfo{
-								SupportedArchitectures: []types.ArchitectureType{
-									types.ArchitectureTypeX8664,
-								},
-							}},
-						{InstanceType: types.InstanceTypeT3Xlarge,
-							ProcessorInfo: &types.ProcessorInfo{
-								SupportedArchitectures: []types.ArchitectureType{
-									types.ArchitectureTypeX8664,
-								},
-							}},
-					},
-				}, nil
-			}
+			// A catalog without t3.medium makes checkInstanceTypes reject it.
+			f.Store.SetInstanceTypeCatalog("t3.large", "t3.xlarge")
 
 			err := provider.checkInstanceTypes()
 			Expect(err).To(HaveOccurred())
@@ -420,25 +387,17 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+				provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("should find images by pattern", func() {
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-12345"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-								Name:         strPtr("ubuntu/images/hvm-ssd/ubuntu-jammy-22.04"),
-								Architecture: types.ArchitectureValuesX8664,
-							},
-						},
-					}, nil
-				}
+				f.Store.SetImages(types.Image{
+					ImageId:      strPtr("ami-12345"),
+					CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+					Name:         strPtr("ubuntu/images/hvm-ssd/ubuntu-jammy-22.04"),
+					Architecture: types.ArchitectureValuesX8664,
+				})
 
 				err := provider.checkImages()
 				Expect(err).NotTo(HaveOccurred())
@@ -462,37 +421,23 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+				provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("should verify the specified image exists", func() {
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-specific-12345"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-								Architecture: types.ArchitectureValuesX8664,
-							},
-						},
-					}, nil
-				}
+				f.Store.SetImages(types.Image{
+					ImageId:      strPtr("ami-specific-12345"),
+					CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+					Architecture: types.ArchitectureValuesX8664,
+				})
 
 				err := provider.checkImages()
 				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("should fail when specified image does not exist", func() {
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{},
-					}, nil
-				}
+				f.Store.SetImages() // empty catalog
 
 				err := provider.checkImages()
 				Expect(err).To(HaveOccurred())
@@ -524,7 +469,7 @@ status:
 				},
 			}
 
-			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+			provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -533,49 +478,21 @@ status:
 		})
 
 		It("should succeed when instance type and images are valid", func() {
-			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-				params *ec2.DescribeInstanceTypesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-				return &ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []types.InstanceTypeInfo{
-						{InstanceType: types.InstanceTypeT3Medium,
-							ProcessorInfo: &types.ProcessorInfo{
-								SupportedArchitectures: []types.ArchitectureType{
-									types.ArchitectureTypeX8664,
-								},
-							}},
-					},
-				}, nil
-			}
-
-			mockClient.DescribeImagesFunc = func(ctx context.Context,
-				params *ec2.DescribeImagesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-				return &ec2.DescribeImagesOutput{
-					Images: []types.Image{
-						{
-							ImageId:      strPtr("ami-12345"),
-							CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-							Name:         strPtr("ubuntu/images/hvm-ssd/ubuntu-jammy-22.04"),
-							Architecture: types.ArchitectureValuesX8664,
-						},
-					},
-				}, nil
-			}
+			// t3.medium is in the default catalog; seed a matching x86_64 image.
+			f.Store.SetImages(types.Image{
+				ImageId:      strPtr("ami-12345"),
+				CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+				Name:         strPtr("ubuntu/images/hvm-ssd/ubuntu-jammy-22.04"),
+				Architecture: types.ArchitectureValuesX8664,
+			})
 
 			err := provider.DryRun()
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should fail when instance type check fails (triggers fail())", func() {
-			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-				params *ec2.DescribeInstanceTypesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-				// Return empty list - instance type not found
-				return &ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []types.InstanceTypeInfo{},
-				}, nil
-			}
+			// An empty catalog makes checkInstanceTypes reject t3.medium.
+			f.Store.SetInstanceTypeCatalog()
 
 			err := provider.DryRun()
 			Expect(err).To(HaveOccurred())
@@ -583,27 +500,8 @@ status:
 		})
 
 		It("should fail when image check fails (triggers fail())", func() {
-			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-				params *ec2.DescribeInstanceTypesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-				return &ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []types.InstanceTypeInfo{
-						{InstanceType: types.InstanceTypeT3Medium,
-							ProcessorInfo: &types.ProcessorInfo{
-								SupportedArchitectures: []types.ArchitectureType{
-									types.ArchitectureTypeX8664,
-								},
-							}},
-					},
-				}, nil
-			}
-
-			mockClient.DescribeImagesFunc = func(ctx context.Context,
-				params *ec2.DescribeImagesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-				// Return error
-				return nil, ErrMockDescribeImages
-			}
+			// t3.medium is valid, but the image describe fails.
+			f.Store.FailNext("DescribeImages", ErrMockDescribeImages)
 
 			err := provider.DryRun()
 			Expect(err).To(HaveOccurred())
@@ -646,23 +544,10 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+				provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-custom-12345"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-								Architecture: types.ArchitectureValuesX8664,
-							},
-						},
-					}, nil
-				}
-
+				// setAMI returns early when an explicit ImageId is set.
 				err = provider.setAMI()
 				Expect(err).NotTo(HaveOccurred())
 				Expect(*provider.Environment.Spec.Instance.Image.ImageId).To(
@@ -684,27 +569,21 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+				provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-older"),
-								CreationDate: strPtr("2023-01-01T00:00:00.000Z"),
-								Architecture: types.ArchitectureValuesX8664,
-							},
-							{
-								ImageId:      strPtr("ami-latest"),
-								CreationDate: strPtr("2024-06-01T00:00:00.000Z"),
-								Architecture: types.ArchitectureValuesX8664,
-							},
-						},
-					}, nil
-				}
+				f.Store.SetImages(
+					types.Image{
+						ImageId:      strPtr("ami-older"),
+						CreationDate: strPtr("2023-01-01T00:00:00.000Z"),
+						Architecture: types.ArchitectureValuesX8664,
+					},
+					types.Image{
+						ImageId:      strPtr("ami-latest"),
+						CreationDate: strPtr("2024-06-01T00:00:00.000Z"),
+						Architecture: types.ArchitectureValuesX8664,
+					},
+				)
 
 				err = provider.setAMI()
 				Expect(err).NotTo(HaveOccurred())
@@ -726,16 +605,10 @@ status:
 				}
 
 				var err error
-				provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+				provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 				Expect(err).NotTo(HaveOccurred())
 
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{},
-					}, nil
-				}
+				f.Store.SetImages() // empty catalog
 
 				err = provider.setAMI()
 				Expect(err).To(HaveOccurred())
@@ -768,7 +641,7 @@ status:
 				},
 			}
 
-			provider, err = New(log, env, cacheFile, WithEC2Client(mockClient), WithSleep(noopSleep))
+			provider, err = New(log, env, cacheFile, WithEC2Client(f.EC2), WithSleep(noopSleep))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -777,11 +650,7 @@ status:
 		})
 
 		It("should return error when DescribeImages fails", func() {
-			mockClient.DescribeImagesFunc = func(ctx context.Context,
-				params *ec2.DescribeImagesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-				return nil, ErrMockDescribeImages
-			}
+			f.Store.FailNext("DescribeImages", ErrMockDescribeImages)
 
 			filter := []types.Filter{
 				{

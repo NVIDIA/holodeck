@@ -27,240 +27,206 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 )
 
-// MockELBv2Client implements internalaws.ELBv2Client for testing.
-type MockELBv2Client struct {
-	CreateLBFunc         func(ctx context.Context, params *elasticloadbalancingv2.CreateLoadBalancerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.CreateLoadBalancerOutput, error)
-	DescribeLBsFunc      func(ctx context.Context, params *elasticloadbalancingv2.DescribeLoadBalancersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeLoadBalancersOutput, error)
-	DeleteLBFunc         func(ctx context.Context, params *elasticloadbalancingv2.DeleteLoadBalancerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteLoadBalancerOutput, error)
-	CreateTGFunc         func(ctx context.Context, params *elasticloadbalancingv2.CreateTargetGroupInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.CreateTargetGroupOutput, error)
-	DescribeTGsFunc      func(ctx context.Context, params *elasticloadbalancingv2.DescribeTargetGroupsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeTargetGroupsOutput, error)
-	DescribeTHFunc       func(ctx context.Context, params *elasticloadbalancingv2.DescribeTargetHealthInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeTargetHealthOutput, error)
-	DeleteTGFunc         func(ctx context.Context, params *elasticloadbalancingv2.DeleteTargetGroupInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteTargetGroupOutput, error)
-	RegisterFunc         func(ctx context.Context, params *elasticloadbalancingv2.RegisterTargetsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.RegisterTargetsOutput, error)
-	DeregisterFunc       func(ctx context.Context, params *elasticloadbalancingv2.DeregisterTargetsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeregisterTargetsOutput, error)
-	CreateListenerFunc   func(ctx context.Context, params *elasticloadbalancingv2.CreateListenerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.CreateListenerOutput, error)
-	DescribeListenerFunc func(ctx context.Context, params *elasticloadbalancingv2.DescribeListenersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeListenersOutput, error)
-	DeleteListenerFunc   func(ctx context.Context, params *elasticloadbalancingv2.DeleteListenerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteListenerOutput, error)
-	AddTagsFunc          func(ctx context.Context, params *elasticloadbalancingv2.AddTagsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.AddTagsOutput, error)
-}
-
-func (m *MockELBv2Client) CreateLoadBalancer(ctx context.Context, params *elasticloadbalancingv2.CreateLoadBalancerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.CreateLoadBalancerOutput, error) {
-	if m.CreateLBFunc != nil {
-		return m.CreateLBFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.CreateLoadBalancerOutput{}, nil
-}
-
-func (m *MockELBv2Client) DescribeLoadBalancers(ctx context.Context, params *elasticloadbalancingv2.DescribeLoadBalancersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeLoadBalancersOutput, error) {
-	if m.DescribeLBsFunc != nil {
-		return m.DescribeLBsFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DescribeLoadBalancersOutput{}, nil
-}
-
-func (m *MockELBv2Client) DeleteLoadBalancer(ctx context.Context, params *elasticloadbalancingv2.DeleteLoadBalancerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteLoadBalancerOutput, error) {
-	if m.DeleteLBFunc != nil {
-		return m.DeleteLBFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DeleteLoadBalancerOutput{}, nil
-}
-
-func (m *MockELBv2Client) CreateTargetGroup(ctx context.Context, params *elasticloadbalancingv2.CreateTargetGroupInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.CreateTargetGroupOutput, error) {
-	if m.CreateTGFunc != nil {
-		return m.CreateTGFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.CreateTargetGroupOutput{}, nil
-}
-
-func (m *MockELBv2Client) DescribeTargetGroups(ctx context.Context, params *elasticloadbalancingv2.DescribeTargetGroupsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeTargetGroupsOutput, error) {
-	if m.DescribeTGsFunc != nil {
-		return m.DescribeTGsFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DescribeTargetGroupsOutput{}, nil
-}
-
-func (m *MockELBv2Client) DescribeTargetHealth(ctx context.Context, params *elasticloadbalancingv2.DescribeTargetHealthInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeTargetHealthOutput, error) {
-	if m.DescribeTHFunc != nil {
-		return m.DescribeTHFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DescribeTargetHealthOutput{}, nil
-}
-
-func (m *MockELBv2Client) DeleteTargetGroup(ctx context.Context, params *elasticloadbalancingv2.DeleteTargetGroupInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteTargetGroupOutput, error) {
-	if m.DeleteTGFunc != nil {
-		return m.DeleteTGFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DeleteTargetGroupOutput{}, nil
-}
-
-func (m *MockELBv2Client) RegisterTargets(ctx context.Context, params *elasticloadbalancingv2.RegisterTargetsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.RegisterTargetsOutput, error) {
-	if m.RegisterFunc != nil {
-		return m.RegisterFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.RegisterTargetsOutput{}, nil
-}
-
-func (m *MockELBv2Client) DeregisterTargets(ctx context.Context, params *elasticloadbalancingv2.DeregisterTargetsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeregisterTargetsOutput, error) {
-	if m.DeregisterFunc != nil {
-		return m.DeregisterFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DeregisterTargetsOutput{}, nil
-}
-
-func (m *MockELBv2Client) CreateListener(ctx context.Context, params *elasticloadbalancingv2.CreateListenerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.CreateListenerOutput, error) {
-	if m.CreateListenerFunc != nil {
-		return m.CreateListenerFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.CreateListenerOutput{}, nil
-}
-
-func (m *MockELBv2Client) DescribeListeners(ctx context.Context, params *elasticloadbalancingv2.DescribeListenersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeListenersOutput, error) {
-	if m.DescribeListenerFunc != nil {
-		return m.DescribeListenerFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DescribeListenersOutput{}, nil
-}
-
-func (m *MockELBv2Client) DeleteListener(ctx context.Context, params *elasticloadbalancingv2.DeleteListenerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteListenerOutput, error) {
-	if m.DeleteListenerFunc != nil {
-		return m.DeleteListenerFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.DeleteListenerOutput{}, nil
-}
-
-func (m *MockELBv2Client) AddTags(ctx context.Context, params *elasticloadbalancingv2.AddTagsInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.AddTagsOutput, error) {
-	if m.AddTagsFunc != nil {
-		return m.AddTagsFunc(ctx, params, optFns...)
-	}
-	return &elasticloadbalancingv2.AddTagsOutput{}, nil
-}
-
+// TestDeleteNLB_LoadBalancerNotFound: deleteNLB must treat a
+// LoadBalancerNotFound from DeleteLoadBalancer as success (the LB is already
+// gone). The fake returns that code for an absent ARN, so no injection needed.
 func TestDeleteNLB_LoadBalancerNotFound(t *testing.T) {
-	mock := &MockELBv2Client{
-		DeleteLBFunc: func(ctx context.Context, params *elasticloadbalancingv2.DeleteLoadBalancerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteLoadBalancerOutput, error) {
-			return nil, fmt.Errorf("LoadBalancerNotFound: One or more load balancers not found")
-		},
-	}
-
-	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep}
+	f := awsfake.New()
+	provider := &Provider{elbv2: f.ELBv2, log: mockLogger(), sleep: noopSleep}
 	cache := &ClusterCache{LoadBalancerArn: "arn:aws:elasticloadbalancing:us-east-1:123:loadbalancer/net/gone/abc"}
 
-	err := provider.deleteNLB(cache)
-	if err != nil {
+	if err := provider.deleteNLB(cache); err != nil {
 		t.Fatalf("expected no error when NLB is already deleted, got: %v", err)
 	}
 }
 
+// TestDeleteNLB_RealError: a non-NotFound DeleteLoadBalancer error must
+// propagate.
 func TestDeleteNLB_RealError(t *testing.T) {
-	mock := &MockELBv2Client{
-		DeleteLBFunc: func(ctx context.Context, params *elasticloadbalancingv2.DeleteLoadBalancerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteLoadBalancerOutput, error) {
-			return nil, fmt.Errorf("InternalError: something went wrong")
-		},
-	}
-
-	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep}
+	f := awsfake.New()
+	f.Store.FailNext("DeleteLoadBalancer", fmt.Errorf("InternalError: something went wrong"))
+	provider := &Provider{elbv2: f.ELBv2, log: mockLogger(), sleep: noopSleep}
 	cache := &ClusterCache{LoadBalancerArn: "arn:aws:elasticloadbalancing:us-east-1:123:loadbalancer/net/test/abc"}
 
-	err := provider.deleteNLB(cache)
-	if err == nil {
+	if err := provider.deleteNLB(cache); err == nil {
 		t.Fatal("expected error for InternalError, got nil")
 	}
 }
 
+// TestDeleteListener_ListenerNotFound: deleteListener describes the LB's
+// listeners then deletes each; a ListenerNotFound during delete is tolerated.
 func TestDeleteListener_ListenerNotFound(t *testing.T) {
-	mock := &MockELBv2Client{
-		DescribeListenerFunc: func(ctx context.Context, params *elasticloadbalancingv2.DescribeListenersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeListenersOutput, error) {
-			return &elasticloadbalancingv2.DescribeListenersOutput{
-				Listeners: []elbv2types.Listener{
-					{ListenerArn: aws.String("arn:listener/gone")},
-				},
-			}, nil
-		},
-		DeleteListenerFunc: func(ctx context.Context, params *elasticloadbalancingv2.DeleteListenerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteListenerOutput, error) {
-			return nil, fmt.Errorf("ListenerNotFound: One or more listeners not found")
-		},
-	}
-
-	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &ClusterCache{LoadBalancerArn: "arn:lb/test"}
-
-	err := provider.deleteListener(cache)
+	f := awsfake.New()
+	lb, err := f.ELBv2.CreateLoadBalancer(context.Background(), &elasticloadbalancingv2.CreateLoadBalancerInput{
+		Name: aws.String("test-nlb"),
+	})
 	if err != nil {
+		t.Fatalf("CreateLoadBalancer: %v", err)
+	}
+	lbArn := aws.ToString(lb.LoadBalancers[0].LoadBalancerArn)
+	if _, err := f.ELBv2.CreateListener(context.Background(), &elasticloadbalancingv2.CreateListenerInput{
+		LoadBalancerArn: aws.String(lbArn),
+	}); err != nil {
+		t.Fatalf("CreateListener: %v", err)
+	}
+	f.Store.FailNext("DeleteListener", fmt.Errorf("ListenerNotFound: One or more listeners not found"))
+
+	provider := &Provider{elbv2: f.ELBv2, log: mockLogger(), sleep: noopSleep}
+	cache := &ClusterCache{LoadBalancerArn: lbArn}
+
+	if err := provider.deleteListener(cache); err != nil {
 		t.Fatalf("expected no error when listener is already deleted, got: %v", err)
 	}
 }
 
+// TestDeleteListener_DescribeNotFound: a LoadBalancerNotFound while describing
+// listeners means the LB is already gone; deleteListener tolerates it.
 func TestDeleteListener_DescribeNotFound(t *testing.T) {
-	mock := &MockELBv2Client{
-		DescribeListenerFunc: func(ctx context.Context, params *elasticloadbalancingv2.DescribeListenersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeListenersOutput, error) {
-			return nil, fmt.Errorf("LoadBalancerNotFound: LB already gone")
-		},
-	}
-
-	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep}
+	f := awsfake.New()
+	f.Store.FailNext("DescribeListeners", fmt.Errorf("LoadBalancerNotFound: LB already gone"))
+	provider := &Provider{elbv2: f.ELBv2, log: mockLogger(), sleep: noopSleep}
 	cache := &ClusterCache{LoadBalancerArn: "arn:lb/gone"}
 
-	err := provider.deleteListener(cache)
-	if err != nil {
+	if err := provider.deleteListener(cache); err != nil {
 		t.Fatalf("expected no error when LB is already deleted during describe, got: %v", err)
 	}
 }
 
+// TestDeleteTargetGroup_NotFound: an absent target group makes
+// DescribeTargetHealth return TargetGroupNotFound, which deleteTargetGroup
+// treats as success (already deleted).
 func TestDeleteTargetGroup_NotFound(t *testing.T) {
-	mock := &MockELBv2Client{
-		DescribeTHFunc: func(ctx context.Context, params *elasticloadbalancingv2.DescribeTargetHealthInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeTargetHealthOutput, error) {
-			return nil, fmt.Errorf("TargetGroupNotFound: target group gone")
-		},
-		DeleteTGFunc: func(ctx context.Context, params *elasticloadbalancingv2.DeleteTargetGroupInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteTargetGroupOutput, error) {
-			return nil, fmt.Errorf("TargetGroupNotFound: target group gone")
-		},
-	}
-
-	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep}
+	f := awsfake.New()
+	provider := &Provider{elbv2: f.ELBv2, log: mockLogger(), sleep: noopSleep}
 	cache := &ClusterCache{TargetGroupArn: "arn:tg/gone"}
 
-	err := provider.deleteTargetGroup(cache)
-	if err != nil {
+	if err := provider.deleteTargetGroup(cache); err != nil {
 		t.Fatalf("expected no error when target group is already deleted, got: %v", err)
 	}
 }
 
+// TestDeleteTargetGroup_RealError: with the target group present (health
+// describe succeeds), a non-NotFound DeleteTargetGroup error must propagate.
 func TestDeleteTargetGroup_RealError(t *testing.T) {
-	mock := &MockELBv2Client{
-		DescribeTHFunc: func(ctx context.Context, params *elasticloadbalancingv2.DescribeTargetHealthInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeTargetHealthOutput, error) {
-			return &elasticloadbalancingv2.DescribeTargetHealthOutput{}, nil
-		},
-		DeleteTGFunc: func(ctx context.Context, params *elasticloadbalancingv2.DeleteTargetGroupInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteTargetGroupOutput, error) {
-			return nil, fmt.Errorf("InternalError: something went wrong")
-		},
+	f := awsfake.New()
+	tg, err := f.ELBv2.CreateTargetGroup(context.Background(), &elasticloadbalancingv2.CreateTargetGroupInput{
+		Name: aws.String("test-tg"), VpcId: aws.String("vpc-1"),
+	})
+	if err != nil {
+		t.Fatalf("CreateTargetGroup: %v", err)
 	}
+	tgArn := aws.ToString(tg.TargetGroups[0].TargetGroupArn)
+	f.Store.FailNext("DeleteTargetGroup", fmt.Errorf("InternalError: something went wrong"))
 
-	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &ClusterCache{TargetGroupArn: "arn:tg/test"}
+	provider := &Provider{elbv2: f.ELBv2, log: mockLogger(), sleep: noopSleep}
+	cache := &ClusterCache{TargetGroupArn: tgArn}
 
-	err := provider.deleteTargetGroup(cache)
-	if err == nil {
+	if err := provider.deleteTargetGroup(cache); err == nil {
 		t.Fatal("expected error for InternalError, got nil")
 	}
 }
 
+// TestDeleteNLBForCluster_DescribeNotFound: the env-derived LB name is absent,
+// so DescribeLoadBalancers(Names) returns LoadBalancerNotFound, which
+// deleteNLBForCluster tolerates.
 func TestDeleteNLBForCluster_DescribeNotFound(t *testing.T) {
-	mock := &MockELBv2Client{
-		DescribeLBsFunc: func(ctx context.Context, params *elasticloadbalancingv2.DescribeLoadBalancersInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DescribeLoadBalancersOutput, error) {
-			return nil, fmt.Errorf("LoadBalancerNotFound: One or more load balancers not found")
-		},
-	}
-
+	f := awsfake.New()
 	env := &v1alpha1.Environment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
 	}
-	provider := &Provider{elbv2: mock, log: mockLogger(), sleep: noopSleep, Environment: env}
+	provider := &Provider{elbv2: f.ELBv2, log: mockLogger(), sleep: noopSleep, Environment: env}
 	cache := &ClusterCache{LoadBalancerDNS: "gone-nlb.elb.amazonaws.com"}
 
-	err := provider.deleteNLBForCluster(cache)
-	if err != nil {
+	if err := provider.deleteNLBForCluster(cache); err != nil {
 		t.Fatalf("expected no error when NLB is already deleted, got: %v", err)
+	}
+}
+
+// orderRecordingELBv2 wraps a fake ELBv2 client to capture the cross-method
+// call order of deleteNLB's three teardown calls. awsfake.Store's recorder
+// (Inputs/CallsTo) only tracks per-method call order/counts, not a
+// cross-method timeline, so this thin test-local decorator (no change to
+// awsfake) is what makes the actual sequence observable.
+type orderRecordingELBv2 struct {
+	*awsfake.FakeELBv2
+	order *[]string
+}
+
+func (o *orderRecordingELBv2) DeleteListener(ctx context.Context, params *elasticloadbalancingv2.DeleteListenerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteListenerOutput, error) {
+	*o.order = append(*o.order, "DeleteListener")
+	return o.FakeELBv2.DeleteListener(ctx, params, optFns...)
+}
+
+func (o *orderRecordingELBv2) DeleteTargetGroup(ctx context.Context, params *elasticloadbalancingv2.DeleteTargetGroupInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteTargetGroupOutput, error) {
+	*o.order = append(*o.order, "DeleteTargetGroup")
+	return o.FakeELBv2.DeleteTargetGroup(ctx, params, optFns...)
+}
+
+func (o *orderRecordingELBv2) DeleteLoadBalancer(ctx context.Context, params *elasticloadbalancingv2.DeleteLoadBalancerInput, optFns ...func(*elasticloadbalancingv2.Options)) (*elasticloadbalancingv2.DeleteLoadBalancerOutput, error) {
+	*o.order = append(*o.order, "DeleteLoadBalancer")
+	return o.FakeELBv2.DeleteLoadBalancer(ctx, params, optFns...)
+}
+
+// TestDeleteNLB_TeardownOrder pins the bug caught by nlb.go:266-297: deleteNLB
+// must tear down listener -> target group -> load balancer in that order.
+// Reversing the order (or skipping the listener stage) leaves a dangling
+// listener/target-group reference that real AWS rejects with
+// ResourceInUse — a defect this fake's unconditional deletes cannot surface
+// on their own, since it never checks for lingering references.
+func TestDeleteNLB_TeardownOrder(t *testing.T) {
+	f := awsfake.New()
+
+	lbOut, err := f.ELBv2.CreateLoadBalancer(context.Background(), &elasticloadbalancingv2.CreateLoadBalancerInput{
+		Name: aws.String("test-nlb"),
+	})
+	if err != nil {
+		t.Fatalf("CreateLoadBalancer: %v", err)
+	}
+	lbArn := aws.ToString(lbOut.LoadBalancers[0].LoadBalancerArn)
+
+	tgOut, err := f.ELBv2.CreateTargetGroup(context.Background(), &elasticloadbalancingv2.CreateTargetGroupInput{
+		Name: aws.String("test-tg"), VpcId: aws.String("vpc-1"),
+	})
+	if err != nil {
+		t.Fatalf("CreateTargetGroup: %v", err)
+	}
+	tgArn := aws.ToString(tgOut.TargetGroups[0].TargetGroupArn)
+
+	if _, err := f.ELBv2.CreateListener(context.Background(), &elasticloadbalancingv2.CreateListenerInput{
+		LoadBalancerArn: aws.String(lbArn),
+	}); err != nil {
+		t.Fatalf("CreateListener: %v", err)
+	}
+
+	if _, err := f.ELBv2.RegisterTargets(context.Background(), &elasticloadbalancingv2.RegisterTargetsInput{
+		TargetGroupArn: aws.String(tgArn),
+		Targets:        []elbv2types.TargetDescription{{Id: aws.String("i-fake0001")}},
+	}); err != nil {
+		t.Fatalf("RegisterTargets: %v", err)
+	}
+
+	var order []string
+	provider := &Provider{
+		elbv2: &orderRecordingELBv2{FakeELBv2: f.ELBv2, order: &order},
+		log:   mockLogger(),
+		sleep: noopSleep,
+	}
+	cache := &ClusterCache{LoadBalancerArn: lbArn, TargetGroupArn: tgArn}
+
+	if err := provider.deleteNLB(cache); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"DeleteListener", "DeleteTargetGroup", "DeleteLoadBalancer"}
+	if len(order) != len(want) {
+		t.Fatalf("expected teardown order %v, got %v", want, order)
+	}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Fatalf("expected teardown order %v, got %v", want, order)
+		}
 	}
 }

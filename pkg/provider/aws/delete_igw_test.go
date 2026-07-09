@@ -21,28 +21,20 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 )
 
 func TestDeleteInternetGateway_DetachNotFound(t *testing.T) {
-	// When DetachInternetGateway returns InvalidInternetGatewayID.NotFound,
-	// deleteInternetGateway should treat it as success (IGW already gone)
-	// and proceed to the delete step without error.
-	detachCalls := 0
-	deleteCalls := 0
+	// An absent IGW makes both DetachInternetGateway and DeleteInternetGateway
+	// return InvalidInternetGatewayID.NotFound, which the idempotent-delete
+	// branches treat as success. Each is called exactly once — NotFound stops
+	// the retry loop.
+	f := awsfake.New()
 
-	mock := &MockEC2Client{
-		DetachIGWFunc: func(ctx context.Context, params *ec2.DetachInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error) {
-			detachCalls++
-			return nil, fmt.Errorf("InvalidInternetGatewayID.NotFound: The internetGateway ID 'igw-gone' does not exist")
-		},
-		DeleteIGWFunc: func(ctx context.Context, params *ec2.DeleteInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error) {
-			deleteCalls++
-			return nil, fmt.Errorf("InvalidInternetGatewayID.NotFound: The internetGateway ID 'igw-gone' does not exist")
-		},
-	}
-
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{InternetGwid: "igw-gone", Vpcid: "vpc-123"}
 
 	err := provider.deleteInternetGateway(cache)
@@ -51,55 +43,48 @@ func TestDeleteInternetGateway_DetachNotFound(t *testing.T) {
 	}
 
 	// Detach should be called exactly once (NotFound stops retries)
-	if detachCalls != 1 {
-		t.Errorf("expected 1 detach call (NotFound stops retries), got %d", detachCalls)
+	if got := f.Store.CallsTo("DetachInternetGateway"); got != 1 {
+		t.Errorf("expected 1 detach call (NotFound stops retries), got %d", got)
 	}
 
 	// Delete should also be called exactly once
-	if deleteCalls != 1 {
-		t.Errorf("expected 1 delete call (NotFound stops retries), got %d", deleteCalls)
+	if got := f.Store.CallsTo("DeleteInternetGateway"); got != 1 {
+		t.Errorf("expected 1 delete call (NotFound stops retries), got %d", got)
 	}
 }
 
 func TestDeleteInternetGateway_DetachNotAttached(t *testing.T) {
-	// Original behavior: Gateway.NotAttached during detach is still treated as success.
-	detachCalls := 0
-
-	mock := &MockEC2Client{
-		DetachIGWFunc: func(ctx context.Context, params *ec2.DetachInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error) {
-			detachCalls++
-			return nil, fmt.Errorf("Gateway.NotAttached: The gateway igw-123 is not attached")
-		},
-		DeleteIGWFunc: func(ctx context.Context, params *ec2.DeleteInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error) {
-			return &ec2.DeleteInternetGatewayOutput{}, nil
-		},
+	// An existing but unattached IGW makes Detach return Gateway.NotAttached,
+	// which is still treated as success; the subsequent Delete removes it.
+	f := awsfake.New()
+	igw, err := f.EC2.CreateInternetGateway(context.Background(), &ec2.CreateInternetGatewayInput{})
+	if err != nil {
+		t.Fatalf("CreateInternetGateway: %v", err)
 	}
+	igwID := aws.ToString(igw.InternetGateway.InternetGatewayId)
 
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
-	cache := &AWS{InternetGwid: "igw-123", Vpcid: "vpc-456"}
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
+	cache := &AWS{InternetGwid: igwID, Vpcid: "vpc-456"}
 
-	err := provider.deleteInternetGateway(cache)
+	err = provider.deleteInternetGateway(cache)
 	if err != nil {
 		t.Fatalf("expected no error for Gateway.NotAttached, got: %v", err)
 	}
 
-	if detachCalls != 1 {
-		t.Errorf("expected 1 detach call, got %d", detachCalls)
+	if got := f.Store.CallsTo("DetachInternetGateway"); got != 1 {
+		t.Errorf("expected 1 detach call, got %d", got)
 	}
 }
 
 func TestDeleteInternetGateway_DetachRealErrorRetries(t *testing.T) {
-	// A non-NotFound error during detach should be retried (and eventually fail).
-	detachCalls := 0
-
-	mock := &MockEC2Client{
-		DetachIGWFunc: func(ctx context.Context, params *ec2.DetachInternetGatewayInput, optFns ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error) {
-			detachCalls++
-			return nil, fmt.Errorf("DependencyViolation: gateway has active connections")
-		},
+	// A non-NotFound error during detach should be retried the full maxRetries
+	// times (and eventually fail). Queue one injected error per attempt.
+	f := awsfake.New()
+	for i := 0; i < maxRetries; i++ {
+		f.Store.FailNext("DetachInternetGateway", fmt.Errorf("DependencyViolation: gateway has active connections"))
 	}
 
-	provider := &Provider{ec2: mock, log: mockLogger(), sleep: noopSleep}
+	provider := &Provider{ec2: f.EC2, log: mockLogger(), sleep: noopSleep}
 	cache := &AWS{InternetGwid: "igw-busy", Vpcid: "vpc-789"}
 
 	err := provider.deleteInternetGateway(cache)
@@ -108,7 +93,7 @@ func TestDeleteInternetGateway_DetachRealErrorRetries(t *testing.T) {
 	}
 
 	// Should have retried maxRetries times
-	if detachCalls != maxRetries {
-		t.Errorf("expected %d detach calls (full retry), got %d", maxRetries, detachCalls)
+	if got := f.Store.CallsTo("DetachInternetGateway"); got != maxRetries {
+		t.Errorf("expected %d detach calls (full retry), got %d", maxRetries, got)
 	}
 }

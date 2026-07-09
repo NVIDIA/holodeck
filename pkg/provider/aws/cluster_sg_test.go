@@ -17,9 +17,6 @@
 package aws
 
 import (
-	"context"
-	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -27,47 +24,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	internalaws "github.com/NVIDIA/holodeck/internal/aws"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 )
 
-// sgCapture records SG creation and authorization calls for verification
-type sgCapture struct {
-	mu             sync.Mutex
-	createCalls    []ec2.CreateSecurityGroupInput
-	authorizeCalls []ec2.AuthorizeSecurityGroupIngressInput
-	sgCounter      int
-}
-
-func newSGCapture() *sgCapture {
-	return &sgCapture{}
-}
-
-func (c *sgCapture) nextSGID() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.sgCounter++
-	return fmt.Sprintf("sg-test-%03d", c.sgCounter)
-}
-
-func (c *sgCapture) recordCreate(input *ec2.CreateSecurityGroupInput) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.createCalls = append(c.createCalls, *input)
-}
-
-func (c *sgCapture) recordAuthorize(input *ec2.AuthorizeSecurityGroupIngressInput) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.authorizeCalls = append(c.authorizeCalls, *input)
-}
-
-func newTestProvider(mock *MockEC2Client) *Provider {
+func newTestProvider(client internalaws.EC2Client) *Provider {
 	env := v1alpha1.Environment{}
 	env.Name = "test-cluster"
 	env.Spec.PrivateKey = "test-key"
 	env.Spec.Username = "ubuntu"
 	env.Spec.KeyName = "test-key"
 	return &Provider{
-		ec2:         mock,
+		ec2:         client,
 		Environment: &env,
 		log:         mockLogger(),
 		sleep:       noopSleep,
@@ -79,20 +47,8 @@ func newTestProvider(mock *MockEC2Client) *Provider {
 
 // TestCreateControlPlaneSecurityGroup verifies CP SG has correct rules
 func TestCreateControlPlaneSecurityGroup(t *testing.T) {
-	capture := newSGCapture()
-
-	mock := NewMockEC2Client()
-	mock.CreateSGFunc = func(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
-		capture.recordCreate(params)
-		sgID := capture.nextSGID()
-		return &ec2.CreateSecurityGroupOutput{GroupId: aws.String(sgID)}, nil
-	}
-	mock.AuthorizeSGFunc = func(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error) {
-		capture.recordAuthorize(params)
-		return &ec2.AuthorizeSecurityGroupIngressOutput{}, nil
-	}
-
-	p := newTestProvider(mock)
+	f := awsfake.New()
+	p := newTestProvider(f.EC2)
 	cache := &ClusterCache{}
 	cache.Vpcid = "vpc-test"
 
@@ -111,19 +67,21 @@ func TestCreateControlPlaneSecurityGroup(t *testing.T) {
 	}
 
 	// Verify SG was created with correct name
-	if len(capture.createCalls) != 1 {
-		t.Fatalf("expected 1 CreateSecurityGroup call, got %d", len(capture.createCalls))
+	createCalls := f.Store.Inputs("CreateSecurityGroup")
+	if len(createCalls) != 1 {
+		t.Fatalf("expected 1 CreateSecurityGroup call, got %d", len(createCalls))
 	}
-	if got := aws.ToString(capture.createCalls[0].GroupName); got != "test-cluster-cp" {
+	if got := aws.ToString(createCalls[0].(*ec2.CreateSecurityGroupInput).GroupName); got != "test-cluster-cp" {
 		t.Errorf("SG name: got %q, want %q", got, "test-cluster-cp")
 	}
 
 	// Verify ingress rules
-	if len(capture.authorizeCalls) != 1 {
-		t.Fatalf("expected 1 AuthorizeSecurityGroupIngress call, got %d", len(capture.authorizeCalls))
+	authorizeCalls := f.Store.Inputs("AuthorizeSecurityGroupIngress")
+	if len(authorizeCalls) != 1 {
+		t.Fatalf("expected 1 AuthorizeSecurityGroupIngress call, got %d", len(authorizeCalls))
 	}
 
-	perms := capture.authorizeCalls[0].IpPermissions
+	perms := authorizeCalls[0].(*ec2.AuthorizeSecurityGroupIngressInput).IpPermissions
 	assertHasRule(t, perms, "etcd (2379-2380/tcp, CP self)", func(p types.IpPermission) bool {
 		return aws.ToInt32(p.FromPort) == portEtcdClient &&
 			aws.ToInt32(p.ToPort) == portEtcdPeer &&
@@ -173,20 +131,8 @@ func TestCreateControlPlaneSecurityGroup(t *testing.T) {
 
 // TestCreateWorkerSecurityGroup verifies Worker SG has correct rules
 func TestCreateWorkerSecurityGroup(t *testing.T) {
-	capture := newSGCapture()
-
-	mock := NewMockEC2Client()
-	mock.CreateSGFunc = func(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
-		capture.recordCreate(params)
-		sgID := capture.nextSGID()
-		return &ec2.CreateSecurityGroupOutput{GroupId: aws.String(sgID)}, nil
-	}
-	mock.AuthorizeSGFunc = func(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error) {
-		capture.recordAuthorize(params)
-		return &ec2.AuthorizeSecurityGroupIngressOutput{}, nil
-	}
-
-	p := newTestProvider(mock)
+	f := awsfake.New()
+	p := newTestProvider(f.EC2)
 	cache := &ClusterCache{}
 	cache.Vpcid = "vpc-test"
 	cache.CPSecurityGroupid = "sg-cp-existing"
@@ -202,22 +148,26 @@ func TestCreateWorkerSecurityGroup(t *testing.T) {
 	}
 
 	// SG name should be test-cluster-worker
-	if len(capture.createCalls) != 1 {
-		t.Fatalf("expected 1 CreateSecurityGroup call, got %d", len(capture.createCalls))
+	createCalls := f.Store.Inputs("CreateSecurityGroup")
+	if len(createCalls) != 1 {
+		t.Fatalf("expected 1 CreateSecurityGroup call, got %d", len(createCalls))
 	}
-	if got := aws.ToString(capture.createCalls[0].GroupName); got != "test-cluster-worker" {
+	if got := aws.ToString(createCalls[0].(*ec2.CreateSecurityGroupInput).GroupName); got != "test-cluster-worker" {
 		t.Errorf("SG name: got %q, want %q", got, "test-cluster-worker")
 	}
 
 	// Should have 2 AuthorizeSecurityGroupIngress calls:
 	// 1) Worker SG rules, 2) CP cross-references
-	if len(capture.authorizeCalls) != 2 {
-		t.Fatalf("expected 2 AuthorizeSecurityGroupIngress calls, got %d", len(capture.authorizeCalls))
+	authorizeCalls := f.Store.Inputs("AuthorizeSecurityGroupIngress")
+	if len(authorizeCalls) != 2 {
+		t.Fatalf("expected 2 AuthorizeSecurityGroupIngress calls, got %d", len(authorizeCalls))
 	}
+	firstAuth := authorizeCalls[0].(*ec2.AuthorizeSecurityGroupIngressInput)
+	secondAuth := authorizeCalls[1].(*ec2.AuthorizeSecurityGroupIngressInput)
 
 	// First call: worker SG ingress rules
-	workerPerms := capture.authorizeCalls[0].IpPermissions
-	workerSGID := aws.ToString(capture.authorizeCalls[0].GroupId)
+	workerPerms := firstAuth.IpPermissions
+	workerSGID := aws.ToString(firstAuth.GroupId)
 	if workerSGID != cache.WorkerSecurityGroupid {
 		t.Errorf("first authorize call target: got %q, want %q", workerSGID, cache.WorkerSecurityGroupid)
 	}
@@ -270,8 +220,8 @@ func TestCreateWorkerSecurityGroup(t *testing.T) {
 	})
 
 	// Second call: CP cross-references targeting CP SG
-	cpCrossPerms := capture.authorizeCalls[1].IpPermissions
-	cpCrossSGID := aws.ToString(capture.authorizeCalls[1].GroupId)
+	cpCrossPerms := secondAuth.IpPermissions
+	cpCrossSGID := aws.ToString(secondAuth.GroupId)
 	if cpCrossSGID != cache.CPSecurityGroupid {
 		t.Errorf("second authorize call target: got %q, want %q", cpCrossSGID, cache.CPSecurityGroupid)
 	}
@@ -291,8 +241,8 @@ func TestCreateWorkerSecurityGroup(t *testing.T) {
 
 // TestWorkerSGRequiresCPSG verifies that creating worker SG fails without CP SG
 func TestWorkerSGRequiresCPSG(t *testing.T) {
-	mock := NewMockEC2Client()
-	p := newTestProvider(mock)
+	f := awsfake.New()
+	p := newTestProvider(f.EC2)
 	cache := &ClusterCache{}
 	cache.Vpcid = "vpc-test"
 	// CPSecurityGroupid is intentionally empty

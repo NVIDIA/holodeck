@@ -17,7 +17,6 @@
 package aws
 
 import (
-	"context"
 	"errors"
 	"io"
 	"strings"
@@ -28,316 +27,13 @@ import (
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	internalaws "github.com/NVIDIA/holodeck/internal/aws"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )
-
-// Compile-time check that mockEC2Client implements internalaws.EC2Client.
-var _ internalaws.EC2Client = (*mockEC2Client)(nil)
-
-// mockEC2Client is a mock implementation of internalaws.EC2Client for testing.
-type mockEC2Client struct {
-	// Track calls for verification
-	modifyNetworkInterfaceAttributeCalls []ec2.ModifyNetworkInterfaceAttributeInput
-	createTagsCalls                      []ec2.CreateTagsInput
-	runInstancesCalls                    []ec2.RunInstancesInput
-	describeInstancesCalls               []ec2.DescribeInstancesInput
-
-	// Configure responses
-	runInstancesOutput      *ec2.RunInstancesOutput
-	describeInstancesOutput *ec2.DescribeInstancesOutput
-
-	// Configure errors
-	modifyNetworkInterfaceAttributeErr error
-	createTagsErr                      error
-	runInstancesErr                    error
-	describeInstancesErr               error
-}
-
-func (m *mockEC2Client) CreateVpc(ctx context.Context, params *ec2.CreateVpcInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
-	return &ec2.CreateVpcOutput{
-		Vpc: &types.Vpc{VpcId: aws.String("vpc-123")},
-	}, nil
-}
-
-func (m *mockEC2Client) ModifyVpcAttribute(ctx context.Context, params *ec2.ModifyVpcAttributeInput,
-	optFns ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error) {
-	return &ec2.ModifyVpcAttributeOutput{}, nil
-}
-
-func (m *mockEC2Client) DeleteVpc(ctx context.Context, params *ec2.DeleteVpcInput,
-	optFns ...func(*ec2.Options)) (*ec2.DeleteVpcOutput, error) {
-	return &ec2.DeleteVpcOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeVpcs(ctx context.Context, params *ec2.DescribeVpcsInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
-	return &ec2.DescribeVpcsOutput{}, nil
-}
-
-func (m *mockEC2Client) CreateSubnet(ctx context.Context, params *ec2.CreateSubnetInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateSubnetOutput, error) {
-	return &ec2.CreateSubnetOutput{
-		Subnet: &types.Subnet{SubnetId: aws.String("subnet-123")},
-	}, nil
-}
-
-func (m *mockEC2Client) DeleteSubnet(ctx context.Context, params *ec2.DeleteSubnetInput,
-	optFns ...func(*ec2.Options)) (*ec2.DeleteSubnetOutput, error) {
-	return &ec2.DeleteSubnetOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeSubnets(ctx context.Context, params *ec2.DescribeSubnetsInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeSubnetsOutput, error) {
-	return &ec2.DescribeSubnetsOutput{}, nil
-}
-
-func (m *mockEC2Client) CreateInternetGateway(ctx context.Context,
-	params *ec2.CreateInternetGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateInternetGatewayOutput, error) {
-	return &ec2.CreateInternetGatewayOutput{
-		InternetGateway: &types.InternetGateway{InternetGatewayId: aws.String("igw-123")},
-	}, nil
-}
-
-func (m *mockEC2Client) AttachInternetGateway(ctx context.Context,
-	params *ec2.AttachInternetGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.AttachInternetGatewayOutput, error) {
-	return &ec2.AttachInternetGatewayOutput{}, nil
-}
-
-func (m *mockEC2Client) DetachInternetGateway(ctx context.Context,
-	params *ec2.DetachInternetGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.DetachInternetGatewayOutput, error) {
-	return &ec2.DetachInternetGatewayOutput{}, nil
-}
-
-func (m *mockEC2Client) DeleteInternetGateway(ctx context.Context,
-	params *ec2.DeleteInternetGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.DeleteInternetGatewayOutput, error) {
-	return &ec2.DeleteInternetGatewayOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeInternetGateways(ctx context.Context,
-	params *ec2.DescribeInternetGatewaysInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error) {
-	return &ec2.DescribeInternetGatewaysOutput{}, nil
-}
-
-func (m *mockEC2Client) CreateRouteTable(ctx context.Context, params *ec2.CreateRouteTableInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error) {
-	return &ec2.CreateRouteTableOutput{
-		RouteTable: &types.RouteTable{RouteTableId: aws.String("rtb-123")},
-	}, nil
-}
-
-func (m *mockEC2Client) AssociateRouteTable(ctx context.Context, params *ec2.AssociateRouteTableInput,
-	optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error) {
-	return &ec2.AssociateRouteTableOutput{}, nil
-}
-
-func (m *mockEC2Client) CreateRoute(ctx context.Context, params *ec2.CreateRouteInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
-	return &ec2.CreateRouteOutput{}, nil
-}
-
-func (m *mockEC2Client) DeleteRouteTable(ctx context.Context, params *ec2.DeleteRouteTableInput,
-	optFns ...func(*ec2.Options)) (*ec2.DeleteRouteTableOutput, error) {
-	return &ec2.DeleteRouteTableOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeRouteTables(ctx context.Context, params *ec2.DescribeRouteTablesInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
-	return &ec2.DescribeRouteTablesOutput{}, nil
-}
-
-func (m *mockEC2Client) ReplaceRouteTableAssociation(ctx context.Context,
-	params *ec2.ReplaceRouteTableAssociationInput,
-	optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error) {
-	return &ec2.ReplaceRouteTableAssociationOutput{}, nil
-}
-
-func (m *mockEC2Client) CreateSecurityGroup(ctx context.Context,
-	params *ec2.CreateSecurityGroupInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
-	return &ec2.CreateSecurityGroupOutput{GroupId: aws.String("sg-123")}, nil
-}
-
-func (m *mockEC2Client) AuthorizeSecurityGroupIngress(ctx context.Context,
-	params *ec2.AuthorizeSecurityGroupIngressInput,
-	optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error) {
-	return &ec2.AuthorizeSecurityGroupIngressOutput{}, nil
-}
-
-func (m *mockEC2Client) DeleteSecurityGroup(ctx context.Context,
-	params *ec2.DeleteSecurityGroupInput,
-	optFns ...func(*ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error) {
-	return &ec2.DeleteSecurityGroupOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeSecurityGroups(ctx context.Context,
-	params *ec2.DescribeSecurityGroupsInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
-	return &ec2.DescribeSecurityGroupsOutput{}, nil
-}
-
-func (m *mockEC2Client) RevokeSecurityGroupIngress(ctx context.Context,
-	params *ec2.RevokeSecurityGroupIngressInput,
-	optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error) {
-	return &ec2.RevokeSecurityGroupIngressOutput{}, nil
-}
-
-func (m *mockEC2Client) RevokeSecurityGroupEgress(ctx context.Context,
-	params *ec2.RevokeSecurityGroupEgressInput,
-	optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupEgressOutput, error) {
-	return &ec2.RevokeSecurityGroupEgressOutput{}, nil
-}
-
-func (m *mockEC2Client) RunInstances(ctx context.Context, params *ec2.RunInstancesInput,
-	optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
-	m.runInstancesCalls = append(m.runInstancesCalls, *params)
-	if m.runInstancesErr != nil {
-		return nil, m.runInstancesErr
-	}
-	if m.runInstancesOutput != nil {
-		return m.runInstancesOutput, nil
-	}
-	return &ec2.RunInstancesOutput{
-		Instances: []types.Instance{
-			{
-				InstanceId: aws.String("i-123"),
-				NetworkInterfaces: []types.InstanceNetworkInterface{
-					{NetworkInterfaceId: aws.String("eni-123")},
-				},
-			},
-		},
-	}, nil
-}
-
-func (m *mockEC2Client) TerminateInstances(ctx context.Context, params *ec2.TerminateInstancesInput,
-	optFns ...func(*ec2.Options)) (*ec2.TerminateInstancesOutput, error) {
-	return &ec2.TerminateInstancesOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeInstances(ctx context.Context, params *ec2.DescribeInstancesInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
-	m.describeInstancesCalls = append(m.describeInstancesCalls, *params)
-	if m.describeInstancesErr != nil {
-		return nil, m.describeInstancesErr
-	}
-	if m.describeInstancesOutput != nil {
-		return m.describeInstancesOutput, nil
-	}
-	return &ec2.DescribeInstancesOutput{
-		Reservations: []types.Reservation{
-			{
-				Instances: []types.Instance{
-					{
-						InstanceId:      aws.String("i-123"),
-						PublicDnsName:   aws.String("ec2-1-2-3-4.compute.amazonaws.com"),
-						PublicIpAddress: aws.String("1.2.3.4"),
-						State: &types.InstanceState{
-							Name: types.InstanceStateNameRunning,
-						},
-						NetworkInterfaces: []types.InstanceNetworkInterface{
-							{NetworkInterfaceId: aws.String("eni-123")},
-						},
-					},
-				},
-			},
-		},
-	}, nil
-}
-
-func (m *mockEC2Client) DescribeInstanceTypes(ctx context.Context,
-	params *ec2.DescribeInstanceTypesInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-	return &ec2.DescribeInstanceTypesOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeImages(ctx context.Context, params *ec2.DescribeImagesInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-	return &ec2.DescribeImagesOutput{
-		Images: []types.Image{
-			{ImageId: aws.String("ami-123"), CreationDate: aws.String("2024-01-01T00:00:00Z")},
-		},
-	}, nil
-}
-
-func (m *mockEC2Client) DescribeNetworkInterfaces(ctx context.Context,
-	params *ec2.DescribeNetworkInterfacesInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
-	return &ec2.DescribeNetworkInterfacesOutput{}, nil
-}
-
-func (m *mockEC2Client) ModifyNetworkInterfaceAttribute(ctx context.Context,
-	params *ec2.ModifyNetworkInterfaceAttributeInput,
-	optFns ...func(*ec2.Options)) (*ec2.ModifyNetworkInterfaceAttributeOutput, error) {
-	m.modifyNetworkInterfaceAttributeCalls = append(m.modifyNetworkInterfaceAttributeCalls, *params)
-	if m.modifyNetworkInterfaceAttributeErr != nil {
-		return nil, m.modifyNetworkInterfaceAttributeErr
-	}
-	return &ec2.ModifyNetworkInterfaceAttributeOutput{}, nil
-}
-
-func (m *mockEC2Client) CreateTags(ctx context.Context, params *ec2.CreateTagsInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error) {
-	m.createTagsCalls = append(m.createTagsCalls, *params)
-	if m.createTagsErr != nil {
-		return nil, m.createTagsErr
-	}
-	return &ec2.CreateTagsOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeTags(ctx context.Context, params *ec2.DescribeTagsInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error) {
-	return &ec2.DescribeTagsOutput{}, nil
-}
-
-func (m *mockEC2Client) AllocateAddress(ctx context.Context, params *ec2.AllocateAddressInput,
-	optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error) {
-	return &ec2.AllocateAddressOutput{AllocationId: aws.String("eipalloc-123")}, nil
-}
-
-func (m *mockEC2Client) ReleaseAddress(ctx context.Context, params *ec2.ReleaseAddressInput,
-	optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
-	return &ec2.ReleaseAddressOutput{}, nil
-}
-
-func (m *mockEC2Client) CreateNatGateway(ctx context.Context, params *ec2.CreateNatGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
-	return &ec2.CreateNatGatewayOutput{
-		NatGateway: &types.NatGateway{NatGatewayId: aws.String("nat-123")},
-	}, nil
-}
-
-func (m *mockEC2Client) DeleteNatGateway(ctx context.Context, params *ec2.DeleteNatGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.DeleteNatGatewayOutput, error) {
-	return &ec2.DeleteNatGatewayOutput{}, nil
-}
-
-func (m *mockEC2Client) DescribeNatGateways(ctx context.Context, params *ec2.DescribeNatGatewaysInput,
-	optFns ...func(*ec2.Options)) (*ec2.DescribeNatGatewaysOutput, error) {
-	// Return the NAT GW as available so the wait loop in createNATGateway exits immediately.
-	natGWID := "nat-123"
-	if len(params.NatGatewayIds) > 0 {
-		natGWID = params.NatGatewayIds[0]
-	}
-	return &ec2.DescribeNatGatewaysOutput{
-		NatGateways: []types.NatGateway{
-			{NatGatewayId: aws.String(natGWID), State: types.NatGatewayStateAvailable},
-		},
-	}, nil
-}
-
-func (m *mockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput,
-	optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error) {
-	return &ec2.ModifySubnetAttributeOutput{}, nil
-}
 
 // mockLogger creates a logger for testing.
 func mockLogger() *logger.FunLogger {
@@ -349,13 +45,27 @@ func mockLogger() *logger.FunLogger {
 	return log
 }
 
+// onlyID returns the sole key of a one-element store map, failing the test
+// otherwise. It cross-checks that the provider stored the fake-generated ID of
+// the single resource it created (IDs are dynamic, unlike the old canned mock).
+func onlyID[V any](t *testing.T, m map[string]V, kind string) string {
+	t.Helper()
+	if len(m) != 1 {
+		t.Fatalf("expected exactly 1 %s in store, got %d", kind, len(m))
+	}
+	for id := range m {
+		return id
+	}
+	return ""
+}
+
 func TestCreateEC2Instance_DisablesSourceDestCheck(t *testing.T) {
-	mock := &mockEC2Client{}
-	log := mockLogger()
+	f := awsfake.New()
+	seedTestImage(f, "ami-123")
 
 	provider := &Provider{
-		ec2:   mock,
-		log:   log,
+		ec2:   f.EC2,
+		log:   mockLogger(),
 		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
 			Spec: v1alpha1.EnvironmentSpec{
@@ -386,15 +96,17 @@ func TestCreateEC2Instance_DisablesSourceDestCheck(t *testing.T) {
 	}
 
 	// Verify ModifyNetworkInterfaceAttribute was called
-	if len(mock.modifyNetworkInterfaceAttributeCalls) == 0 {
+	modCalls := f.Store.Inputs("ModifyNetworkInterfaceAttribute")
+	if len(modCalls) == 0 {
 		t.Fatal("ModifyNetworkInterfaceAttribute was not called - Source/Dest Check not disabled")
 	}
 
-	call := mock.modifyNetworkInterfaceAttributeCalls[0]
+	call := modCalls[0].(*ec2.ModifyNetworkInterfaceAttributeInput)
 
-	// Verify the network interface ID
-	if call.NetworkInterfaceId == nil || *call.NetworkInterfaceId != "eni-123" {
-		t.Errorf("Expected NetworkInterfaceId 'eni-123', got %v", call.NetworkInterfaceId)
+	// Verify it targets the instance's network interface (the one the fake created)
+	eniID := onlyID(t, f.Store.NetworkInterfaces, "network interface")
+	if call.NetworkInterfaceId == nil || *call.NetworkInterfaceId != eniID {
+		t.Errorf("Expected NetworkInterfaceId %q, got %v", eniID, aws.ToString(call.NetworkInterfaceId))
 	}
 
 	// Verify SourceDestCheck is set to false
@@ -408,14 +120,13 @@ func TestCreateEC2Instance_DisablesSourceDestCheck(t *testing.T) {
 
 func TestCreateEC2Instance_SourceDestCheckError(t *testing.T) {
 	expectedErr := errors.New("modify network interface failed")
-	mock := &mockEC2Client{
-		modifyNetworkInterfaceAttributeErr: expectedErr,
-	}
-	log := mockLogger()
+	f := awsfake.New()
+	seedTestImage(f, "ami-123")
+	f.Store.FailNext("ModifyNetworkInterfaceAttribute", expectedErr)
 
 	provider := &Provider{
-		ec2:   mock,
-		log:   log,
+		ec2:   f.EC2,
+		log:   mockLogger(),
 		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
 			Spec: v1alpha1.EnvironmentSpec{
@@ -451,193 +162,10 @@ func TestCreateEC2Instance_SourceDestCheckError(t *testing.T) {
 	}
 }
 
-// Extended mockEC2Client with call tracking and error injection
-type extendedMockEC2Client struct {
-	mockEC2Client
-
-	// Track calls
-	createVpcCalls              []ec2.CreateVpcInput
-	modifyVpcAttributeCalls     []ec2.ModifyVpcAttributeInput
-	createSubnetCalls           []ec2.CreateSubnetInput
-	createInternetGatewayCalls  []ec2.CreateInternetGatewayInput
-	attachInternetGatewayCalls  []ec2.AttachInternetGatewayInput
-	createRouteTableCalls       []ec2.CreateRouteTableInput
-	associateRouteTableCalls    []ec2.AssociateRouteTableInput
-	createRouteCalls            []ec2.CreateRouteInput
-	createSecurityGroupCalls    []ec2.CreateSecurityGroupInput
-	authorizeSecurityGroupCalls []ec2.AuthorizeSecurityGroupIngressInput
-
-	allocateAddressCalls  []ec2.AllocateAddressInput
-	releaseAddressCalls   []ec2.ReleaseAddressInput
-	createNatGatewayCalls []ec2.CreateNatGatewayInput
-	modifySubnetAttrCalls []ec2.ModifySubnetAttributeInput
-
-	// Error injection
-	createVpcErr              error
-	modifyVpcAttributeErr     error
-	createSubnetErr           error
-	createInternetGatewayErr  error
-	attachInternetGatewayErr  error
-	createRouteTableErr       error
-	associateRouteTableErr    error
-	createRouteErr            error
-	createSecurityGroupErr    error
-	authorizeSecurityGroupErr error
-	allocateAddressErr        error
-	releaseAddressErr         error
-	createNatGatewayErr       error
-	modifySubnetAttrErr       error
-}
-
-func (m *extendedMockEC2Client) CreateVpc(ctx context.Context, params *ec2.CreateVpcInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
-	m.createVpcCalls = append(m.createVpcCalls, *params)
-	if m.createVpcErr != nil {
-		return nil, m.createVpcErr
-	}
-	return &ec2.CreateVpcOutput{
-		Vpc: &types.Vpc{VpcId: aws.String("vpc-test-123")},
-	}, nil
-}
-
-func (m *extendedMockEC2Client) ModifyVpcAttribute(ctx context.Context, params *ec2.ModifyVpcAttributeInput,
-	optFns ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error) {
-	m.modifyVpcAttributeCalls = append(m.modifyVpcAttributeCalls, *params)
-	if m.modifyVpcAttributeErr != nil {
-		return nil, m.modifyVpcAttributeErr
-	}
-	return &ec2.ModifyVpcAttributeOutput{}, nil
-}
-
-func (m *extendedMockEC2Client) CreateSubnet(ctx context.Context, params *ec2.CreateSubnetInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateSubnetOutput, error) {
-	m.createSubnetCalls = append(m.createSubnetCalls, *params)
-	if m.createSubnetErr != nil {
-		return nil, m.createSubnetErr
-	}
-	return &ec2.CreateSubnetOutput{
-		Subnet: &types.Subnet{SubnetId: aws.String("subnet-test-123")},
-	}, nil
-}
-
-func (m *extendedMockEC2Client) CreateInternetGateway(ctx context.Context,
-	params *ec2.CreateInternetGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateInternetGatewayOutput, error) {
-	m.createInternetGatewayCalls = append(m.createInternetGatewayCalls, *params)
-	if m.createInternetGatewayErr != nil {
-		return nil, m.createInternetGatewayErr
-	}
-	return &ec2.CreateInternetGatewayOutput{
-		InternetGateway: &types.InternetGateway{
-			InternetGatewayId: aws.String("igw-test-123"),
-			Attachments: []types.InternetGatewayAttachment{
-				{VpcId: aws.String("vpc-test-123")},
-			},
-		},
-	}, nil
-}
-
-func (m *extendedMockEC2Client) AttachInternetGateway(ctx context.Context,
-	params *ec2.AttachInternetGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.AttachInternetGatewayOutput, error) {
-	m.attachInternetGatewayCalls = append(m.attachInternetGatewayCalls, *params)
-	if m.attachInternetGatewayErr != nil {
-		return nil, m.attachInternetGatewayErr
-	}
-	return &ec2.AttachInternetGatewayOutput{}, nil
-}
-
-func (m *extendedMockEC2Client) CreateRouteTable(ctx context.Context, params *ec2.CreateRouteTableInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error) {
-	m.createRouteTableCalls = append(m.createRouteTableCalls, *params)
-	if m.createRouteTableErr != nil {
-		return nil, m.createRouteTableErr
-	}
-	return &ec2.CreateRouteTableOutput{
-		RouteTable: &types.RouteTable{RouteTableId: aws.String("rtb-test-123")},
-	}, nil
-}
-
-func (m *extendedMockEC2Client) AssociateRouteTable(ctx context.Context, params *ec2.AssociateRouteTableInput,
-	optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error) {
-	m.associateRouteTableCalls = append(m.associateRouteTableCalls, *params)
-	if m.associateRouteTableErr != nil {
-		return nil, m.associateRouteTableErr
-	}
-	return &ec2.AssociateRouteTableOutput{}, nil
-}
-
-func (m *extendedMockEC2Client) CreateRoute(ctx context.Context, params *ec2.CreateRouteInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
-	m.createRouteCalls = append(m.createRouteCalls, *params)
-	if m.createRouteErr != nil {
-		return nil, m.createRouteErr
-	}
-	return &ec2.CreateRouteOutput{}, nil
-}
-
-func (m *extendedMockEC2Client) CreateSecurityGroup(ctx context.Context,
-	params *ec2.CreateSecurityGroupInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
-	m.createSecurityGroupCalls = append(m.createSecurityGroupCalls, *params)
-	if m.createSecurityGroupErr != nil {
-		return nil, m.createSecurityGroupErr
-	}
-	return &ec2.CreateSecurityGroupOutput{GroupId: aws.String("sg-test-123")}, nil
-}
-
-func (m *extendedMockEC2Client) AuthorizeSecurityGroupIngress(ctx context.Context,
-	params *ec2.AuthorizeSecurityGroupIngressInput,
-	optFns ...func(*ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error) {
-	m.authorizeSecurityGroupCalls = append(m.authorizeSecurityGroupCalls, *params)
-	if m.authorizeSecurityGroupErr != nil {
-		return nil, m.authorizeSecurityGroupErr
-	}
-	return &ec2.AuthorizeSecurityGroupIngressOutput{}, nil
-}
-
-func (m *extendedMockEC2Client) AllocateAddress(ctx context.Context, params *ec2.AllocateAddressInput,
-	optFns ...func(*ec2.Options)) (*ec2.AllocateAddressOutput, error) {
-	m.allocateAddressCalls = append(m.allocateAddressCalls, *params)
-	if m.allocateAddressErr != nil {
-		return nil, m.allocateAddressErr
-	}
-	return &ec2.AllocateAddressOutput{AllocationId: aws.String("eipalloc-test-123")}, nil
-}
-
-func (m *extendedMockEC2Client) ReleaseAddress(ctx context.Context, params *ec2.ReleaseAddressInput,
-	optFns ...func(*ec2.Options)) (*ec2.ReleaseAddressOutput, error) {
-	m.releaseAddressCalls = append(m.releaseAddressCalls, *params)
-	if m.releaseAddressErr != nil {
-		return nil, m.releaseAddressErr
-	}
-	return &ec2.ReleaseAddressOutput{}, nil
-}
-
-func (m *extendedMockEC2Client) CreateNatGateway(ctx context.Context, params *ec2.CreateNatGatewayInput,
-	optFns ...func(*ec2.Options)) (*ec2.CreateNatGatewayOutput, error) {
-	m.createNatGatewayCalls = append(m.createNatGatewayCalls, *params)
-	if m.createNatGatewayErr != nil {
-		return nil, m.createNatGatewayErr
-	}
-	return &ec2.CreateNatGatewayOutput{
-		NatGateway: &types.NatGateway{NatGatewayId: aws.String("nat-test-123")},
-	}, nil
-}
-
-func (m *extendedMockEC2Client) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifySubnetAttributeInput,
-	optFns ...func(*ec2.Options)) (*ec2.ModifySubnetAttributeOutput, error) {
-	m.modifySubnetAttrCalls = append(m.modifySubnetAttrCalls, *params)
-	if m.modifySubnetAttrErr != nil {
-		return nil, m.modifySubnetAttrErr
-	}
-	return &ec2.ModifySubnetAttributeOutput{}, nil
-}
-
 // Helper to create a test provider
-func createTestProvider(mock internalaws.EC2Client) *Provider {
+func createTestProvider(client internalaws.EC2Client) *Provider {
 	return &Provider{
-		ec2:   mock,
+		ec2:   client,
 		log:   mockLogger(),
 		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
@@ -657,8 +185,8 @@ func createTestProvider(mock internalaws.EC2Client) *Provider {
 }
 
 func TestCreateVPC_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{}
 
 	err := provider.createVPC(cache)
@@ -666,24 +194,23 @@ func TestCreateVPC_Success(t *testing.T) {
 		t.Fatalf("createVPC failed: %v", err)
 	}
 
-	// Verify VPC was created
-	if len(mock.createVpcCalls) == 0 {
+	// Verify VPC was created and its ID stored in the cache.
+	if f.Store.CallsTo("CreateVpc") == 0 {
 		t.Fatal("CreateVpc was not called")
 	}
-
-	// Verify VPC ID was set in cache
-	if cache.Vpcid != "vpc-test-123" {
-		t.Errorf("Expected Vpcid 'vpc-test-123', got %q", cache.Vpcid)
+	vpcID := onlyID(t, f.Store.Vpcs, "VPC")
+	if cache.Vpcid != vpcID {
+		t.Errorf("Expected Vpcid %q, got %q", vpcID, cache.Vpcid)
 	}
 
-	// Verify ModifyVpcAttribute was called
-	if len(mock.modifyVpcAttributeCalls) == 0 {
+	// Verify ModifyVpcAttribute was called to enable DNS hostnames on the VPC.
+	modCalls := f.Store.Inputs("ModifyVpcAttribute")
+	if len(modCalls) == 0 {
 		t.Fatal("ModifyVpcAttribute was not called")
 	}
-
-	modCall := mock.modifyVpcAttributeCalls[0]
-	if modCall.VpcId == nil || *modCall.VpcId != "vpc-test-123" {
-		t.Errorf("Expected VpcId 'vpc-test-123', got %v", modCall.VpcId)
+	modCall := modCalls[0].(*ec2.ModifyVpcAttributeInput)
+	if aws.ToString(modCall.VpcId) != vpcID {
+		t.Errorf("Expected VpcId %q, got %v", vpcID, modCall.VpcId)
 	}
 	if modCall.EnableDnsHostnames == nil || modCall.EnableDnsHostnames.Value == nil || !*modCall.EnableDnsHostnames.Value {
 		t.Error("Expected EnableDnsHostnames to be true")
@@ -692,10 +219,9 @@ func TestCreateVPC_Success(t *testing.T) {
 
 func TestCreateVPC_CreateVpcError(t *testing.T) {
 	expectedErr := errors.New("VPC creation failed")
-	mock := &extendedMockEC2Client{
-		createVpcErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateVpc", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{}
 
 	err := provider.createVPC(cache)
@@ -710,10 +236,9 @@ func TestCreateVPC_CreateVpcError(t *testing.T) {
 
 func TestCreateVPC_ModifyVpcAttributeError(t *testing.T) {
 	expectedErr := errors.New("modify VPC attribute failed")
-	mock := &extendedMockEC2Client{
-		modifyVpcAttributeErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("ModifyVpcAttribute", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{}
 
 	err := provider.createVPC(cache)
@@ -727,8 +252,8 @@ func TestCreateVPC_ModifyVpcAttributeError(t *testing.T) {
 }
 
 func TestCreateSubnet_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -738,28 +263,28 @@ func TestCreateSubnet_Success(t *testing.T) {
 		t.Fatalf("createSubnet failed: %v", err)
 	}
 
-	// Verify subnet was created
-	if len(mock.createSubnetCalls) == 0 {
+	// Verify subnet was created with the given VPC ID.
+	subnetCalls := f.Store.Inputs("CreateSubnet")
+	if len(subnetCalls) == 0 {
 		t.Fatal("CreateSubnet was not called")
 	}
-
-	call := mock.createSubnetCalls[0]
-	if call.VpcId == nil || *call.VpcId != "vpc-test-123" {
+	call := subnetCalls[0].(*ec2.CreateSubnetInput)
+	if aws.ToString(call.VpcId) != "vpc-test-123" {
 		t.Errorf("Expected VpcId 'vpc-test-123', got %v", call.VpcId)
 	}
 
 	// Verify subnet ID was set in cache
-	if cache.Subnetid != "subnet-test-123" {
-		t.Errorf("Expected Subnetid 'subnet-test-123', got %q", cache.Subnetid)
+	subnetID := onlyID(t, f.Store.Subnets, "subnet")
+	if cache.Subnetid != subnetID {
+		t.Errorf("Expected Subnetid %q, got %q", subnetID, cache.Subnetid)
 	}
 }
 
 func TestCreateSubnet_Error(t *testing.T) {
 	expectedErr := errors.New("subnet creation failed")
-	mock := &extendedMockEC2Client{
-		createSubnetErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateSubnet", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -775,8 +300,8 @@ func TestCreateSubnet_Error(t *testing.T) {
 }
 
 func TestCreateInternetGateway_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -786,36 +311,34 @@ func TestCreateInternetGateway_Success(t *testing.T) {
 		t.Fatalf("createInternetGateway failed: %v", err)
 	}
 
-	// Verify Internet Gateway was created
-	if len(mock.createInternetGatewayCalls) == 0 {
+	// Verify Internet Gateway was created and its ID stored in the cache.
+	if f.Store.CallsTo("CreateInternetGateway") == 0 {
 		t.Fatal("CreateInternetGateway was not called")
 	}
+	igwID := onlyID(t, f.Store.InternetGateways, "internet gateway")
+	if cache.InternetGwid != igwID {
+		t.Errorf("Expected InternetGwid %q, got %q", igwID, cache.InternetGwid)
+	}
 
-	// Verify Internet Gateway was attached
-	if len(mock.attachInternetGatewayCalls) == 0 {
+	// Verify Internet Gateway was attached to the VPC using its created ID.
+	attachCalls := f.Store.Inputs("AttachInternetGateway")
+	if len(attachCalls) == 0 {
 		t.Fatal("AttachInternetGateway was not called")
 	}
-
-	attachCall := mock.attachInternetGatewayCalls[0]
-	if attachCall.VpcId == nil || *attachCall.VpcId != "vpc-test-123" {
+	attachCall := attachCalls[0].(*ec2.AttachInternetGatewayInput)
+	if aws.ToString(attachCall.VpcId) != "vpc-test-123" {
 		t.Errorf("Expected VpcId 'vpc-test-123', got %v", attachCall.VpcId)
 	}
-	if attachCall.InternetGatewayId == nil || *attachCall.InternetGatewayId != "igw-test-123" {
-		t.Errorf("Expected InternetGatewayId 'igw-test-123', got %v", attachCall.InternetGatewayId)
-	}
-
-	// Verify Internet Gateway ID was set in cache
-	if cache.InternetGwid != "igw-test-123" {
-		t.Errorf("Expected InternetGwid 'igw-test-123', got %q", cache.InternetGwid)
+	if aws.ToString(attachCall.InternetGatewayId) != igwID {
+		t.Errorf("Expected InternetGatewayId %q, got %v", igwID, attachCall.InternetGatewayId)
 	}
 }
 
 func TestCreateInternetGateway_CreateError(t *testing.T) {
 	expectedErr := errors.New("Internet Gateway creation failed")
-	mock := &extendedMockEC2Client{
-		createInternetGatewayErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateInternetGateway", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -832,10 +355,9 @@ func TestCreateInternetGateway_CreateError(t *testing.T) {
 
 func TestCreateInternetGateway_AttachError(t *testing.T) {
 	expectedErr := errors.New("attach Internet Gateway failed")
-	mock := &extendedMockEC2Client{
-		attachInternetGatewayErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("AttachInternetGateway", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -851,8 +373,8 @@ func TestCreateInternetGateway_AttachError(t *testing.T) {
 }
 
 func TestCreateRouteTable_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:        "vpc-test-123",
 		Subnetid:     "subnet-test-123",
@@ -864,51 +386,51 @@ func TestCreateRouteTable_Success(t *testing.T) {
 		t.Fatalf("createRouteTable failed: %v", err)
 	}
 
-	// Verify Route Table was created
-	if len(mock.createRouteTableCalls) == 0 {
+	// Verify Route Table was created with the given VPC ID.
+	createCalls := f.Store.Inputs("CreateRouteTable")
+	if len(createCalls) == 0 {
 		t.Fatal("CreateRouteTable was not called")
 	}
-
-	createCall := mock.createRouteTableCalls[0]
-	if createCall.VpcId == nil || *createCall.VpcId != "vpc-test-123" {
+	createCall := createCalls[0].(*ec2.CreateRouteTableInput)
+	if aws.ToString(createCall.VpcId) != "vpc-test-123" {
 		t.Errorf("Expected VpcId 'vpc-test-123', got %v", createCall.VpcId)
 	}
 
 	// Verify Route Table was associated with subnet
-	if len(mock.associateRouteTableCalls) == 0 {
+	assocCalls := f.Store.Inputs("AssociateRouteTable")
+	if len(assocCalls) == 0 {
 		t.Fatal("AssociateRouteTable was not called")
 	}
-
-	assocCall := mock.associateRouteTableCalls[0]
-	if assocCall.SubnetId == nil || *assocCall.SubnetId != "subnet-test-123" {
+	assocCall := assocCalls[0].(*ec2.AssociateRouteTableInput)
+	if aws.ToString(assocCall.SubnetId) != "subnet-test-123" {
 		t.Errorf("Expected SubnetId 'subnet-test-123', got %v", assocCall.SubnetId)
 	}
 
 	// Verify route was created
-	if len(mock.createRouteCalls) == 0 {
+	routeCalls := f.Store.Inputs("CreateRoute")
+	if len(routeCalls) == 0 {
 		t.Fatal("CreateRoute was not called")
 	}
-
-	routeCall := mock.createRouteCalls[0]
-	if routeCall.DestinationCidrBlock == nil || *routeCall.DestinationCidrBlock != "0.0.0.0/0" {
+	routeCall := routeCalls[0].(*ec2.CreateRouteInput)
+	if aws.ToString(routeCall.DestinationCidrBlock) != "0.0.0.0/0" {
 		t.Errorf("Expected DestinationCidrBlock '0.0.0.0/0', got %v", routeCall.DestinationCidrBlock)
 	}
-	if routeCall.GatewayId == nil || *routeCall.GatewayId != "igw-test-123" {
+	if aws.ToString(routeCall.GatewayId) != "igw-test-123" {
 		t.Errorf("Expected GatewayId 'igw-test-123', got %v", routeCall.GatewayId)
 	}
 
 	// Verify Route Table ID was set in cache
-	if cache.RouteTable != "rtb-test-123" {
-		t.Errorf("Expected RouteTable 'rtb-test-123', got %q", cache.RouteTable)
+	rtID := onlyID(t, f.Store.RouteTables, "route table")
+	if cache.RouteTable != rtID {
+		t.Errorf("Expected RouteTable %q, got %q", rtID, cache.RouteTable)
 	}
 }
 
 func TestCreateRouteTable_CreateError(t *testing.T) {
 	expectedErr := errors.New("route table creation failed")
-	mock := &extendedMockEC2Client{
-		createRouteTableErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateRouteTable", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:        "vpc-test-123",
 		Subnetid:     "subnet-test-123",
@@ -927,10 +449,9 @@ func TestCreateRouteTable_CreateError(t *testing.T) {
 
 func TestCreateRouteTable_AssociateError(t *testing.T) {
 	expectedErr := errors.New("associate route table failed")
-	mock := &extendedMockEC2Client{
-		associateRouteTableErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("AssociateRouteTable", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:        "vpc-test-123",
 		Subnetid:     "subnet-test-123",
@@ -949,10 +470,9 @@ func TestCreateRouteTable_AssociateError(t *testing.T) {
 
 func TestCreateRouteTable_CreateRouteError(t *testing.T) {
 	expectedErr := errors.New("create route failed")
-	mock := &extendedMockEC2Client{
-		createRouteErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateRoute", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:        "vpc-test-123",
 		Subnetid:     "subnet-test-123",
@@ -971,8 +491,8 @@ func TestCreateRouteTable_CreateRouteError(t *testing.T) {
 
 func TestCreateSecurityGroup_Success(t *testing.T) {
 	t.Skip("Skipping: requires network access for GetIPAddress()")
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -983,41 +503,41 @@ func TestCreateSecurityGroup_Success(t *testing.T) {
 	}
 
 	// Verify Security Group was created
-	if len(mock.createSecurityGroupCalls) == 0 {
+	createCalls := f.Store.Inputs("CreateSecurityGroup")
+	if len(createCalls) == 0 {
 		t.Fatal("CreateSecurityGroup was not called")
 	}
-
-	createCall := mock.createSecurityGroupCalls[0]
-	if createCall.VpcId == nil || *createCall.VpcId != "vpc-test-123" {
+	createCall := createCalls[0].(*ec2.CreateSecurityGroupInput)
+	if aws.ToString(createCall.VpcId) != "vpc-test-123" {
 		t.Errorf("Expected VpcId 'vpc-test-123', got %v", createCall.VpcId)
 	}
-	if createCall.GroupName == nil || *createCall.GroupName != "test-env" {
+	if aws.ToString(createCall.GroupName) != "test-env" {
 		t.Errorf("Expected GroupName 'test-env', got %v", createCall.GroupName)
 	}
 
-	// Verify Security Group ingress was authorized
-	if len(mock.authorizeSecurityGroupCalls) == 0 {
+	// Verify Security Group ingress was authorized against the created SG.
+	sgID := onlyID(t, f.Store.SecurityGroups, "security group")
+	authCalls := f.Store.Inputs("AuthorizeSecurityGroupIngress")
+	if len(authCalls) == 0 {
 		t.Fatal("AuthorizeSecurityGroupIngress was not called")
 	}
-
-	authCall := mock.authorizeSecurityGroupCalls[0]
-	if authCall.GroupId == nil || *authCall.GroupId != "sg-test-123" {
-		t.Errorf("Expected GroupId 'sg-test-123', got %v", authCall.GroupId)
+	authCall := authCalls[0].(*ec2.AuthorizeSecurityGroupIngressInput)
+	if aws.ToString(authCall.GroupId) != sgID {
+		t.Errorf("Expected GroupId %q, got %v", sgID, authCall.GroupId)
 	}
 
 	// Verify Security Group ID was set in cache
-	if cache.SecurityGroupid != "sg-test-123" {
-		t.Errorf("Expected SecurityGroupid 'sg-test-123', got %q", cache.SecurityGroupid)
+	if cache.SecurityGroupid != sgID {
+		t.Errorf("Expected SecurityGroupid %q, got %q", sgID, cache.SecurityGroupid)
 	}
 }
 
 func TestCreateSecurityGroup_CreateError(t *testing.T) {
 	t.Skip("Skipping: requires network access for GetIPAddress()")
 	expectedErr := errors.New("security group creation failed")
-	mock := &extendedMockEC2Client{
-		createSecurityGroupErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateSecurityGroup", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -1035,10 +555,9 @@ func TestCreateSecurityGroup_CreateError(t *testing.T) {
 func TestCreateSecurityGroup_AuthorizeError(t *testing.T) {
 	t.Skip("Skipping: requires network access for GetIPAddress()")
 	expectedErr := errors.New("authorize security group failed")
-	mock := &extendedMockEC2Client{
-		authorizeSecurityGroupErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("AuthorizeSecurityGroupIngress", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -1054,9 +573,9 @@ func TestCreateSecurityGroup_AuthorizeError(t *testing.T) {
 }
 
 func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
-	mock := &extendedMockEC2Client{}
+	f := awsfake.New()
 	provider := &Provider{
-		ec2:   mock,
+		ec2:   f.EC2,
 		log:   mockLogger(),
 		sleep: noopSleep,
 		Environment: &v1alpha1.Environment{
@@ -1068,7 +587,10 @@ func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
 					KeyName: "test-key",
 				},
 				Instance: v1alpha1.Instance{
-					Type:   "g5g.xlarge",
+					// A type absent from the region's instance-type catalog
+					// (the fake seeds only the types the test configs use), so
+					// checkInstanceTypes must reject it before any resource is created.
+					Type:   "p4d.24xlarge",
 					Region: "us-west-1",
 					Image: v1alpha1.Image{
 						ImageId: aws.String("ami-123"),
@@ -1095,14 +617,14 @@ func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
 	}
 
 	// Verify no VPC was created (fail-fast, no leaked resources)
-	if len(mock.createVpcCalls) != 0 {
+	if f.Store.CallsTo("CreateVpc") != 0 {
 		t.Error("VPC was created despite unsupported instance type — resources leaked")
 	}
 }
 
 func TestCreatePublicSubnet_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -1113,36 +635,36 @@ func TestCreatePublicSubnet_Success(t *testing.T) {
 	}
 
 	// Verify subnet was created with correct CIDR
-	if len(mock.createSubnetCalls) == 0 {
+	subnetCalls := f.Store.Inputs("CreateSubnet")
+	if len(subnetCalls) == 0 {
 		t.Fatal("CreateSubnet was not called")
 	}
-
-	call := mock.createSubnetCalls[0]
-	if call.CidrBlock == nil || *call.CidrBlock != "10.0.1.0/24" {
+	call := subnetCalls[0].(*ec2.CreateSubnetInput)
+	if aws.ToString(call.CidrBlock) != "10.0.1.0/24" {
 		t.Errorf("Expected CidrBlock '10.0.1.0/24', got %v", call.CidrBlock)
 	}
-	if call.VpcId == nil || *call.VpcId != "vpc-test-123" {
+	if aws.ToString(call.VpcId) != "vpc-test-123" {
 		t.Errorf("Expected VpcId 'vpc-test-123', got %v", call.VpcId)
 	}
 
 	// Verify public subnet ID was set in cache
-	if cache.PublicSubnetid != "subnet-test-123" {
-		t.Errorf("Expected PublicSubnetid 'subnet-test-123', got %q", cache.PublicSubnetid)
+	subnetID := onlyID(t, f.Store.Subnets, "subnet")
+	if cache.PublicSubnetid != subnetID {
+		t.Errorf("Expected PublicSubnetid %q, got %q", subnetID, cache.PublicSubnetid)
 	}
 
 	// ModifySubnetAttribute should NOT be called — NAT GW gets its public IP from the EIP,
 	// not from MapPublicIpOnLaunch. No instances are launched in the public subnet.
-	if len(mock.modifySubnetAttrCalls) != 0 {
+	if f.Store.CallsTo("ModifySubnetAttribute") != 0 {
 		t.Error("ModifySubnetAttribute should not be called on the public subnet")
 	}
 }
 
 func TestCreatePublicSubnet_Error(t *testing.T) {
 	expectedErr := errors.New("public subnet creation failed")
-	mock := &extendedMockEC2Client{
-		createSubnetErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateSubnet", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid: "vpc-test-123",
 	}
@@ -1158,8 +680,8 @@ func TestCreatePublicSubnet_Error(t *testing.T) {
 }
 
 func TestCreateNATGateway_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		PublicSubnetid: "subnet-pub-123",
 	}
@@ -1170,38 +692,39 @@ func TestCreateNATGateway_Success(t *testing.T) {
 	}
 
 	// Verify EIP was allocated
-	if len(mock.allocateAddressCalls) == 0 {
+	if f.Store.CallsTo("AllocateAddress") == 0 {
 		t.Fatal("AllocateAddress was not called")
 	}
+	eipID := onlyID(t, f.Store.Addresses, "elastic IP")
 
-	// Verify NAT Gateway was created in the public subnet
-	if len(mock.createNatGatewayCalls) == 0 {
+	// Verify NAT Gateway was created in the public subnet using the allocated EIP.
+	natCalls := f.Store.Inputs("CreateNatGateway")
+	if len(natCalls) == 0 {
 		t.Fatal("CreateNatGateway was not called")
 	}
-
-	natCall := mock.createNatGatewayCalls[0]
-	if natCall.SubnetId == nil || *natCall.SubnetId != "subnet-pub-123" {
+	natCall := natCalls[0].(*ec2.CreateNatGatewayInput)
+	if aws.ToString(natCall.SubnetId) != "subnet-pub-123" {
 		t.Errorf("Expected SubnetId 'subnet-pub-123', got %v", natCall.SubnetId)
 	}
-	if natCall.AllocationId == nil || *natCall.AllocationId != "eipalloc-test-123" {
-		t.Errorf("Expected AllocationId 'eipalloc-test-123', got %v", natCall.AllocationId)
+	if aws.ToString(natCall.AllocationId) != eipID {
+		t.Errorf("Expected AllocationId %q, got %v", eipID, natCall.AllocationId)
 	}
 
 	// Verify cache was updated
-	if cache.NatGatewayid != "nat-test-123" {
-		t.Errorf("Expected NatGatewayid 'nat-test-123', got %q", cache.NatGatewayid)
+	natID := onlyID(t, f.Store.NatGateways, "NAT gateway")
+	if cache.NatGatewayid != natID {
+		t.Errorf("Expected NatGatewayid %q, got %q", natID, cache.NatGatewayid)
 	}
-	if cache.EIPAllocationid != "eipalloc-test-123" {
-		t.Errorf("Expected EIPAllocationid 'eipalloc-test-123', got %q", cache.EIPAllocationid)
+	if cache.EIPAllocationid != eipID {
+		t.Errorf("Expected EIPAllocationid %q, got %q", eipID, cache.EIPAllocationid)
 	}
 }
 
 func TestCreateNATGateway_AllocateAddressError(t *testing.T) {
 	expectedErr := errors.New("allocate address failed")
-	mock := &extendedMockEC2Client{
-		allocateAddressErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("AllocateAddress", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		PublicSubnetid: "subnet-pub-123",
 	}
@@ -1218,10 +741,9 @@ func TestCreateNATGateway_AllocateAddressError(t *testing.T) {
 
 func TestCreateNATGateway_CreateNatGatewayError_CleansUpEIP(t *testing.T) {
 	expectedErr := errors.New("NAT gateway creation failed")
-	mock := &extendedMockEC2Client{
-		createNatGatewayErr: expectedErr,
-	}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	f.Store.FailNext("CreateNatGateway", expectedErr)
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		PublicSubnetid: "subnet-pub-123",
 	}
@@ -1235,20 +757,19 @@ func TestCreateNATGateway_CreateNatGatewayError_CleansUpEIP(t *testing.T) {
 		t.Errorf("Expected error to contain 'error creating NAT gateway', got: %v", err)
 	}
 
-	// D4: Verify EIP was released on NAT GW creation failure
-	if len(mock.releaseAddressCalls) == 0 {
+	// D4: the EIP allocated for the NAT gateway must be released on failure, so
+	// no address is left leaked in the store.
+	if f.Store.CallsTo("ReleaseAddress") == 0 {
 		t.Fatal("ReleaseAddress was not called after NAT gateway creation failure (D4 violated)")
 	}
-
-	releaseCall := mock.releaseAddressCalls[0]
-	if releaseCall.AllocationId == nil || *releaseCall.AllocationId != "eipalloc-test-123" {
-		t.Errorf("Expected AllocationId 'eipalloc-test-123' to be released, got %v", releaseCall.AllocationId)
+	if len(f.Store.Addresses) != 0 {
+		t.Errorf("EIP was not released after NAT gateway creation failure, %d address(es) leaked", len(f.Store.Addresses))
 	}
 }
 
 func TestCreatePublicRouteTable_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:          "vpc-test-123",
 		PublicSubnetid: "subnet-pub-123",
@@ -1261,37 +782,40 @@ func TestCreatePublicRouteTable_Success(t *testing.T) {
 	}
 
 	// Verify Route Table was created
-	if len(mock.createRouteTableCalls) == 0 {
+	if f.Store.CallsTo("CreateRouteTable") == 0 {
 		t.Fatal("CreateRouteTable was not called")
 	}
 
 	// Verify association with public subnet
-	if len(mock.associateRouteTableCalls) == 0 {
+	assocCalls := f.Store.Inputs("AssociateRouteTable")
+	if len(assocCalls) == 0 {
 		t.Fatal("AssociateRouteTable was not called")
 	}
-	assocCall := mock.associateRouteTableCalls[0]
-	if assocCall.SubnetId == nil || *assocCall.SubnetId != "subnet-pub-123" {
+	assocCall := assocCalls[0].(*ec2.AssociateRouteTableInput)
+	if aws.ToString(assocCall.SubnetId) != "subnet-pub-123" {
 		t.Errorf("Expected SubnetId 'subnet-pub-123', got %v", assocCall.SubnetId)
 	}
 
 	// Verify route points to IGW
-	if len(mock.createRouteCalls) == 0 {
+	routeCalls := f.Store.Inputs("CreateRoute")
+	if len(routeCalls) == 0 {
 		t.Fatal("CreateRoute was not called")
 	}
-	routeCall := mock.createRouteCalls[0]
-	if routeCall.GatewayId == nil || *routeCall.GatewayId != "igw-test-123" {
+	routeCall := routeCalls[0].(*ec2.CreateRouteInput)
+	if aws.ToString(routeCall.GatewayId) != "igw-test-123" {
 		t.Errorf("Expected GatewayId 'igw-test-123', got %v", routeCall.GatewayId)
 	}
 
 	// Verify cache was updated
-	if cache.PublicRouteTable != "rtb-test-123" {
-		t.Errorf("Expected PublicRouteTable 'rtb-test-123', got %q", cache.PublicRouteTable)
+	rtID := onlyID(t, f.Store.RouteTables, "route table")
+	if cache.PublicRouteTable != rtID {
+		t.Errorf("Expected PublicRouteTable %q, got %q", rtID, cache.PublicRouteTable)
 	}
 }
 
 func TestCreatePrivateRouteTable_Success(t *testing.T) {
-	mock := &extendedMockEC2Client{}
-	provider := createTestProvider(mock)
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
 	cache := &AWS{
 		Vpcid:        "vpc-test-123",
 		Subnetid:     "subnet-priv-123",
@@ -1304,25 +828,27 @@ func TestCreatePrivateRouteTable_Success(t *testing.T) {
 	}
 
 	// Verify Route Table was created
-	if len(mock.createRouteTableCalls) == 0 {
+	if f.Store.CallsTo("CreateRouteTable") == 0 {
 		t.Fatal("CreateRouteTable was not called")
 	}
 
 	// Verify association with private subnet
-	if len(mock.associateRouteTableCalls) == 0 {
+	assocCalls := f.Store.Inputs("AssociateRouteTable")
+	if len(assocCalls) == 0 {
 		t.Fatal("AssociateRouteTable was not called")
 	}
-	assocCall := mock.associateRouteTableCalls[0]
-	if assocCall.SubnetId == nil || *assocCall.SubnetId != "subnet-priv-123" {
+	assocCall := assocCalls[0].(*ec2.AssociateRouteTableInput)
+	if aws.ToString(assocCall.SubnetId) != "subnet-priv-123" {
 		t.Errorf("Expected SubnetId 'subnet-priv-123', got %v", assocCall.SubnetId)
 	}
 
 	// Verify route points to NAT GW (not IGW)
-	if len(mock.createRouteCalls) == 0 {
+	routeCalls := f.Store.Inputs("CreateRoute")
+	if len(routeCalls) == 0 {
 		t.Fatal("CreateRoute was not called")
 	}
-	routeCall := mock.createRouteCalls[0]
-	if routeCall.NatGatewayId == nil || *routeCall.NatGatewayId != "nat-test-123" {
+	routeCall := routeCalls[0].(*ec2.CreateRouteInput)
+	if aws.ToString(routeCall.NatGatewayId) != "nat-test-123" {
 		t.Errorf("Expected NatGatewayId 'nat-test-123', got %v", routeCall.NatGatewayId)
 	}
 	if routeCall.GatewayId != nil {
@@ -1330,8 +856,9 @@ func TestCreatePrivateRouteTable_Success(t *testing.T) {
 	}
 
 	// Verify cache was updated
-	if cache.RouteTable != "rtb-test-123" {
-		t.Errorf("Expected RouteTable 'rtb-test-123', got %q", cache.RouteTable)
+	rtID := onlyID(t, f.Store.RouteTables, "route table")
+	if cache.RouteTable != rtID {
+		t.Errorf("Expected RouteTable %q, got %q", rtID, cache.RouteTable)
 	}
 }
 

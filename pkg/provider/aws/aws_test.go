@@ -18,7 +18,6 @@ package aws_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/aws/awsfake"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 )
@@ -377,7 +377,7 @@ status:
 	Describe("Provider Creation", func() {
 		Context("with mock EC2 client", func() {
 			It("should create provider with mock client", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-env",
@@ -399,7 +399,7 @@ status:
 					},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(provider).NotTo(BeNil())
 				Expect(provider.Name()).To(Equal("aws"))
@@ -411,7 +411,7 @@ status:
 				_ = os.Setenv("AWS_REGION", "eu-west-1")
 				defer func() { _ = os.Setenv("AWS_REGION", origRegion) }()
 
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-env",
@@ -425,7 +425,7 @@ status:
 					},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(provider).NotTo(BeNil())
 			})
@@ -448,7 +448,7 @@ status:
 						_ = os.Unsetenv("GITHUB_RUN_ID")
 					}()
 
-					mockClient := aws.NewMockEC2Client()
+					fake := awsfake.New()
 					env := v1alpha1.Environment{
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-env",
@@ -463,7 +463,7 @@ status:
 					}
 
 					provider, err := aws.New(log, env, tmpFile,
-						aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+						aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(provider).NotTo(BeNil())
 				})
@@ -472,7 +472,7 @@ status:
 
 	Describe("DryRun", func() {
 		It("should return nil for dry run", func() {
-			mockClient := aws.NewMockEC2Client()
+			fake := awsfake.New()
 			env := v1alpha1.Environment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-env",
@@ -486,7 +486,7 @@ status:
 				},
 			}
 
-			provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+			provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -573,13 +573,13 @@ status:
 				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
 				Expect(err).NotTo(HaveOccurred())
 
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				conditions, err := provider.Status()
@@ -602,13 +602,13 @@ status:
 				err := os.WriteFile(tmpFile, []byte(cacheContent), 0600)
 				Expect(err).NotTo(HaveOccurred())
 
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				conditions, err := provider.Status()
@@ -617,13 +617,13 @@ status:
 			})
 
 			It("should return error when cache file doesn't exist", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, "/nonexistent/cache.yaml", aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				provider, err := aws.New(log, env, "/nonexistent/cache.yaml", aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				_, err = provider.Status()
@@ -634,13 +634,13 @@ status:
 				err := os.WriteFile(tmpFile, []byte("invalid: [yaml"), 0600)
 				Expect(err).NotTo(HaveOccurred())
 
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
 					Spec:       v1alpha1.EnvironmentSpec{Provider: v1alpha1.ProviderAWS},
 				}
 
-				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				provider, err := aws.New(log, env, tmpFile, aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				_, err = provider.Status()
@@ -777,21 +777,17 @@ spec:
 
 	Describe("Create workflow error handling", func() {
 		var (
-			mockClient *aws.MockEC2Client
-			provider   *aws.Provider
+			fake     *awsfake.Fake
+			provider *aws.Provider
 		)
 
 		BeforeEach(func() {
-			mockClient = aws.NewMockEC2Client()
+			fake = awsfake.New()
 		})
 
 		Context("VPC creation errors", func() {
 			It("should fail when CreateVpc returns error", func() {
-				mockClient.CreateVpcFunc = func(ctx context.Context,
-					params *ec2.CreateVpcInput,
-					optFns ...func(*ec2.Options)) (*ec2.CreateVpcOutput, error) {
-					return nil, fmt.Errorf("vpc creation failed")
-				}
+				fake.Store.FailNext("CreateVpc", fmt.Errorf("vpc creation failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -811,7 +807,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -820,11 +816,7 @@ spec:
 			})
 
 			It("should fail when ModifyVpcAttribute returns error", func() {
-				mockClient.ModifyVpcAttrFunc = func(ctx context.Context,
-					params *ec2.ModifyVpcAttributeInput,
-					optFns ...func(*ec2.Options)) (*ec2.ModifyVpcAttributeOutput, error) {
-					return nil, fmt.Errorf("modify vpc failed")
-				}
+				fake.Store.FailNext("ModifyVpcAttribute", fmt.Errorf("modify vpc failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -844,7 +836,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -855,11 +847,7 @@ spec:
 
 		Context("Subnet creation errors", func() {
 			It("should fail when CreateSubnet returns error", func() {
-				mockClient.CreateSubnetFunc = func(ctx context.Context,
-					params *ec2.CreateSubnetInput,
-					optFns ...func(*ec2.Options)) (*ec2.CreateSubnetOutput, error) {
-					return nil, fmt.Errorf("subnet creation failed")
-				}
+				fake.Store.FailNext("CreateSubnet", fmt.Errorf("subnet creation failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -879,7 +867,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -890,11 +878,7 @@ spec:
 
 		Context("Internet Gateway creation errors", func() {
 			It("should fail when CreateInternetGateway returns error", func() {
-				mockClient.CreateIGWFunc = func(ctx context.Context,
-					params *ec2.CreateInternetGatewayInput,
-					optFns ...func(*ec2.Options)) (*ec2.CreateInternetGatewayOutput, error) {
-					return nil, fmt.Errorf("igw creation failed")
-				}
+				fake.Store.FailNext("CreateInternetGateway", fmt.Errorf("igw creation failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -914,7 +898,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -924,11 +908,7 @@ spec:
 			})
 
 			It("should fail when AttachInternetGateway returns error", func() {
-				mockClient.AttachIGWFunc = func(ctx context.Context,
-					params *ec2.AttachInternetGatewayInput,
-					optFns ...func(*ec2.Options)) (*ec2.AttachInternetGatewayOutput, error) {
-					return nil, fmt.Errorf("attach igw failed")
-				}
+				fake.Store.FailNext("AttachInternetGateway", fmt.Errorf("attach igw failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -948,7 +928,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -960,11 +940,7 @@ spec:
 
 		Context("Route Table creation errors", func() {
 			It("should fail when CreateRouteTable returns error", func() {
-				mockClient.CreateRTFunc = func(ctx context.Context,
-					params *ec2.CreateRouteTableInput,
-					optFns ...func(*ec2.Options)) (*ec2.CreateRouteTableOutput, error) {
-					return nil, fmt.Errorf("route table creation failed")
-				}
+				fake.Store.FailNext("CreateRouteTable", fmt.Errorf("route table creation failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -984,7 +960,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -993,11 +969,7 @@ spec:
 			})
 
 			It("should fail when AssociateRouteTable returns error", func() {
-				mockClient.AssociateRTFunc = func(ctx context.Context,
-					params *ec2.AssociateRouteTableInput,
-					optFns ...func(*ec2.Options)) (*ec2.AssociateRouteTableOutput, error) {
-					return nil, fmt.Errorf("associate rt failed")
-				}
+				fake.Store.FailNext("AssociateRouteTable", fmt.Errorf("associate rt failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1017,7 +989,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1026,11 +998,7 @@ spec:
 			})
 
 			It("should fail when CreateRoute returns error", func() {
-				mockClient.CreateRouteFunc = func(ctx context.Context,
-					params *ec2.CreateRouteInput,
-					optFns ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
-					return nil, fmt.Errorf("create route failed")
-				}
+				fake.Store.FailNext("CreateRoute", fmt.Errorf("create route failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1050,7 +1018,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1061,11 +1029,7 @@ spec:
 
 		Context("Security Group creation errors", func() {
 			It("should fail when CreateSecurityGroup returns error", func() {
-				mockClient.CreateSGFunc = func(ctx context.Context,
-					params *ec2.CreateSecurityGroupInput,
-					optFns ...func(*ec2.Options)) (*ec2.CreateSecurityGroupOutput, error) {
-					return nil, fmt.Errorf("sg creation failed")
-				}
+				fake.Store.FailNext("CreateSecurityGroup", fmt.Errorf("sg creation failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1085,7 +1049,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1096,12 +1060,7 @@ spec:
 
 			It("should fail when AuthorizeSecurityGroupIngress returns error",
 				func() {
-					mockClient.AuthorizeSGFunc = func(ctx context.Context,
-						params *ec2.AuthorizeSecurityGroupIngressInput,
-						optFns ...func(*ec2.Options)) (
-						*ec2.AuthorizeSecurityGroupIngressOutput, error) {
-						return nil, fmt.Errorf("authorize ingress failed")
-					}
+					fake.Store.FailNext("AuthorizeSecurityGroupIngress", fmt.Errorf("authorize ingress failed"))
 
 					env := v1alpha1.Environment{
 						ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1121,7 +1080,7 @@ spec:
 
 					var err error
 					provider, err = aws.New(log, env, tmpFile,
-						aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+						aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 					Expect(err).NotTo(HaveOccurred())
 
 					err = provider.Create()
@@ -1133,11 +1092,7 @@ spec:
 
 		Context("EC2 Instance creation errors", func() {
 			It("should fail when DescribeImages returns error", func() {
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return nil, fmt.Errorf("describe images failed")
-				}
+				fake.Store.FailNext("DescribeImages", fmt.Errorf("describe images failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1157,7 +1112,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1168,11 +1123,12 @@ spec:
 
 			It("should fail when RunInstances returns error", func() {
 				imageID := "ami-test123"
-				mockClient.RunInstancesFunc = func(ctx context.Context,
-					params *ec2.RunInstancesInput,
-					optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
-					return nil, fmt.Errorf("run instances failed")
-				}
+				// Seed the AMI so describeImageRootDevice resolves; RunInstances then fails.
+				fake.Store.SetImages(types.Image{
+					ImageId:        strPtr("ami-test123"),
+					RootDeviceName: strPtr("/dev/sda1"),
+				})
+				fake.Store.FailNext("RunInstances", fmt.Errorf("run instances failed"))
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1192,7 +1148,7 @@ spec:
 
 				var err error
 				provider, err = aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Create()
@@ -1205,37 +1161,12 @@ spec:
 
 	Describe("DryRun", func() {
 		It("should succeed with valid configuration and mock client", func() {
-			mockClient := aws.NewMockEC2Client()
-
-			// Mock DescribeImages for setAMI
-			mockClient.DescribeImagesFunc = func(ctx context.Context,
-				params *ec2.DescribeImagesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-				return &ec2.DescribeImagesOutput{
-					Images: []types.Image{
-						{
-							ImageId:      strPtr("ami-test123"),
-							CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-						},
-					},
-				}, nil
-			}
-
-			// Mock DescribeInstanceTypes for checkInstanceTypes
-			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-				params *ec2.DescribeInstanceTypesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-				return &ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []types.InstanceTypeInfo{
-						{InstanceType: types.InstanceTypeT3Medium,
-							ProcessorInfo: &types.ProcessorInfo{
-								SupportedArchitectures: []types.ArchitectureType{
-									types.ArchitectureTypeX8664,
-								},
-							}},
-					},
-				}, nil
-			}
+			fake := awsfake.New()
+			// t3.medium is in the default catalog; seed the AMI setAMI resolves.
+			fake.Store.SetImages(types.Image{
+				ImageId:      strPtr("ami-test123"),
+				CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+			})
 
 			env := v1alpha1.Environment{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1254,7 +1185,7 @@ spec:
 			}
 
 			provider, err := aws.New(log, env, tmpFile,
-				aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -1262,30 +1193,13 @@ spec:
 		})
 
 		It("should fail when instance type is unsupported", func() {
-			mockClient := aws.NewMockEC2Client()
-
-			// Mock DescribeImages for setAMI
-			mockClient.DescribeImagesFunc = func(ctx context.Context,
-				params *ec2.DescribeImagesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-				return &ec2.DescribeImagesOutput{
-					Images: []types.Image{
-						{
-							ImageId:      strPtr("ami-test123"),
-							CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-						},
-					},
-				}, nil
-			}
-
-			// Return empty list - instance type not supported
-			mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-				params *ec2.DescribeInstanceTypesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-				return &ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []types.InstanceTypeInfo{},
-				}, nil
-			}
+			fake := awsfake.New()
+			// Image resolves, but an empty catalog rejects the instance type.
+			fake.Store.SetImages(types.Image{
+				ImageId:      strPtr("ami-test123"),
+				CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+			})
+			fake.Store.SetInstanceTypeCatalog()
 
 			env := v1alpha1.Environment{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1304,7 +1218,7 @@ spec:
 			}
 
 			provider, err := aws.New(log, env, tmpFile,
-				aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -1313,14 +1227,8 @@ spec:
 		})
 
 		It("should fail when image not found", func() {
-			mockClient := aws.NewMockEC2Client()
-
-			// Return empty images list
-			mockClient.DescribeImagesFunc = func(ctx context.Context,
-				params *ec2.DescribeImagesInput,
-				optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-				return &ec2.DescribeImagesOutput{Images: []types.Image{}}, nil
-			}
+			fake := awsfake.New()
+			fake.Store.SetImages() // empty catalog
 
 			env := v1alpha1.Environment{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1339,7 +1247,7 @@ spec:
 			}
 
 			provider, err := aws.New(log, env, tmpFile,
-				aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+				aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 			Expect(err).NotTo(HaveOccurred())
 
 			err = provider.DryRun()
@@ -1351,7 +1259,7 @@ spec:
 	Describe("Delete workflow", func() {
 		Context("cache file errors", func() {
 			It("should fail when cache file does not exist", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				nonExistentCache := filepath.Join(tmpDir, "nonexistent.yaml")
 
 				env := v1alpha1.Environment{
@@ -1370,7 +1278,7 @@ spec:
 				}
 
 				provider, err := aws.New(log, env, nonExistentCache,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Delete()
@@ -1379,7 +1287,7 @@ spec:
 			})
 
 			It("should fail when cache file is invalid YAML", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 
 				err := os.WriteFile(tmpFile, []byte("invalid: yaml: content:"),
 					0600)
@@ -1401,7 +1309,7 @@ spec:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Delete()
@@ -1412,7 +1320,7 @@ spec:
 
 		Context("with empty cache", func() {
 			It("should succeed when cache has no resources", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 
 				// Create empty cache file
 				cacheContent := `apiVersion: holodeck.nvidia.com/v1alpha1
@@ -1443,7 +1351,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.Delete()
@@ -1455,37 +1363,12 @@ status:
 	Describe("Image validation", func() {
 		Context("setAMI", func() {
 			It("should return image when found", func() {
-				mockClient := aws.NewMockEC2Client()
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-newer"),
-								CreationDate: strPtr("2024-06-01T00:00:00.000Z"),
-							},
-							{
-								ImageId:      strPtr("ami-older"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
-				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT3Medium,
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeX8664,
-									},
-								}},
-						},
-					}, nil
-				}
+				fake := awsfake.New()
+				// t3.medium is in the default catalog; the newer AMI wins.
+				fake.Store.SetImages(
+					types.Image{ImageId: strPtr("ami-newer"), CreationDate: strPtr("2024-06-01T00:00:00.000Z")},
+					types.Image{ImageId: strPtr("ami-older"), CreationDate: strPtr("2024-01-01T00:00:00.000Z")},
+				)
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1504,7 +1387,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1512,33 +1395,14 @@ status:
 			})
 
 			It("should support arm64 architecture", func() {
-				mockClient := aws.NewMockEC2Client()
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-arm64"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
-				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT4gMedium,
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeArm64,
-									},
-								}},
-						},
-					}, nil
-				}
+				fake := awsfake.New()
+				// t4g.medium is arm64-only (prefix heuristic); seed it into the
+				// catalog and provide a matching AMI.
+				fake.Store.SeedInstanceType("t4g.medium")
+				fake.Store.SetImages(types.Image{
+					ImageId:      strPtr("ami-arm64"),
+					CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+				})
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1557,7 +1421,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1565,7 +1429,7 @@ status:
 			})
 
 			It("should fail for invalid architecture", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1584,7 +1448,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1593,36 +1457,13 @@ status:
 			})
 
 			It("should skip setAMI when ImageId is provided", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				imageID := "ami-custom123"
-
-				// Mock DescribeImages to return the custom image
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-custom123"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
-				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT3Medium,
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeX8664,
-									},
-								}},
-						},
-					}, nil
-				}
+				// The custom image is present, so assertImageIdSupported passes.
+				fake.Store.SetImages(types.Image{
+					ImageId:      strPtr("ami-custom123"),
+					CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+				})
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1641,7 +1482,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1649,22 +1490,13 @@ status:
 			})
 
 			It("should fail when custom ImageId is not found", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				imageID := "ami-notfound"
-
-				// Mock DescribeImages to return a different image
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-different"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
+				// Only a different AMI exists, so the requested one is unsupported.
+				fake.Store.SetImages(types.Image{
+					ImageId:      strPtr("ami-different"),
+					CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+				})
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1683,7 +1515,7 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
@@ -1694,41 +1526,12 @@ status:
 
 		Context("custom owner ID", func() {
 			It("should use custom owner ID when provided", func() {
-				mockClient := aws.NewMockEC2Client()
+				fake := awsfake.New()
 				ownerID := "123456789012"
-
-				mockClient.DescribeImagesFunc = func(ctx context.Context,
-					params *ec2.DescribeImagesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeImagesOutput, error) {
-					// Verify owner filter is applied
-					for _, filter := range params.Filters {
-						if *filter.Name == "owner-id" {
-							Expect(filter.Values).To(ContainElement("123456789012"))
-						}
-					}
-					return &ec2.DescribeImagesOutput{
-						Images: []types.Image{
-							{
-								ImageId:      strPtr("ami-custom-owner"),
-								CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
-							},
-						},
-					}, nil
-				}
-				mockClient.DescribeInstTypesFunc = func(ctx context.Context,
-					params *ec2.DescribeInstanceTypesInput,
-					optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error) {
-					return &ec2.DescribeInstanceTypesOutput{
-						InstanceTypes: []types.InstanceTypeInfo{
-							{InstanceType: types.InstanceTypeT3Medium,
-								ProcessorInfo: &types.ProcessorInfo{
-									SupportedArchitectures: []types.ArchitectureType{
-										types.ArchitectureTypeX8664,
-									},
-								}},
-						},
-					}, nil
-				}
+				fake.Store.SetImages(types.Image{
+					ImageId:      strPtr("ami-custom-owner"),
+					CreationDate: strPtr("2024-01-01T00:00:00.000Z"),
+				})
 
 				env := v1alpha1.Environment{
 					ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
@@ -1750,11 +1553,23 @@ status:
 				}
 
 				provider, err := aws.New(log, env, tmpFile,
-					aws.WithEC2Client(mockClient), aws.WithSleep(func(time.Duration) {}))
+					aws.WithEC2Client(fake.EC2), aws.WithSleep(func(time.Duration) {}))
 				Expect(err).NotTo(HaveOccurred())
 
 				err = provider.DryRun()
 				Expect(err).NotTo(HaveOccurred())
+
+				// The custom owner-id must have been passed as a DescribeImages filter.
+				var ownerFilterApplied bool
+				for _, in := range fake.Store.Inputs("DescribeImages") {
+					for _, filter := range in.(*ec2.DescribeImagesInput).Filters {
+						if filter.Name != nil && *filter.Name == "owner-id" {
+							Expect(filter.Values).To(ContainElement("123456789012"))
+							ownerFilterApplied = true
+						}
+					}
+				}
+				Expect(ownerFilterApplied).To(BeTrue())
 			})
 		})
 	})
