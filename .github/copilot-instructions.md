@@ -194,7 +194,7 @@ func TestCreateInstance(t *testing.T) {
 
 Key dependencies to be aware of:
 
-- `github.com/urfave/cli/v2` - CLI framework
+- `github.com/urfave/cli/v3` - CLI framework
 - `github.com/aws/aws-sdk-go-v2` - AWS SDK
 - `k8s.io/apimachinery` - Kubernetes API machinery (for types)
 - `github.com/pkg/sftp` - SFTP for file transfers

@@ -98,7 +98,7 @@ Examples:
   holodeck cleanup vpc-12345678
 
   # Use a custom cache directory
-  holodeck --cachepath /path/to/cache create -f env.yaml`
+  holodeck create -f env.yaml --cachepath /path/to/cache`
 	c.Version = ProgramVersion
 	c.EnableShellCompletion = true
 
