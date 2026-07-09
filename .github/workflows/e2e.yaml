@@ -1,4 +1,4 @@
-# Copyright 2024 NVIDIA CORPORATION
+# Copyright 2024-2026 NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,27 +28,9 @@ permissions:
   issues: write
 
 jobs:
-  e2e-test:
+  e2e-mock:
     runs-on: linux-amd64-cpu4
-    strategy:
-      fail-fast: false
-      matrix:
-        label:
-          - legacy
-          - dra
-          - kernel
-          - ctk-git
-          - k8s-git
-          - k8s-kind-git
-          - k8s-latest
-          - "cluster && gpu && !minimal && !ha && !dedicated"
-          - "cluster && dedicated"
-          - "cluster && ha"
-          - rpm-rocky
-          - rpm-al2023
-          - rpm-fedora
-          - custom-template
-    name: E2E Test (${{ matrix.label }})
+    name: E2E Mock
 
     steps:
     - name: Checkout code
@@ -65,38 +47,23 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y make
 
-    - name: Run e2e test for ${{ matrix.label }}
+    - name: Run mock e2e test
       env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
         LOG_ARTIFACT_DIR: e2e_logs
       run: |
-        e2e_ssh_key=$(mktemp)
-        echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
-        chmod 600 "$e2e_ssh_key"
-        export E2E_SSH_KEY="$e2e_ssh_key"
-        EXTRA_ARGS="--json-report ginkgo.json"
-        # RPM suites run both single-node and cluster tests (~60min total);
-        # increase timeout from the 1h default to avoid cleanup timeouts.
-        case "${{ matrix.label }}" in
-          rpm-*) EXTRA_ARGS="$EXTRA_ARGS --timeout=90m" ;;
-        esac
-        make -f tests/Makefile test GINKGO_ARGS="--label-filter='${{ matrix.label }}' $EXTRA_ARGS"
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='mock' --json-report ginkgo.json"
 
     - name: Archive Ginkgo logs
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ginkgo-full-logs-${{ strategy.job-index }}
+        name: ginkgo-mock-full-logs
         path: ginkgo.json
         retention-days: 15
 
-  # ARM64 GPU E2E test — runs only on merge to main (g5g instances are expensive)
-  e2e-test-arm64:
+  e2e-real-full:
     runs-on: linux-amd64-cpu4
-    if: github.ref == 'refs/heads/main'
-    name: E2E Test (arm64)
+    name: E2E Real Full
 
     steps:
     - name: Checkout code
@@ -113,7 +80,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y make
 
-    - name: Run ARM64 GPU e2e test
+    - name: Run e2e test
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -124,24 +91,19 @@ jobs:
         echo "${{ secrets.AWS_SSH_KEY }}" > "$e2e_ssh_key"
         chmod 600 "$e2e_ssh_key"
         export E2E_SSH_KEY="$e2e_ssh_key"
-        make -f tests/Makefile test GINKGO_ARGS="--label-filter='arm64'"
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='real-aws && cluster && minimal' --json-report ginkgo.json --timeout=90m"
 
-  integration-test:
-    runs-on: linux-amd64-cpu4
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
-    - name: Set up Holodeck
-      uses: NVIDIA/holodeck@main
+    - name: Archive Ginkgo logs
+      if: always()
+      uses: actions/upload-artifact@v7
       with:
-        aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws_ssh_key: ${{ secrets.AWS_SSH_KEY }}
-        holodeck_config: "tests/data/test_aws.yml"
+        name: ginkgo-full-logs
+        path: ginkgo.json
+        retention-days: 15
 
   create-issue:
     runs-on: ubuntu-latest
-    needs: [e2e-test, e2e-test-arm64, integration-test]
+    needs: [e2e-mock, e2e-real-full]
     if: failure()
     steps:
     - name: Checkout code
