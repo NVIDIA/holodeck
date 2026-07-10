@@ -131,3 +131,45 @@ func TestBastionTransport_BastionHostKey_MismatchRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "host key mismatch", "must be rejected as a host-key mismatch, not some other failure")
 	assert.Equal(t, 0, bastion.Forwards(), "hop-1 must fail before any direct-tcpip forward is requested")
 }
+
+// TestBastionTransport_Close_TearsDownHop1 guards resource lifecycle: Close
+// must actually tear down the cached hop-1 (*ssh.Client), not just satisfy
+// the Transport interface with a no-op. Hop-1's self-terminating keepalive
+// goroutine (started inside DialContext via b.Dialer.Dial) is the observable
+// proxy: it stops sending keepalive@holodeck requests to the bastion once
+// hop-1's connection is closed. A no-op Close leaves that goroutine running
+// and the bastion's keepalive count would keep climbing forever.
+func TestBastionTransport_Close_TearsDownHop1(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate per-hop TOFU
+	keyPath, pub := sshtest.GenerateKey(t)
+	target := sshtest.NewServer(t, pub, sshtest.WithExecOutput("hello-from-target\n"))
+	bastion := sshtest.NewServer(t, pub, sshtest.WithForwarding())
+
+	interval := 20 * time.Millisecond
+	d := &Dialer{
+		Auth:     AuthConfig{User: "tester", KeyPath: keyPath},
+		HostKey:  HostKeyPolicyAcceptNew,
+		Retry:    RetryPolicy{MaxAttempts: 3, Delay: 10 * time.Millisecond},
+		Timeouts: TimeoutConfig{Keepalive: interval},
+		Log:      logger.NewLogger(),
+	}
+	bt := &BastionTransport{Bastion: bastion.Addr(), TargetHost: target.Addr(), Dialer: d}
+
+	client, err := d.Dial(context.Background(), target.Addr(), bt)
+	require.NoError(t, err)
+	defer func() { _ = client.Close() }()
+
+	// bastion.Keepalives() only counts requests hop-1 sends directly to the
+	// bastion, not the outer target-hop keepalive (which lands on target).
+	require.Eventually(t, func() bool { return bastion.Keepalives() >= 2 },
+		2*time.Second, interval, "hop-1 keepalive goroutine must be running before Close")
+
+	require.NoError(t, bt.Close())
+	c0 := bastion.Keepalives()
+
+	// Real Close terminates hop-1's keepalive goroutine on its next failed
+	// send (at most one tick after Close); a no-op Close keeps incrementing.
+	time.Sleep(3 * interval)
+	assert.LessOrEqual(t, bastion.Keepalives(), c0+1,
+		"bastion keepalive count must plateau once Close tears down hop-1")
+}
