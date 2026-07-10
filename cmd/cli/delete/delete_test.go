@@ -18,13 +18,14 @@ package delete_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/delete"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -92,11 +93,11 @@ var _ = Describe("Delete Command", func() {
 		Context("with no arguments", func() {
 			It("should require at least one instance ID", func() {
 				cmd := delete.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
-				err := app.Run([]string{"holodeck", "delete"})
+				err := app.Run(context.Background(), []string{"holodeck", "delete"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("at least one instance ID is required"))
 			})
@@ -109,11 +110,11 @@ var _ = Describe("Delete Command", func() {
 				DeferCleanup(os.RemoveAll, tempDir)
 
 				cmd := delete.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "nonexistent"})
+				err = app.Run(context.Background(), []string{"holodeck", "delete", "--cachepath", tempDir, "nonexistent"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get instance"))
 			})
@@ -137,11 +138,11 @@ var _ = Describe("Delete Command", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				cmd := delete.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "a1b2c3d4"})
+				err = app.Run(context.Background(), []string{"holodeck", "delete", "--cachepath", tempDir, "a1b2c3d4"})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify cache file was removed
@@ -165,11 +166,11 @@ var _ = Describe("Delete Command", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				cmd := delete.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "e5f6a7b8", "c9d0e1f2"})
+				err = app.Run(context.Background(), []string{"holodeck", "delete", "--cachepath", tempDir, "e5f6a7b8", "c9d0e1f2"})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify both cache files were removed
@@ -191,12 +192,12 @@ var _ = Describe("Delete Command", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				cmd := delete.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
 				// First instance doesn't exist, should fail before processing second
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "nonexistent", "a3b4c5d6"})
+				err = app.Run(context.Background(), []string{"holodeck", "delete", "--cachepath", tempDir, "nonexistent", "a3b4c5d6"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get instance nonexistent"))
 
@@ -213,12 +214,12 @@ var _ = Describe("Delete Command", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				cmd := delete.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
 				// First succeeds, second fails
-				err = app.Run([]string{"holodeck", "delete", "--cachepath", tempDir, "e7f8a9b0", "nonexistent"})
+				err = app.Run(context.Background(), []string{"holodeck", "delete", "--cachepath", tempDir, "e7f8a9b0", "nonexistent"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to get instance nonexistent"))
 
@@ -241,12 +242,12 @@ var _ = Describe("Delete Command", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				cmd := delete.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
 				// Use -c alias for cachepath
-				err = app.Run([]string{"holodeck", "delete", "-c", tempDir, "f1e2d3c4"})
+				err = app.Run(context.Background(), []string{"holodeck", "delete", "-c", tempDir, "f1e2d3c4"})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify cache file was removed

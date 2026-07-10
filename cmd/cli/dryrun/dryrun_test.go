@@ -18,13 +18,14 @@ package dryrun_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/dryrun"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -80,12 +81,12 @@ var _ = Describe("Dryrun Command", func() {
 	Describe("Before hook", func() {
 		It("should fail when envFile does not exist", func() {
 			cmd := dryrun.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run with non-existent env file
-			err := app.Run([]string{"holodeck", "dryrun", "-f", "/nonexistent/file.yaml"})
+			err := app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", "/nonexistent/file.yaml"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to read config file"))
 		})
@@ -101,11 +102,11 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to read config file"))
 		})
@@ -127,11 +128,11 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("unknown provider"))
 		})
@@ -159,11 +160,11 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to read key file"))
 		})
@@ -193,11 +194,11 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to parse private key"))
 		})
@@ -228,13 +229,13 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// This will fail due to invalid key, but covers the username
 			// default path
-			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -259,13 +260,13 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := dryrun.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// This will fail due to AWS credentials/config issues
 			// but covers the validateAWS path
-			err = app.Run([]string{"holodeck", "dryrun", "-f", envFile})
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
 			Expect(err).To(HaveOccurred())
 		})
 	})

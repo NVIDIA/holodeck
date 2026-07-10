@@ -18,12 +18,13 @@ package create_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
@@ -146,22 +147,22 @@ spec:
 		Context("Before hook validation", func() {
 			It("should fail when envFile is not provided", func() {
 				cmd := create.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
-				err := app.Run([]string{"holodeck", "create"})
+				err := app.Run(context.Background(), []string{"holodeck", "create"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("error reading config file"))
 			})
 
 			It("should fail when envFile does not exist", func() {
 				cmd := create.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
-				err := app.Run([]string{"holodeck", "create", "-f", "/nonexistent/env.yaml"})
+				err := app.Run(context.Background(), []string{"holodeck", "create", "-f", "/nonexistent/env.yaml"})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("error reading config file"))
 			})
@@ -172,11 +173,11 @@ spec:
 				Expect(err).NotTo(HaveOccurred())
 
 				cmd := create.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
-				err = app.Run([]string{"holodeck", "create", "-f", invalidYAML})
+				err = app.Run(context.Background(), []string{"holodeck", "create", "-f", invalidYAML})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("error reading config file"))
 			})
@@ -206,13 +207,13 @@ spec:
 				Expect(err).NotTo(HaveOccurred())
 
 				cmd := create.NewCommand(log)
-				app := &cli.App{
+				app := &cli.Command{
 					Commands: []*cli.Command{cmd},
 				}
 
 				// This will fail in run() at AWS client creation (no credentials)
 				// but Before hook should pass (no "error reading config file")
-				err = app.Run([]string{"holodeck", "create", "-f", validYAML, "-c", tmpDir})
+				err = app.Run(context.Background(), []string{"holodeck", "create", "-f", validYAML, "-c", tmpDir})
 				Expect(err).To(HaveOccurred())
 				// The error should NOT be from Before hook
 				Expect(err.Error()).NotTo(ContainSubstring("error reading config file"))

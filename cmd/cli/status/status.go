@@ -17,6 +17,7 @@
 package status
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/output"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -139,18 +140,18 @@ func (m command) build() *cli.Command {
 				Value:       "table",
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() != 1 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
-			return m.run(c, c.Args().Get(0))
+			return m.run(cmd.Args().Get(0))
 		},
 	}
 
 	return &status
 }
 
-func (m command) run(c *cli.Context, instanceID string) error {
+func (m command) run(instanceID string) error {
 	manager := instances.NewManager(m.log, m.cachePath)
 	instance, err := manager.GetInstance(instanceID)
 	if err != nil {

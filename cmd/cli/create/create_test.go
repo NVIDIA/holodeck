@@ -588,6 +588,6 @@ func TestCreateSSHProviderDoesNotPanic(t *testing.T) {
 
 	// Should not panic — should either succeed or return an error
 	assert.NotPanics(t, func() {
-		_ = cmd.run(nil, opts)
+		_ = cmd.run(opts)
 	})
 }

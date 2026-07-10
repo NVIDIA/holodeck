@@ -17,6 +17,7 @@
 package dryrun
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -29,7 +30,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/sshutil"
 	"github.com/NVIDIA/holodeck/pkg/utils"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -66,17 +67,18 @@ func (m command) build() *cli.Command {
 				Destination: &opts.envFile,
 			},
 		},
-		Before: func(c *cli.Context) error {
+		Before: func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 			// Read the config file
 			var err error
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
-				return fmt.Errorf("failed to read config file %s: %w", opts.envFile, err)
+				return ctx, fmt.Errorf("failed to read config file %s: %w", opts.envFile, err)
 			}
 
-			return nil
+			return ctx, nil
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(_ context.Context, _ *cli.Command) error {
+			//nolint:contextcheck // provisioner.Dryrun -> logger.Loading (pkg/provisioner, internal/logger) have no ctx parameter by design; threading requires a signature change outside cmd/cli, out of scope here.
 			return m.run(&opts)
 		},
 	}

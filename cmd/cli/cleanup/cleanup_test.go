@@ -18,12 +18,13 @@ package cleanup_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/cleanup"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -92,12 +93,12 @@ var _ = Describe("Cleanup Command", func() {
 	Describe("Command action", func() {
 		It("should require at least one VPC ID argument", func() {
 			cmd := cleanup.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run without VPC ID argument
-			err := app.Run([]string{"holodeck", "cleanup"})
+			err := app.Run(context.Background(), []string{"holodeck", "cleanup"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("VPC ID is required"))
 		})
@@ -118,12 +119,12 @@ var _ = Describe("Cleanup Command", func() {
 			}()
 
 			cmd := cleanup.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run with VPC ID but no region
-			err := app.Run([]string{"holodeck", "cleanup", "vpc-12345"})
+			err := app.Run(context.Background(), []string{"holodeck", "cleanup", "vpc-12345"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("AWS region must be specified"))
 		})
@@ -141,12 +142,12 @@ var _ = Describe("Cleanup Command", func() {
 			}()
 
 			cmd := cleanup.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run with VPC ID - will fail at AWS connection but validates region handling
-			err := app.Run([]string{"holodeck", "cleanup", "vpc-12345"})
+			err := app.Run(context.Background(), []string{"holodeck", "cleanup", "vpc-12345"})
 			Expect(err).To(HaveOccurred())
 			// Should fail at AWS connection, not at region validation
 			Expect(err.Error()).NotTo(ContainSubstring("AWS region must be specified"))
@@ -170,12 +171,12 @@ var _ = Describe("Cleanup Command", func() {
 			}()
 
 			cmd := cleanup.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run with VPC ID - will fail at AWS connection but validates region handling
-			err := app.Run([]string{"holodeck", "cleanup", "vpc-12345"})
+			err := app.Run(context.Background(), []string{"holodeck", "cleanup", "vpc-12345"})
 			Expect(err).To(HaveOccurred())
 			// Should fail at AWS connection, not at region validation
 			Expect(err.Error()).NotTo(ContainSubstring("AWS region must be specified"))
@@ -197,12 +198,12 @@ var _ = Describe("Cleanup Command", func() {
 			}()
 
 			cmd := cleanup.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Run with --region flag - will fail at AWS connection
-			err := app.Run([]string{"holodeck", "cleanup", "--region", "eu-west-1", "vpc-12345"})
+			err := app.Run(context.Background(), []string{"holodeck", "cleanup", "--region", "eu-west-1", "vpc-12345"})
 			Expect(err).To(HaveOccurred())
 			// Should fail at AWS connection, not at region validation
 			Expect(err.Error()).NotTo(ContainSubstring("AWS region must be specified"))

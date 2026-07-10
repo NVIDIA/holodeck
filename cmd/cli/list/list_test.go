@@ -18,6 +18,7 @@ package list_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -26,7 +27,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 
 	"github.com/NVIDIA/holodeck/cmd/cli/list"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -152,12 +153,12 @@ var _ = Describe("List Command", func() {
 
 		It("should handle non-existent cache directory", func() {
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Use a non-existent directory
-			err := app.Run([]string{"holodeck", "list", "--cachepath", "/nonexistent/cache"})
+			err := app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", "/nonexistent/cache"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to list instances"))
 		})
@@ -169,11 +170,11 @@ var _ = Describe("List Command", func() {
 			DeferCleanup(os.RemoveAll, tempDir)
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+			err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir})
 			Expect(err).NotTo(HaveOccurred())
 			// Should output "No instances found"
 			Expect(buf.String()).To(ContainSubstring("No instances found"))
@@ -190,11 +191,11 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+			err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir})
 			Expect(err).NotTo(HaveOccurred())
 			// Should output "No instances found" since txt file is skipped
 			Expect(buf.String()).To(ContainSubstring("No instances found"))
@@ -211,12 +212,12 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			// Should not fail, just skip invalid file and show warning
-			err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+			err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir})
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -238,12 +239,12 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+				err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// Table header
@@ -267,12 +268,12 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+				err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// Both instances should appear
@@ -290,11 +291,11 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir})
+			err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir})
 			Expect(err).NotTo(HaveOccurred())
 			// Should output "No instances found" since instance has no ID
 			Expect(buf.String()).To(ContainSubstring("No instances found"))
@@ -318,12 +319,12 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
+				err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// Should only have instance ID, not table headers
@@ -342,12 +343,12 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
+				err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(stdout).To(ContainSubstring("qmulti01"))
@@ -361,12 +362,12 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "-q"})
+				err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir, "-q"})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(stdout).To(ContainSubstring("qalias01"))
@@ -384,12 +385,12 @@ var _ = Describe("List Command", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
 			stdout := captureStdout(func() {
-				err = app.Run([]string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
+				err = app.Run(context.Background(), []string{"holodeck", "list", "--cachepath", tempDir, "--ids-only"})
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// Only valid instance should appear
@@ -405,11 +406,11 @@ var _ = Describe("List Command", func() {
 			DeferCleanup(os.RemoveAll, tempDir)
 
 			cmd := list.NewCommand(log)
-			app := &cli.App{
+			app := &cli.Command{
 				Commands: []*cli.Command{cmd},
 			}
 
-			err = app.Run([]string{"holodeck", "ls", "--cachepath", tempDir})
+			err = app.Run(context.Background(), []string{"holodeck", "ls", "--cachepath", tempDir})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(buf.String()).To(ContainSubstring("No instances found"))
 		})

@@ -17,6 +17,7 @@
 package describe
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/output"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 type command struct {
@@ -240,11 +241,11 @@ Examples:
 				Value:       "table",
 			},
 		},
-		Action: func(c *cli.Context) error {
-			if c.NArg() != 1 {
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
-			return m.run(c.Args().Get(0))
+			return m.run(cmd.Args().Get(0))
 		},
 	}
 

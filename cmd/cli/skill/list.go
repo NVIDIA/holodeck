@@ -17,13 +17,14 @@
 package skill
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"text/tabwriter"
 
 	pkgskill "github.com/NVIDIA/holodeck/pkg/skill"
 
-	cli "github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
@@ -56,7 +57,7 @@ func (c *command) buildListCommand() *cli.Command {
 	}
 }
 
-func (c *command) runList(_ *cli.Context) error {
+func (c *command) runList(_ context.Context, _ *cli.Command) error {
 	skills, err := pkgskill.Catalog()
 	if err != nil {
 		return fmt.Errorf("loading catalog: %w", err)
