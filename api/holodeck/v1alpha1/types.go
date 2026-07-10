@@ -17,6 +17,8 @@
 package v1alpha1
 
 import (
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -534,6 +536,7 @@ type SSHConfig struct {
 	// KnownHostsPolicy controls host-key verification behavior:
 	// accept-new (default, TOFU), strict (unknown host = error), or
 	// off (insecure, logged loudly).
+	// +kubebuilder:validation:Enum=accept-new;strict;off
 	// +optional
 	KnownHostsPolicy string `json:"knownHostsPolicy,omitempty"` // accept-new|strict|off
 
@@ -570,6 +573,17 @@ type BastionConfig struct {
 
 // Validate validates the SSHConfig configuration.
 func (c *SSHConfig) Validate() error {
+	switch c.KnownHostsPolicy {
+	case "", "accept-new", "strict", "off":
+	default:
+		return fmt.Errorf("invalid knownHostsPolicy %q (want accept-new|strict|off)", c.KnownHostsPolicy)
+	}
+	if c.MaxRetries < 0 {
+		return fmt.Errorf("maxRetries must be >= 0, got %d", c.MaxRetries)
+	}
+	if c.Bastion != nil && c.Bastion.Host == "" {
+		return fmt.Errorf("bastion.host is required when bastion is set")
+	}
 	return nil
 }
 
