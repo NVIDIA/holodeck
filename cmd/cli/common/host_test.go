@@ -18,10 +18,40 @@ package common
 
 import (
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
+	"github.com/NVIDIA/holodeck/pkg/sshutil/sshtest"
 )
+
+func TestConnectSSH_Connects(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	keyPath, pub := sshtest.GenerateKey(t)
+	srv := sshtest.NewServer(t, pub, sshtest.WithExecOutput("hi\n"))
+
+	client, err := ConnectSSH(logger.NewLogger(), keyPath, "tester", srv.Addr())
+	require.NoError(t, err)
+	defer func() { _ = client.Close() }()
+	sess, err := client.NewSession()
+	require.NoError(t, err)
+	out, err := sess.Output("noop")
+	require.NoError(t, err)
+	assert.Equal(t, "hi\n", string(out))
+}
+
+func TestConnectSSH_FailsBoundedOnDeadPort(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	keyPath, _ := sshtest.GenerateKey(t)
+	start := time.Now()
+	_, err := ConnectSSH(logger.NewLogger(), keyPath, "tester", "127.0.0.1:1")
+	require.Error(t, err)
+	assert.Less(t, time.Since(start), 15*time.Second, "3x2s envelope must not hang")
+}
 
 func TestGetHostURL_AWS_SingleNode(t *testing.T) {
 	env := &v1alpha1.Environment{
