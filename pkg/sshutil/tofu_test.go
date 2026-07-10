@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -201,4 +202,113 @@ func TestTOFU_Flock_CrossProcessExclusion(t *testing.T) {
 	defer func() { _ = f.Close() }()
 	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	assert.ErrorIs(t, err, syscall.EWOULDBLOCK, "parent must be blocked while child holds LOCK_EX")
+}
+
+// TestTOFU_Flock_BlocksConcurrentHostKeyCallback is the discriminating guard
+// for the production wiring: TestTOFU_Flock_CrossProcessExclusion above only
+// proves the OS primitive works via raw syscalls, never calling production
+// code, so it cannot fail if HostKeyCallback never acquires the lock. Here an
+// independent open-file-description on the same known_hosts path holds
+// LOCK_EX directly (BSD/Linux flock exclusion applies per open-file
+// description, not per-process, so this reproduces cross-process contention
+// deterministically without a subprocess). Before the lock is wired into
+// HostKeyCallback, the callback races straight through and the goroutine
+// finishes almost instantly — this assertion fails. After Step 4 wires the
+// lock, the callback blocks until the external holder releases it.
+func TestTOFU_Flock_BlocksConcurrentHostKeyCallback(t *testing.T) {
+	path := setupTOFUTest(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+	require.NoError(t, os.WriteFile(path, nil, 0600))
+
+	key := generateTestKey(t)
+	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
+
+	holder, err := os.OpenFile(path, os.O_RDWR, 0600)
+	require.NoError(t, err)
+	defer func() { _ = holder.Close() }()
+	require.NoError(t, syscall.Flock(int(holder.Fd()), syscall.LOCK_EX))
+
+	done := make(chan error, 1)
+	go func() {
+		cb := HostKeyCallback(HostKeyPolicyAcceptNew)
+		done <- cb("testhost:22", addr, key)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("HostKeyCallback returned while the known_hosts lock was held externally — it did not block on flock")
+	case <-time.After(200 * time.Millisecond):
+		// Expected: HostKeyCallback is still blocked waiting for the lock.
+	}
+
+	require.NoError(t, syscall.Flock(int(holder.Fd()), syscall.LOCK_UN))
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "HostKeyCallback should succeed once the external lock is released")
+	case <-time.After(2 * time.Second):
+		t.Fatal("HostKeyCallback did not complete after the external lock was released")
+	}
+}
+
+// TestTOFU_ConcurrentRecord_NoCorruption documents the read-verify-append
+// path's behavior under concurrency, per the brief's Step 4 requirement: N
+// goroutines recording the same unknown host must produce exactly one
+// known_hosts line, never an interleaved/corrupted write. Note this specific
+// property already holds pre-flock (tofuMu already serializes the whole
+// HostKeyCallback body within one process) — the flock discriminator is
+// TestTOFU_Flock_BlocksConcurrentHostKeyCallback above, which targets
+// cross-process contention that tofuMu cannot cover.
+func TestTOFU_ConcurrentRecord_NoCorruption(t *testing.T) {
+	path := setupTOFUTest(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+
+	key := generateTestKey(t)
+	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
+
+	const goroutines = 20
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			cb := HostKeyCallback(HostKeyPolicyAcceptNew)
+			errs[i] = cb("testhost:22", addr, key)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		assert.NoErrorf(t, err, "goroutine %d", i)
+	}
+
+	data, err := os.ReadFile(path) //nolint:gosec // test helper with controlled tmpdir path
+	require.NoError(t, err)
+	lines := 0
+	for _, l := range splitNonEmptyLines(string(data)) {
+		_ = l
+		lines++
+	}
+	assert.Equal(t, 1, lines, "concurrent recording of the same host must produce exactly one known_hosts line")
+
+	cb := HostKeyCallback(HostKeyPolicyAcceptNew)
+	assert.NoError(t, cb("testhost:22", addr, key), "the recorded entry must verify cleanly afterward")
+}
+
+func splitNonEmptyLines(s string) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			if i > start {
+				out = append(out, s[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
+	}
+	return out
 }
