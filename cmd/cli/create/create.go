@@ -128,6 +128,7 @@ func (m command) build() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(_ context.Context, _ *cli.Command) error {
+			//nolint:contextcheck // aws.New (pkg/provider/aws) has no ctx parameter by design; threading requires a pkg/ signature change, out of scope here.
 			return m.run(&opts)
 		},
 	}

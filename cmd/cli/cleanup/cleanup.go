@@ -105,6 +105,7 @@ Examples:
 			if cmd.NArg() == 0 {
 				return fmt.Errorf("at least one VPC ID is required")
 			}
+			//nolint:contextcheck // cleanup.New (pkg/cleanup) is a top-level initializer with no ctx parameter by design; threading requires a pkg/ signature change, out of scope here.
 			return m.run(cmd)
 		},
 	}

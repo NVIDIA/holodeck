@@ -189,13 +189,13 @@ Examples:
 				Value:       "x86_64",
 			},
 		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			return c.runAMI(cmd, region, arch)
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return c.runAMI(ctx, cmd, region, arch)
 		},
 	}
 }
 
-func (c *command) runAMI(cmd *cli.Command, region, arch string) error {
+func (c *command) runAMI(ctx context.Context, cmd *cli.Command, region, arch string) error {
 	if cmd.NArg() < 1 {
 		return fmt.Errorf("OS identifier required (run 'holodeck os list' for options)")
 	}
@@ -204,7 +204,7 @@ func (c *command) runAMI(cmd *cli.Command, region, arch string) error {
 
 	// Load AWS config
 	cfg, err := config.LoadDefaultConfig(
-		context.Background(),
+		ctx,
 		config.WithRegion(region),
 	)
 	if err != nil {
@@ -217,7 +217,7 @@ func (c *command) runAMI(cmd *cli.Command, region, arch string) error {
 
 	// Create resolver and resolve
 	resolver := ami.NewResolver(ec2Client, ssmClient, region)
-	resolved, err := resolver.Resolve(context.Background(), osID, arch)
+	resolved, err := resolver.Resolve(ctx, osID, arch)
 	if err != nil {
 		return err
 	}

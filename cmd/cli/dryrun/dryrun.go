@@ -78,6 +78,7 @@ func (m command) build() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(_ context.Context, _ *cli.Command) error {
+			//nolint:contextcheck // provisioner.Dryrun -> logger.Loading (pkg/provisioner, internal/logger) have no ctx parameter by design; threading requires a signature change outside cmd/cli, out of scope here.
 			return m.run(&opts)
 		},
 	}

@@ -188,6 +188,7 @@ Examples:
 			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
+			//nolint:contextcheck // aws.New (pkg/provider/aws) has no ctx parameter by design; threading requires a pkg/ signature change, out of scope here.
 			return m.run(cmd, cmd.Args().Get(0))
 		},
 	}
