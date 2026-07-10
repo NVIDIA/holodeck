@@ -84,3 +84,20 @@ privateKey: /home/runner/.cache/key
 	require.NoError(t, err)
 	assert.NotContains(t, string(out), "sshConfig", "omitempty must drop sshConfig from marshaled output when unset")
 }
+
+func TestSSHConfig_DeepCopy_Aliasing(t *testing.T) {
+	orig := &SSHConfig{Bastion: &BastionConfig{Host: "b.example.com", Username: "ec2-user"}}
+	cp := orig.DeepCopy()
+	require.NotSame(t, orig.Bastion, cp.Bastion, "Bastion must be a fresh pointer")
+	orig.Bastion.Host = "MUTATED"
+	assert.Equal(t, "b.example.com", cp.Bastion.Host, "copy must not observe original's mutation")
+}
+
+func TestAuth_DeepCopy_SSHConfigDeep(t *testing.T) {
+	orig := &Auth{SSHConfig: &SSHConfig{Bastion: &BastionConfig{Host: "b"}}}
+	cp := orig.DeepCopy()
+	require.NotSame(t, orig.SSHConfig, cp.SSHConfig)
+	require.NotSame(t, orig.SSHConfig.Bastion, cp.SSHConfig.Bastion)
+	orig.SSHConfig.Bastion.Host = "MUT"
+	assert.Equal(t, "b", cp.SSHConfig.Bastion.Host)
+}
