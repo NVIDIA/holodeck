@@ -18,23 +18,48 @@ package sshutil
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // BastionTransport tunnels the SSH path to TargetHost through a bastion host.
+// Hop 1: Dialer connects to Bastion (its own Auth + HostKey apply). Hop 2: the
+// bastion client dials TargetHost:22, yielding a net.Conn the outer Dialer
+// wraps for the target handshake. Per-hop known_hosts verification applies.
 type BastionTransport struct {
 	Bastion    string
 	TargetHost string
 	Dialer     *Dialer
+
+	hop1 *ssh.Client
 }
 
 var _ Transport = (*BastionTransport)(nil)
 
-func (b *BastionTransport) DialContext(_ context.Context) (net.Conn, error) {
-	return nil, errors.New("not implemented")
+func (b *BastionTransport) DialContext(ctx context.Context) (net.Conn, error) {
+	if b.hop1 == nil {
+		client, err := b.Dialer.Dial(ctx, b.Bastion, nil) // hop-1: direct dial to bastion
+		if err != nil {
+			return nil, fmt.Errorf("bastion hop-1 dial %s: %w", b.Bastion, err)
+		}
+		b.hop1 = client
+	}
+	conn, err := b.hop1.DialContext(ctx, "tcp", hostPort(b.TargetHost))
+	if err != nil {
+		return nil, fmt.Errorf("bastion hop-2 dial %s via %s: %w", b.TargetHost, b.Bastion, err)
+	}
+	return conn, nil
 }
 
 func (b *BastionTransport) Target() string { return b.TargetHost }
 
-func (b *BastionTransport) Close() error { return errors.New("not implemented") }
+func (b *BastionTransport) Close() error {
+	if b.hop1 == nil {
+		return nil
+	}
+	err := b.hop1.Close()
+	b.hop1 = nil
+	return err
+}
