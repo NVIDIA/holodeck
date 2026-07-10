@@ -3,7 +3,7 @@ module github.com/NVIDIA/holodeck
 go 1.26.0
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.41.8
+	github.com/aws/aws-sdk-go-v2 v1.42.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.19
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.304.1
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.13
@@ -34,7 +34,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.2 // indirect
-	github.com/aws/smithy-go v1.25.1 // indirect
+	github.com/aws/smithy-go v1.27.3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
