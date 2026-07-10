@@ -1,0 +1,22 @@
+apiVersion: holodeck.nvidia.com/v1alpha1
+kind: Environment
+metadata:
+  name: ssh-e2e
+spec:
+  provider: ssh
+  auth:
+    keyName: e2e
+    username: holo            # overridden at runtime to the container user
+    privateKey: /tmp/replaced-at-runtime
+    publicKey: /tmp/replaced-at-runtime.pub
+  instance:
+    hostUrl: 127.0.0.1        # overridden at runtime to 127.0.0.1:<mapped-port>
+  nvidiaDriver: {install: false}
+  containerRuntime: {install: false}
+  nvidiaContainerToolkit: {install: false}
+  kubernetes: {install: false}
+  customTemplates:
+    - name: marker
+      phase: post-install
+      inline: |
+        echo "holodeck-was-here" > /tmp/holodeck-marker
