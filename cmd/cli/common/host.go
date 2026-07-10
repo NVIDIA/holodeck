@@ -17,8 +17,8 @@
 package common
 
 import (
+	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -27,7 +27,6 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/sshutil"
-	"github.com/NVIDIA/holodeck/pkg/utils"
 )
 
 // GetHostURL resolves the SSH-reachable host URL for an environment.
@@ -73,48 +72,18 @@ func GetHostURL(env *v1alpha1.Environment, nodeName string, preferControlPlane b
 	return "", fmt.Errorf("unable to determine host URL")
 }
 
-const (
-	// sshMaxRetries is the number of SSH connection attempts before giving up.
-	sshMaxRetries = 3
-	// sshRetryDelay is the delay between SSH connection retry attempts.
-	sshRetryDelay = 2 * time.Second
-)
-
 // ConnectSSH establishes an SSH connection with retries.
 // Host key verification uses Trust-On-First-Use (TOFU).
+// The CLI keeps its historical 3x2s/30s-handshake envelope via an explicit
+// RetryPolicy — the Dialer's own default (20x1s/15s) is provisioner-tier,
+// not appropriate for a user-facing command that must fail fast.
 func ConnectSSH(log *logger.FunLogger, keyPath, userName, hostUrl string) (*ssh.Client, error) {
-	keyPath, err := utils.ExpandPath(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("expanding key path: %w", err)
+	d := &sshutil.Dialer{
+		Auth:     sshutil.AuthConfig{User: userName, KeyPath: keyPath},
+		HostKey:  sshutil.HostKeyPolicyAcceptNew,
+		Retry:    sshutil.RetryPolicy{MaxAttempts: 3, Delay: 2 * time.Second},
+		Timeouts: sshutil.TimeoutConfig{Handshake: 30 * time.Second},
+		Log:      log,
 	}
-	key, err := os.ReadFile(keyPath) //nolint:gosec // keyPath is from trusted env config
-	if err != nil {
-		return nil, fmt.Errorf("failed to read key file %s: %w", keyPath, err)
-	}
-
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	config := &ssh.ClientConfig{
-		User: userName,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
-		Timeout:         30 * time.Second,
-	}
-
-	var client *ssh.Client
-	for i := 0; i < sshMaxRetries; i++ {
-		client, err = ssh.Dial("tcp", hostUrl+":22", config)
-		if err == nil {
-			return client, nil
-		}
-		log.Warning("Connection attempt %d failed: %v", i+1, err)
-		time.Sleep(sshRetryDelay)
-	}
-
-	return nil, fmt.Errorf("failed to connect after %d attempts: %w", sshMaxRetries, err)
+	return d.Dial(context.Background(), hostUrl, nil) //nolint:contextcheck // CLI action boundary; no ctx to thread yet
 }

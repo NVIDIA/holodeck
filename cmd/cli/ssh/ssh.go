@@ -92,6 +92,7 @@ If you need special quoting, wrap the entire command in single quotes:
 			}
 			instanceID := cmd.Args().Get(0)
 
+			//nolint:contextcheck // run -> common.ConnectSSH is a CLI action boundary with no ctx parameter by design (public signature is locked); threading requires a signature change out of scope here.
 			return m.run(instanceID, remoteCommand(cmd.Args()))
 		},
 	}
