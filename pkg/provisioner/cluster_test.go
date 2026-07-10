@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -488,4 +489,108 @@ func TestNodeHealth(t *testing.T) {
 	assert.Equal(t, "Ready", node.Status)
 	assert.Equal(t, "v1.31.0", node.Version)
 	assert.Equal(t, "10.0.0.2", node.InternalIP)
+}
+
+// wantSSHConfigClusterModeErr is the exact rejection NewClusterProvisioner
+// must surface (via cp.err) when a cluster-mode env carries auth.sshConfig
+// (#851 T8b). Cluster-mode sshConfig semantics are undesigned; the 7
+// in-package New() call sites in this file never wire WithSSHConfig, so the
+// only safe behavior today is to fail loudly instead of silently ignoring it.
+const wantSSHConfigClusterModeErr = "auth.sshConfig is not yet supported in cluster mode (see NVIDIA/holodeck#851); remove the sshConfig block or use single-node mode"
+
+func TestNewClusterProvisioner_SSHConfigClusterModeGuard(t *testing.T) {
+	log := logger.NewLogger()
+
+	tests := []struct {
+		name    string
+		env     *v1alpha1.Environment
+		wantErr bool
+	}{
+		{
+			name: "cluster mode with sshConfig is rejected",
+			env: &v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Cluster: &v1alpha1.ClusterSpec{Region: "us-west-2", ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1}},
+					Auth:    v1alpha1.Auth{SSHConfig: &v1alpha1.SSHConfig{KnownHostsPolicy: "strict"}},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "cluster mode without sshConfig is not rejected",
+			env: &v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Cluster: &v1alpha1.ClusterSpec{Region: "us-west-2", ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "single-node mode with sshConfig is not rejected",
+			env: &v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Auth: v1alpha1.Auth{SSHConfig: &v1alpha1.SSHConfig{KnownHostsPolicy: "strict"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "nil environment is not rejected",
+			env:     nil,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cp := NewClusterProvisioner(log, "/path/to/key", "ubuntu", tt.env)
+			require.NotNil(t, cp)
+			if tt.wantErr {
+				require.Error(t, cp.err)
+				assert.Equal(t, wantSSHConfigClusterModeErr, cp.err.Error())
+			} else {
+				assert.NoError(t, cp.err)
+			}
+		})
+	}
+}
+
+// TestClusterProvisioner_ProvisionCluster_RejectsSSHConfigInClusterMode proves
+// the guard fires before the "no nodes to provision" check: calling
+// ProvisionCluster(nil) on a rejected ClusterProvisioner must return the
+// sshConfig-cluster-mode error, not the empty-nodes error, proving the guard
+// is checked first (defense in depth ahead of any node action).
+func TestClusterProvisioner_ProvisionCluster_RejectsSSHConfigInClusterMode(t *testing.T) {
+	log := logger.NewLogger()
+	env := &v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Cluster: &v1alpha1.ClusterSpec{Region: "us-west-2", ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1}},
+			Auth:    v1alpha1.Auth{SSHConfig: &v1alpha1.SSHConfig{KnownHostsPolicy: "strict"}},
+		},
+	}
+	cp := NewClusterProvisioner(log, "/path/to/key", "ubuntu", env)
+
+	err := cp.ProvisionCluster(nil)
+	require.Error(t, err)
+	assert.Equal(t, wantSSHConfigClusterModeErr, err.Error())
+}
+
+// TestClusterProvisioner_GetClusterHealth_RejectsSSHConfigInClusterMode proves
+// the guard fires before any SSH dial attempt: a rejected ClusterProvisioner
+// must return the sshConfig-cluster-mode error from GetClusterHealth rather
+// than a connect-failure ClusterHealth (the normal behavior for a bad host).
+func TestClusterProvisioner_GetClusterHealth_RejectsSSHConfigInClusterMode(t *testing.T) {
+	log := logger.NewLogger()
+	env := &v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Cluster: &v1alpha1.ClusterSpec{Region: "us-west-2", ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1}},
+			Auth:    v1alpha1.Auth{SSHConfig: &v1alpha1.SSHConfig{KnownHostsPolicy: "strict"}},
+		},
+	}
+	cp := NewClusterProvisioner(log, "/path/to/key", "ubuntu", env)
+
+	health, err := cp.GetClusterHealth("198.51.100.10")
+	assert.Nil(t, health)
+	require.Error(t, err)
+	assert.Equal(t, wantSSHConfigClusterModeErr, err.Error())
 }

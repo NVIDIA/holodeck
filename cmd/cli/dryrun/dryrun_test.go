@@ -270,4 +270,74 @@ var _ = Describe("Dryrun Command", func() {
 			Expect(err).To(HaveOccurred())
 		})
 	})
+
+	// Cluster-mode sshConfig semantics (bastion, agent auth, per-node
+	// host-key policy) are undesigned (NVIDIA/holodeck#851); the Before
+	// hook must reject rather than silently ignore auth.sshConfig when
+	// spec.cluster is set.
+	Describe("Cluster-mode sshConfig rejection", func() {
+		It("should reject a cluster env carrying auth.sshConfig before any SSH action", func() {
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			envFile := filepath.Join(tempDir, "cluster-sshconfig.yaml")
+			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-cluster-env\n" +
+				"spec:\n" +
+				"  provider: aws\n" +
+				"  auth:\n" +
+				"    sshConfig:\n" +
+				"      knownHostsPolicy: accept-new\n" +
+				"  cluster:\n" +
+				"    region: us-west-2\n" +
+				"    controlPlane:\n" +
+				"      count: 1\n"
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.Command{
+				Commands: []*cli.Command{cmd},
+			}
+
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("auth.sshConfig is not yet supported in cluster mode (see NVIDIA/holodeck#851); remove the sshConfig block or use single-node mode"))
+		})
+
+		It("should not reject a cluster env without auth.sshConfig", func() {
+			tempDir, err := os.MkdirTemp("", "holodeck-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(os.RemoveAll, tempDir)
+
+			envFile := filepath.Join(tempDir, "cluster-no-sshconfig.yaml")
+			envContent := "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-cluster-env\n" +
+				"spec:\n" +
+				"  provider: aws\n" +
+				"  cluster:\n" +
+				"    region: us-west-2\n" +
+				"    controlPlane:\n" +
+				"      count: 1\n"
+			err = os.WriteFile(envFile, []byte(envContent), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			cmd := dryrun.NewCommand(log)
+			app := &cli.Command{
+				Commands: []*cli.Command{cmd},
+			}
+
+			// May still fail later (e.g. AWS credentials), but must not be
+			// the sshConfig-cluster-mode rejection.
+			err = app.Run(context.Background(), []string{"holodeck", "dryrun", "-f", envFile})
+			if err != nil {
+				Expect(err.Error()).NotTo(ContainSubstring("not yet supported in cluster mode"))
+			}
+		})
+	})
 })
