@@ -78,6 +78,13 @@ func (m command) build() *cli.Command {
 				return ctx, fmt.Errorf("invalid sshConfig in %s: %w", opts.envFile, err)
 			}
 
+			// Cluster-mode sshConfig semantics (bastion, agent, per-node
+			// host-key policy) are undesigned (#851); reject rather than
+			// silently ignore.
+			if err := opts.cfg.Spec.ValidateSSHConfigMode(); err != nil {
+				return ctx, err
+			}
+
 			return ctx, nil
 		},
 		Action: func(_ context.Context, _ *cli.Command) error {

@@ -49,6 +49,12 @@ func entrypoint(log *logger.FunLogger) error {
 		return fmt.Errorf("invalid sshConfig in %s: %w", configFile, err)
 	}
 
+	// Cluster-mode sshConfig semantics (bastion, agent, per-node host-key
+	// policy) are undesigned (#851); reject rather than silently ignore.
+	if err := cfg.Spec.ValidateSSHConfigMode(); err != nil {
+		return err
+	}
+
 	// If no containerruntime is specified, default to none
 	if cfg.Spec.ContainerRuntime.Name == "" {
 		cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone

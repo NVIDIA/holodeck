@@ -519,7 +519,8 @@ type Auth struct {
 }
 
 // SSHConfig defines advanced SSH connection settings for the ssh provider.
-// All fields are optional.
+// All fields are optional. Not yet supported in cluster mode (single-node
+// only); see https://github.com/NVIDIA/holodeck/issues/851.
 type SSHConfig struct {
 	// Bastion configures a jump host to reach the target instance through.
 	// +optional
