@@ -17,11 +17,14 @@
 package common
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -51,6 +54,38 @@ func TestConnectSSH_FailsBoundedOnDeadPort(t *testing.T) {
 	_, err := ConnectSSH(logger.NewLogger(), keyPath, "tester", "127.0.0.1:1")
 	require.Error(t, err)
 	assert.Less(t, time.Since(start), 15*time.Second, "3x2s envelope must not hang")
+}
+
+// TestConnectSSH_RejectsChangedHostKey guards TOFU parity in the CLI dial
+// path: ConnectSSH must route through the Dialer's knownhosts-backed
+// AcceptNew verification, not silently trust an already-known-but-changed
+// host key. The test pre-seeds known_hosts with a key that does NOT match
+// the sshtest server's real host key (simulating a host key that changed
+// since the recorded first contact / a MITM), then asserts ConnectSSH fails
+// with the exact knownhosts mismatch discriminator tofu.go produces
+// ("host key mismatch", see verifyOrRecord). If ConnectSSH's Dialer ever
+// switches HostKey to HostKeyPolicyOff, host key verification is skipped
+// entirely and this test goes red (connection succeeds).
+func TestConnectSSH_RejectsChangedHostKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	keyPath, pub := sshtest.GenerateKey(t)
+	srv := sshtest.NewServer(t, pub, sshtest.WithExecOutput("hi\n"))
+	addr := srv.Addr()
+
+	// Seed known_hosts with an unrelated host key for this address BEFORE
+	// dialing, simulating a previously-recorded pin that no longer matches
+	// the server's actual host key.
+	_, wrongPub := sshtest.GenerateKey(t)
+	cacheDir, err := os.UserCacheDir()
+	require.NoError(t, err)
+	knownHostsPath := filepath.Join(cacheDir, "holodeck", "known_hosts")
+	require.NoError(t, os.MkdirAll(filepath.Dir(knownHostsPath), 0700))
+	line := knownhosts.Line([]string{knownhosts.Normalize(addr)}, wrongPub)
+	require.NoError(t, os.WriteFile(knownHostsPath, []byte(line+"\n"), 0600))
+
+	_, err = ConnectSSH(logger.NewLogger(), keyPath, "tester", addr)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "host key mismatch")
 }
 
 func TestGetHostURL_AWS_SingleNode(t *testing.T) {
