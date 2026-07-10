@@ -28,10 +28,111 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/sshutil"
 )
+
+// TestDialerFromSSHConfig proves dialerFromSSHConfig maps every
+// v1alpha1.SSHConfig field onto the returned sshutil.Dialer. Neutering the
+// entire non-nil branch — including the security-relevant
+// KnownHostsPolicy->HostKey mapping — previously left the provisioner suite
+// green; TestTransportFromSSHConfig_Bastion only exercises the bastion hop-1
+// Dialer, not this function.
+func TestDialerFromSSHConfig(t *testing.T) {
+	const (
+		keyPath  = "/keys/target"
+		userName = "tester"
+	)
+	log := logger.NewLogger()
+
+	populated := func(policy string) *v1alpha1.SSHConfig {
+		return &v1alpha1.SSHConfig{
+			KnownHostsPolicy:  policy,
+			UseAgent:          true,
+			AgentSocket:       "/run/agent.sock",
+			MaxRetries:        7,
+			HandshakeTimeout:  metav1.Duration{Duration: 42 * time.Second},
+			KeepaliveInterval: metav1.Duration{Duration: 77 * time.Second},
+		}
+	}
+
+	tests := []struct {
+		name string
+		cfg  *v1alpha1.SSHConfig
+		want *sshutil.Dialer
+	}{
+		{
+			// nil cfg must leave Retry/Timeouts at the Go zero value so
+			// sshutil.Dial applies its own envelope (20 attempts x 1s delay,
+			// 15s handshake, 30s keepalive — guarded independently by
+			// TestDialer_DefaultEnvelope in pkg/sshutil/dialer_test.go). A
+			// non-zero literal here would mean the legacy default moved into
+			// the provisioner and silently diverged from sshutil's.
+			name: "nil cfg defers retry and timeout fields to sshutil's defaults",
+			cfg:  nil,
+			want: &sshutil.Dialer{
+				Auth:    sshutil.AuthConfig{User: userName, KeyPath: keyPath},
+				HostKey: sshutil.HostKeyPolicyAcceptNew,
+			},
+		},
+		{
+			name: "accept-new policy maps every field",
+			cfg:  populated("accept-new"),
+			want: &sshutil.Dialer{
+				Auth: sshutil.AuthConfig{
+					User: userName, KeyPath: keyPath,
+					UseAgent: true, AgentSocket: "/run/agent.sock",
+				},
+				HostKey:  sshutil.HostKeyPolicyAcceptNew,
+				Retry:    sshutil.RetryPolicy{MaxAttempts: 7},
+				Timeouts: sshutil.TimeoutConfig{Handshake: 42 * time.Second, Keepalive: 77 * time.Second},
+			},
+		},
+		{
+			name: "strict policy maps every field",
+			cfg:  populated("strict"),
+			want: &sshutil.Dialer{
+				Auth: sshutil.AuthConfig{
+					User: userName, KeyPath: keyPath,
+					UseAgent: true, AgentSocket: "/run/agent.sock",
+				},
+				HostKey:  sshutil.HostKeyPolicyStrict,
+				Retry:    sshutil.RetryPolicy{MaxAttempts: 7},
+				Timeouts: sshutil.TimeoutConfig{Handshake: 42 * time.Second, Keepalive: 77 * time.Second},
+			},
+		},
+		{
+			name: "off policy maps every field",
+			cfg:  populated("off"),
+			want: &sshutil.Dialer{
+				Auth: sshutil.AuthConfig{
+					User: userName, KeyPath: keyPath,
+					UseAgent: true, AgentSocket: "/run/agent.sock",
+				},
+				HostKey:  sshutil.HostKeyPolicyOff,
+				Retry:    sshutil.RetryPolicy{MaxAttempts: 7},
+				Timeouts: sshutil.TimeoutConfig{Handshake: 42 * time.Second, Keepalive: 77 * time.Second},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dialerFromSSHConfig(keyPath, userName, tt.cfg, log)
+			require.NotNil(t, got)
+			assert.Equal(t, tt.want.Auth, got.Auth, "Auth (User/KeyPath/UseAgent/AgentSocket)")
+			assert.Equal(t, tt.want.HostKey, got.HostKey, "KnownHostsPolicy->HostKey")
+			assert.Equal(t, tt.want.Retry, got.Retry, "MaxRetries->Retry.MaxAttempts")
+			assert.Equal(t, tt.want.Timeouts, got.Timeouts, "HandshakeTimeout/KeepaliveInterval->Timeouts")
+		})
+	}
+}
 
 // countingTransport counts DialContext() calls while connecting to a black hole.
 type countingTransport struct {

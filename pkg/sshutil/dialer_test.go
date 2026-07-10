@@ -44,6 +44,19 @@ func (c *countingTransport) DialContext(ctx context.Context) (net.Conn, error) {
 func (c *countingTransport) Target() string { return c.addr }
 func (c *countingTransport) Close() error   { return nil }
 
+// TestDialer_DefaultEnvelope guards the legacy dial envelope (20 attempts x
+// 1s delay, 15s handshake, 30s keepalive) against silent drift. Each
+// assertion compares the exported constant to an independently-written
+// literal, never to itself, so a mutation to any one constant's value
+// reddens this test; comparing a constant to itself would stay green
+// regardless of the mutation.
+func TestDialer_DefaultEnvelope(t *testing.T) {
+	assert.Equal(t, 20, DefaultMaxAttempts, "legacy default retry attempts")
+	assert.Equal(t, time.Second, DefaultRetryDelay, "legacy default retry delay")
+	assert.Equal(t, 15*time.Second, DefaultHandshakeTimeout, "legacy default handshake timeout")
+	assert.Equal(t, 30*time.Second, DefaultKeepaliveInterval, "legacy default keepalive interval")
+}
+
 func TestDialer_NilTransport_DirectDial(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // isolate TOFU known_hosts
 	keyPath, pub := sshtest.GenerateKey(t)
