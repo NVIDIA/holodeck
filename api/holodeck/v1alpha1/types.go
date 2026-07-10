@@ -508,6 +508,69 @@ type Auth struct {
 	PublicKey string `json:"publicKey"`
 	// Path to the private key file on the local machine
 	PrivateKey string `json:"privateKey"` //nolint:gosec // G117: stores a file path, not key material
+
+	// SSHConfig configures advanced SSH connection behavior (bastion hop,
+	// agent auth, host-key policy, timeouts, retries). Omitting it
+	// preserves today's direct-dial defaults.
+	// +optional
+	SSHConfig *SSHConfig `json:"sshConfig,omitempty"`
+}
+
+// SSHConfig defines advanced SSH connection settings for the ssh provider.
+// All fields are optional.
+type SSHConfig struct {
+	// Bastion configures a jump host to reach the target instance through.
+	// +optional
+	Bastion *BastionConfig `json:"bastion,omitempty"`
+
+	// UseAgent dials using the local SSH agent instead of a key file.
+	// +optional
+	UseAgent bool `json:"useAgent,omitempty"`
+
+	// AgentSocket overrides the SSH_AUTH_SOCK path used for agent dialing.
+	// +optional
+	AgentSocket string `json:"agentSocket,omitempty"`
+
+	// KnownHostsPolicy controls host-key verification behavior:
+	// accept-new (default, TOFU), strict (unknown host = error), or
+	// off (insecure, logged loudly).
+	// +optional
+	KnownHostsPolicy string `json:"knownHostsPolicy,omitempty"` // accept-new|strict|off
+
+	// ConnectTimeout bounds the TCP dial phase.
+	// +optional
+	ConnectTimeout metav1.Duration `json:"connectTimeout,omitempty"`
+
+	// HandshakeTimeout bounds the SSH handshake phase.
+	// +optional
+	HandshakeTimeout metav1.Duration `json:"handshakeTimeout,omitempty"`
+
+	// KeepaliveInterval sets the SSH keepalive ping interval.
+	// +optional
+	KeepaliveInterval metav1.Duration `json:"keepaliveInterval,omitempty"`
+
+	// MaxRetries caps the number of dial retry attempts.
+	// +optional
+	MaxRetries int `json:"maxRetries,omitempty"`
+}
+
+// BastionConfig defines a jump host used to reach the target instance.
+type BastionConfig struct {
+	// Host is the bastion's address (host or host:port).
+	Host string `json:"host"`
+
+	// Username for the bastion SSH connection.
+	// +optional
+	Username string `json:"username,omitempty"`
+
+	// PrivateKey is the path to the private key file for the bastion hop.
+	// +optional
+	PrivateKey string `json:"privateKey,omitempty"` //nolint:gosec // G117: stores a file path, not key material
+}
+
+// Validate validates the SSHConfig configuration.
+func (c *SSHConfig) Validate() error {
+	return nil
 }
 
 // DriverSource defines where to install the NVIDIA driver from.
