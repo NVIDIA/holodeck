@@ -82,6 +82,15 @@ func New(log *logger.FunLogger, keyPath, userName, hostUrl string, opts ...Optio
 		opt(p)
 	}
 
+	// Fail fast on a malformed sshConfig before building the transport/dialer or
+	// dialing: an invalid knownHostsPolicy would otherwise silently degrade to
+	// accept-new, discarding the operator's security intent (B1). This is the
+	// single choke point every production New call site passes through; Validate
+	// is nil-safe, so the common (no sshConfig) path is a no-op.
+	if err := p.sshConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid sshConfig: %w", err)
+	}
+
 	// Default the transport (bastion when configured, else direct) and the
 	// dialer (sshutil owns the dial envelope) before the heal-connect.
 	if p.transport == nil {
@@ -548,6 +557,11 @@ func dialerFromSSHConfig(keyPath, userName string, cfg *v1alpha1.SSHConfig, log 
 // host-key policy; hop-2 targets hostUrl. Otherwise a plain DirectTransport.
 func transportFromSSHConfig(hostUrl, keyPath, userName string, cfg *v1alpha1.SSHConfig, log *logger.FunLogger) Transport {
 	if cfg == nil || cfg.Bastion == nil {
+		// N1: connectTimeout bounds the TCP dial phase. A zero/unset value keeps
+		// the legacy DefaultDirectDialTimeout (10s) exactly.
+		if cfg != nil && cfg.ConnectTimeout.Duration > 0 {
+			return sshutil.NewDirectTransportTimeout(hostUrl, cfg.ConnectTimeout.Duration)
+		}
 		return sshutil.NewDirectTransport(hostUrl)
 	}
 	bastionUser := cfg.Bastion.Username

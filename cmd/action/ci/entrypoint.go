@@ -43,6 +43,12 @@ func entrypoint(log *logger.FunLogger) error {
 	if err != nil {
 		return fmt.Errorf("error reading config file: %w", err)
 	}
+
+	// Reject a malformed sshConfig up front, before creating any cloud resources.
+	if err := cfg.Spec.SSHConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid sshConfig in %s: %w", configFile, err)
+	}
+
 	// If no containerruntime is specified, default to none
 	if cfg.Spec.ContainerRuntime.Name == "" {
 		cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
@@ -84,7 +90,8 @@ func entrypoint(log *logger.FunLogger) error {
 	}
 
 	// Run the provisioner
-	p, err := provisioner.New(log, sshKeyFile, cfg.Spec.Username, hostUrl)
+	p, err := provisioner.New(log, sshKeyFile, cfg.Spec.Username, hostUrl,
+		provisioner.WithSSHConfig(cfg.Spec.SSHConfig))
 	if err != nil {
 		return err
 	}

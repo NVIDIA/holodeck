@@ -9,6 +9,14 @@ spec:
     username: holo            # overridden at runtime to the container user
     privateKey: /tmp/replaced-at-runtime
     publicKey: /tmp/replaced-at-runtime.pub
+    # Exercises the auth.sshConfig wiring end-to-end. accept-new (never strict)
+    # so first-contact TOFU records the container's host key instead of failing.
+    # These values match the legacy dial envelope, so behavior is unchanged; the
+    # E2E certifies the config actually flows through provisioner.New -> Dialer.
+    sshConfig:
+      knownHostsPolicy: accept-new
+      connectTimeout: 10s
+      maxRetries: 20
   instance:
     hostUrl: 127.0.0.1        # overridden at runtime to 127.0.0.1:<mapped-port>
   nvidiaDriver: {install: false}

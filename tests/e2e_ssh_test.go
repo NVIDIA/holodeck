@@ -208,10 +208,13 @@ var _ = Describe("Real SSH ProviderSSH E2E", Label("real-ssh"), func() {
 		cfg.Spec.HostUrl = hostURL
 
 		// Production single-node SSH path (mirrors cmd/cli/create
-		// runSingleNodeProvision): connect, then run the dependency graph, whose
-		// only node here is the post-install marker template. Run executes it on
-		// the container, writing /tmp/holodeck-marker.
-		p, err := provisioner.New(log, cfg.Spec.PrivateKey, cfg.Spec.Username, cfg.Spec.HostUrl)
+		// runSingleNodeProvision): connect with the fixture's auth.sshConfig,
+		// then run the dependency graph, whose only node here is the post-install
+		// marker template. Run executes it on the container, writing
+		// /tmp/holodeck-marker. WithSSHConfig certifies the wiring path
+		// end-to-end (fixture sshConfig -> New -> Dialer/transport).
+		p, err := provisioner.New(log, cfg.Spec.PrivateKey, cfg.Spec.Username, cfg.Spec.HostUrl,
+			provisioner.WithSSHConfig(cfg.Spec.SSHConfig))
 		Expect(err).NotTo(HaveOccurred(), "provisioner.New failed to connect")
 		DeferCleanup(func() { _ = p.Close() })
 

@@ -367,7 +367,8 @@ func (m *command) runProvision(env *v1alpha1.Environment) error {
 		return fmt.Errorf("failed to determine host URL: %w", err)
 	}
 
-	p, err := provisioner.New(m.log, env.Spec.PrivateKey, env.Spec.Username, hostUrl)
+	p, err := provisioner.New(m.log, env.Spec.PrivateKey, env.Spec.Username, hostUrl,
+		provisioner.WithSSHConfig(env.Spec.SSHConfig))
 	if err != nil {
 		return fmt.Errorf("failed to create provisioner: %w", err)
 	}

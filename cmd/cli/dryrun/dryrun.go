@@ -73,6 +73,11 @@ func (m command) build() *cli.Command {
 				return ctx, fmt.Errorf("failed to read config file %s: %w", opts.envFile, err)
 			}
 
+			// Reject a malformed sshConfig up front, before any SSH action.
+			if err := opts.cfg.Spec.SSHConfig.Validate(); err != nil {
+				return ctx, fmt.Errorf("invalid sshConfig in %s: %w", opts.envFile, err)
+			}
+
 			return ctx, nil
 		},
 		Action: func(_ context.Context, _ *cli.Command) error {

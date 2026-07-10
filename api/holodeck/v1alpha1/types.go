@@ -558,6 +558,12 @@ type SSHConfig struct {
 }
 
 // BastionConfig defines a jump host used to reach the target instance.
+//
+// Credential fallback (hop-1): when Username or PrivateKey is empty, the bastion
+// connection reuses the target's SSH username and private key respectively.
+// Agent authentication does NOT apply to hop-1 — SSHConfig.UseAgent and
+// SSHConfig.AgentSocket configure the target hop only; the bastion always
+// authenticates with a key file (its own PrivateKey, or the target's fallback).
 type BastionConfig struct {
 	// Host is the bastion's address (host or host:port).
 	Host string `json:"host"`
@@ -571,8 +577,12 @@ type BastionConfig struct {
 	PrivateKey string `json:"privateKey,omitempty"` //nolint:gosec // G117: stores a file path, not key material
 }
 
-// Validate validates the SSHConfig configuration.
+// Validate validates the SSHConfig configuration. It is nil-safe: callers pass
+// the (possibly-nil) Auth.SSHConfig field directly.
 func (c *SSHConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
 	switch c.KnownHostsPolicy {
 	case "", "accept-new", "strict", "off":
 	default:
