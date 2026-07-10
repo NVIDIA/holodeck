@@ -134,6 +134,65 @@ func TestDialerFromSSHConfig(t *testing.T) {
 	}
 }
 
+// TestTransportFromSSHConfig_ConnectTimeout proves N1: auth.sshConfig.connectTimeout
+// maps onto the DirectTransport's TCP dial timeout, and an unset connectTimeout
+// preserves the legacy DefaultDirectDialTimeout (10s). Without the mapping in
+// transportFromSSHConfig, a user-set connectTimeout is silently discarded — the
+// same class of inert-config bug B1 fixed for the other sshConfig fields.
+func TestTransportFromSSHConfig_ConnectTimeout(t *testing.T) {
+	const (
+		keyPath  = "/keys/target"
+		userName = "tester"
+		hostURL  = "10.0.0.5"
+	)
+	log := logger.NewLogger()
+
+	tests := []struct {
+		name string
+		cfg  *v1alpha1.SSHConfig
+		want time.Duration
+	}{
+		{
+			name: "nil cfg keeps the legacy default dial timeout",
+			cfg:  nil,
+			want: sshutil.DefaultDirectDialTimeout,
+		},
+		{
+			name: "unset connectTimeout keeps the legacy default dial timeout",
+			cfg:  &v1alpha1.SSHConfig{KnownHostsPolicy: "accept-new"},
+			want: sshutil.DefaultDirectDialTimeout,
+		},
+		{
+			name: "connectTimeout maps to the direct-transport dial timeout",
+			cfg:  &v1alpha1.SSHConfig{ConnectTimeout: metav1.Duration{Duration: 25 * time.Second}},
+			want: 25 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := transportFromSSHConfig(hostURL, keyPath, userName, tt.cfg, log)
+			dt, ok := tr.(*sshutil.DirectTransport)
+			require.True(t, ok, "non-bastion config must select a DirectTransport")
+			assert.Equal(t, tt.want, dt.DialTimeout(), "connectTimeout -> DirectTransport dial timeout")
+		})
+	}
+}
+
+// TestNew_RejectsInvalidSSHConfig proves New validates the sshConfig BEFORE
+// dialing: an invalid knownHostsPolicy fails fast with an actionable error
+// naming the bad field, rather than silently degrading to accept-new (B1) or
+// surfacing only as an opaque connection failure. MaxRetries:1 keeps the
+// no-validation regression path fast (one failed dial to a dead port) instead
+// of the 20x1s default envelope.
+func TestNew_RejectsInvalidSSHConfig(t *testing.T) {
+	_, err := New(logger.NewLogger(), "/keys/target", "tester", "127.0.0.1:1",
+		WithSSHConfig(&v1alpha1.SSHConfig{KnownHostsPolicy: "bogus", MaxRetries: 1}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "knownHostsPolicy",
+		"an invalid knownHostsPolicy must fail before any dial, naming the bad field")
+}
+
 // countingTransport counts DialContext() calls while connecting to a black hole.
 type countingTransport struct {
 	addr  string

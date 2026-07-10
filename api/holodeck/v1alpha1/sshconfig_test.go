@@ -46,6 +46,7 @@ func TestSSHConfig_RoundTrip(t *testing.T) {
 }
 
 func TestSSHConfig_Validate(t *testing.T) {
+	require.NoError(t, (*SSHConfig)(nil).Validate()) // nil-safe: callers pass a possibly-nil field
 	require.NoError(t, (&SSHConfig{KnownHostsPolicy: "accept-new"}).Validate())
 	require.NoError(t, (&SSHConfig{}).Validate()) // all-optional
 	assert.Error(t, (&SSHConfig{KnownHostsPolicy: "yolo"}).Validate())

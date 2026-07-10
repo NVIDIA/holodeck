@@ -28,6 +28,8 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/sshutil/sshtest"
 )
 
 func TestRewriteKubeConfigServer(t *testing.T) {
@@ -300,4 +302,42 @@ kind: Config
 			}
 		})
 	}
+}
+
+// TestGetKubeConfig_StrictPolicyReachesDialer is the B1 proving test. It drives a
+// real production provisioner.New call site (GetKubeConfig -> provisioner.New)
+// and asserts that a strict knownHostsPolicy set on the environment's
+// auth.sshConfig actually reaches the Dialer.
+//
+// With a fresh (empty) known_hosts, strict must REJECT the unknown in-process
+// server. If WithSSHConfig were not wired at the call site, the dial would
+// default to accept-new and SUCCEED — so this test goes RED the moment the
+// option is dropped from GetKubeConfig, discriminating exactly the
+// end-to-end-inert regression B1 fixed. MaxRetries:1 keeps it fast (a strict
+// rejection is not transient, so retrying is pointless).
+func TestGetKubeConfig_StrictPolicyReachesDialer(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)           // fresh known_hosts: the server is unknown (macOS path)
+	t.Setenv("XDG_CACHE_HOME", dir) // Linux TOFU path also honors this
+
+	keyPath, pub := sshtest.GenerateKey(t)
+	srv := sshtest.NewServer(t, pub)
+
+	cfg := &v1alpha1.Environment{
+		Spec: v1alpha1.EnvironmentSpec{
+			Auth: v1alpha1.Auth{
+				PrivateKey: keyPath,
+				Username:   "tester",
+				SSHConfig: &v1alpha1.SSHConfig{
+					KnownHostsPolicy: "strict",
+					MaxRetries:       1,
+				},
+			},
+		},
+	}
+
+	err := GetKubeConfig(logger.NewLogger(), cfg, srv.Addr(), filepath.Join(t.TempDir(), "kubeconfig"))
+	require.Error(t, err, "strict policy against an unknown host must reject the dial")
+	assert.Contains(t, err.Error(), "strict",
+		"the strict host-key policy must reach the Dialer through the production New call site")
 }
