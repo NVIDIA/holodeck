@@ -312,3 +312,68 @@ func splitNonEmptyLines(s string) []string {
 	}
 	return out
 }
+
+// TestTOFU_Strict_UnknownRejected guards the strict policy branch added in
+// Slice 1: an unrecorded host must be rejected, not silently trusted. If
+// strict is broken to fall through to record (the pre-T2 TOFU behavior), this
+// test goes red.
+func TestTOFU_Strict_UnknownRejected(t *testing.T) {
+	path := setupTOFUTest(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+
+	key := generateTestKey(t)
+	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
+
+	cb := HostKeyCallback(HostKeyPolicyStrict)
+	err := cb("testhost:22", addr, key)
+	require.Error(t, err, "strict must reject an unknown host")
+	assert.Contains(t, err.Error(), "strict host-key policy")
+
+	data, rerr := os.ReadFile(path) //nolint:gosec // test helper with controlled tmpdir path
+	require.NoError(t, rerr)
+	assert.Empty(t, splitNonEmptyLines(string(data)), "strict must not record the rejected host")
+}
+
+// TestTOFU_Off_AcceptsAndSkipsFile guards the off policy branch: any key is
+// accepted and the known_hosts file is never touched (no directory, no
+// write). If off ever fell through to the accept-new record path, this test
+// goes red on the file-existence assertion.
+func TestTOFU_Off_AcceptsAndSkipsFile(t *testing.T) {
+	path := setupTOFUTest(t)
+
+	key := generateTestKey(t)
+	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
+
+	cb := HostKeyCallback(HostKeyPolicyOff)
+	require.NoError(t, cb("testhost:22", addr, key))
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "off must not create known_hosts at all")
+}
+
+// TestTOFU_AcceptNew_RecordsThenMatches guards the accept-new (TOFU) branch
+// via the new HostKeyCallback(policy) entry point: first contact records,
+// second contact with the same key matches, without requiring strict
+// pre-approval. If accept-new stopped recording, the second call would see
+// an unknown host again and this test would go red on the "already known"
+// assertion below.
+func TestTOFU_AcceptNew_RecordsThenMatches(t *testing.T) {
+	path := setupTOFUTest(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+
+	key := generateTestKey(t)
+	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
+
+	cb := HostKeyCallback(HostKeyPolicyAcceptNew)
+	require.NoError(t, cb("testhost:22", addr, key), "first contact should record")
+
+	data, err := os.ReadFile(path) //nolint:gosec // test helper with controlled tmpdir path
+	require.NoError(t, err)
+	require.Len(t, splitNonEmptyLines(string(data)), 1, "first contact must write exactly one entry")
+
+	require.NoError(t, cb("testhost:22", addr, key), "second contact with the same key should match, not re-record")
+
+	data2, err := os.ReadFile(path) //nolint:gosec // test helper with controlled tmpdir path
+	require.NoError(t, err)
+	assert.Len(t, splitNonEmptyLines(string(data2)), 1, "matching a known host must not append a duplicate entry")
+}
