@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.13
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.71.0
 	github.com/mattn/go-isatty v0.0.22
-	github.com/onsi/ginkgo/v2 v2.29.0
+	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.41.0
 	github.com/pkg/sftp v1.13.10
 	github.com/stretchr/testify v1.11.1
