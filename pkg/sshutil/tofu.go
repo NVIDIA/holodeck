@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -50,7 +51,18 @@ func HostKeyCallback(policy HostKeyPolicy) ssh.HostKeyCallback {
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			return fmt.Errorf("create known_hosts dir: %w", err)
 		}
-		// Slice 2 wraps this read-verify-append in a cross-process flock.
+		// tofuMu only serialises this process; concurrent holodeck processes
+		// (e.g. multi-node provisioning) still race on the file, so an
+		// advisory cross-process flock guards the read-verify-append below.
+		lockF, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600) //nolint:gosec // path from UserCacheDir
+		if err != nil {
+			return fmt.Errorf("open known_hosts for lock: %w", err)
+		}
+		defer func() { _ = lockF.Close() }()
+		if err := syscall.Flock(int(lockF.Fd()), syscall.LOCK_EX); err != nil {
+			return fmt.Errorf("lock known_hosts: %w", err)
+		}
+		defer func() { _ = syscall.Flock(int(lockF.Fd()), syscall.LOCK_UN) }()
 		return verifyOrRecord(path, policy, hostname, remote, key)
 	}
 }
