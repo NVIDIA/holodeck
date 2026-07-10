@@ -1,3 +1,43 @@
+# v1.71.0 (2026-07-07)
+
+* **Feature**: Adding SSM Cloud Connector to support Azure Virtual Machines onboarding to AWS Systems Manager
+
+# v1.70.0 (2026-07-06)
+
+* **Feature**: Add request serialization snapshot tests.
+
+# v1.69.5 (2026-07-01)
+
+* **Bug Fix**: Bump smithy-go to 1.27.3, fix JSON encorder for document.Number, endpoint host label format validation and CBOR union serialization on new serde
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.69.4 (2026-06-29)
+
+* No change notes available for this release.
+
+# v1.69.3 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.69.2 (2026-06-04)
+
+* **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.69.1 (2026-06-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.69.0 (2026-06-02)
+
+* **Feature**: Adding new BDD representation of endpoint ruleset
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.68.8 (2026-05-29)
+
+* **Dependency Update**: Update to smithy-go v1.26.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.68.7 (2026-05-28)
 
 * **Dependency Update**: Updated to the latest SDK module versions
