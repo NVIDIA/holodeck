@@ -18,56 +18,28 @@ package provisioner
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"os/exec"
 	"time"
+
+	"github.com/NVIDIA/holodeck/pkg/sshutil"
 )
 
-// Transport abstracts how SSH connections are established to a target node.
-// Each provider controls the transport mechanism (direct TCP, SSM tunnel, etc.)
-// while the Provisioner simply receives working connections.
-type Transport interface {
-	// Dial establishes a TCP connection to the target node's SSH port.
-	Dial() (net.Conn, error)
-	// Target returns a human-readable identifier for the target (hostname or instance ID).
-	Target() string
-	// Close releases any resources held by the transport (e.g., SSM tunnel processes).
-	Close() error
-}
+// Transport is the SSH connection transport, now owned by pkg/sshutil. The
+// alias keeps the provisioner package's public surface stable while the single
+// canonical Transport interface (DialContext/Target/Close) lives in sshutil.
+type Transport = sshutil.Transport
 
-// DirectTransport establishes SSH connections via direct TCP to host:22.
-// This is the default transport for single-node environments and the SSH provider.
-type DirectTransport struct {
-	host string // host:port address (e.g., "10.0.1.5:22")
-}
+// DirectTransport aliases sshutil.DirectTransport (direct TCP to host:22).
+type DirectTransport = sshutil.DirectTransport
 
-// NewDirectTransport creates a DirectTransport that dials host:22.
-func NewDirectTransport(host string) *DirectTransport {
-	return &DirectTransport{host: host + ":22"}
-}
-
-// Dial connects directly to the host via TCP with a 10-second timeout.
-func (d *DirectTransport) Dial() (net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", d.host, 10*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("direct transport dial %s: %w", d.host, err)
-	}
-	return conn, nil
-}
-
-// Close is a no-op for DirectTransport since there are no resources to release.
-func (d *DirectTransport) Close() error {
-	return nil
-}
-
-// Target returns the host (without port) for display purposes.
-func (d *DirectTransport) Target() string {
-	host, _, err := net.SplitHostPort(d.host)
-	if err != nil {
-		return d.host
-	}
-	return host
+// NewDirectTransport returns a DirectTransport that dials host; ":22" is
+// appended only when host has no port (sshutil handles host:port targets, which
+// the old provisioner-local implementation could not).
+func NewDirectTransport(host string) *sshutil.DirectTransport {
+	return sshutil.NewDirectTransport(host)
 }
 
 const (
@@ -99,10 +71,12 @@ type SSMTransport struct {
 	stderrBuf bytes.Buffer
 }
 
-// Dial starts an SSM port-forwarding session and connects to the local tunnel endpoint.
-// Uses retry-based dial with exponential backoff (D1) instead of a fixed sleep.
-// Idempotent: if a previous session exists, it is closed before starting a new one.
-func (s *SSMTransport) Dial() (net.Conn, error) {
+// DialContext starts an SSM port-forwarding session and connects to the local
+// tunnel endpoint. Uses retry-based dial with exponential backoff (D1) instead
+// of a fixed sleep. Idempotent: if a previous session exists, it is closed
+// before starting a new one. ctx bounds both the aws process
+// (exec.CommandContext) and the local tunnel dial.
+func (s *SSMTransport) DialContext(ctx context.Context) (net.Conn, error) {
 	// R1: Close any existing SSM session before starting a new one (idempotency guard)
 	if s.cmd != nil {
 		_ = s.Close()
@@ -131,7 +105,7 @@ func (s *SSMTransport) Dial() (net.Conn, error) {
 		args = append(args, "--profile", s.Profile)
 	}
 
-	s.cmd = exec.Command("aws", args...) //nolint:gosec // args are constructed from validated fields
+	s.cmd = exec.CommandContext(ctx, "aws", args...) //nolint:gosec // args are constructed from validated fields
 	s.stderrBuf.Reset()
 	s.cmd.Stderr = &s.stderrBuf
 	if err := s.cmd.Start(); err != nil {
@@ -140,7 +114,7 @@ func (s *SSMTransport) Dial() (net.Conn, error) {
 
 	// Retry-based dial with exponential backoff (D1)
 	addr := fmt.Sprintf("127.0.0.1:%s", s.localPort)
-	conn, err := retryDial(addr, ssmDialMaxRetries, ssmDialBaseDelay)
+	conn, err := retryDial(ctx, addr, ssmDialMaxRetries, ssmDialBaseDelay)
 	if err != nil {
 		stderrOutput := s.stderrBuf.String()
 		// Clean up the SSM process on dial failure
@@ -173,12 +147,14 @@ func (s *SSMTransport) Close() error {
 	return nil
 }
 
-// retryDial attempts to connect to addr with exponential backoff.
+// retryDial attempts to connect to addr with exponential backoff, honoring ctx
+// on each attempt via net.Dialer.DialContext.
 // Backoff schedule: baseDelay * 2^attempt (e.g., 100ms, 200ms, 400ms, 800ms, 1600ms).
-func retryDial(addr string, maxAttempts int, baseDelay time.Duration) (net.Conn, error) {
+func retryDial(ctx context.Context, addr string, maxAttempts int, baseDelay time.Duration) (net.Conn, error) {
 	var lastErr error
 	for attempt := range maxAttempts {
-		conn, err := net.DialTimeout("tcp", addr, ssmDialTimeout)
+		d := net.Dialer{Timeout: ssmDialTimeout}
+		conn, err := d.DialContext(ctx, "tcp", addr)
 		if err == nil {
 			return conn, nil
 		}

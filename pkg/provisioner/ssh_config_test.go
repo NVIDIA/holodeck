@@ -17,6 +17,7 @@
 package provisioner
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
@@ -32,24 +33,26 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 )
 
-// countingTransport counts Dial() calls while connecting to a black hole.
+// countingTransport counts DialContext() calls while connecting to a black hole.
 type countingTransport struct {
 	addr  string
 	calls atomic.Int32
 }
 
-func (t *countingTransport) Dial() (net.Conn, error) {
+func (t *countingTransport) DialContext(ctx context.Context) (net.Conn, error) {
 	t.calls.Add(1)
-	return net.DialTimeout("tcp", t.addr, 5*time.Second)
+	d := net.Dialer{Timeout: 5 * time.Second}
+	return d.DialContext(ctx, "tcp", t.addr)
 }
 
 func (t *countingTransport) Target() string { return t.addr }
 func (t *countingTransport) Close() error   { return nil }
 
-// TestNew_HandshakeTimeout verifies that New() (via connectOrDie) configures
-// an SSH handshake timeout. Without the timeout, ssh.NewClientConn blocks
-// forever against a host that accepts TCP but never responds with the SSH
-// banner. With the timeout, each attempt fails in ~15s.
+// TestNew_HandshakeTimeout verifies that New() (via the sshutil.Dialer default
+// envelope) configures an SSH handshake timeout. Without the timeout,
+// ssh.NewClientConn blocks forever against a host that accepts TCP but never
+// responds with the SSH banner. With the default 15s handshake, each attempt
+// fails in ~15s.
 //
 // We verify this by connecting to a black hole server and checking that
 // multiple retry attempts complete within a bounded time (proving the
@@ -66,9 +69,9 @@ func TestNew_HandshakeTimeout(t *testing.T) {
 
 	transport := &countingTransport{addr: addr}
 
-	// Run New() in a goroutine — it will retry up to sshMaxRetries times,
-	// each timing out in sshHandshakeTimeout (~15s). We don't want to wait
-	// for all 20 retries (~5 min), so we observe progress from the outside.
+	// Run New() in a goroutine — it will retry up to the default 20 attempts,
+	// each timing out at the default 15s handshake. We don't want to wait for
+	// all 20 retries (~5 min), so we observe progress from the outside.
 	errCh := make(chan error, 1)
 	go func() {
 		_, err := New(log, keyPath, "testuser", "black-hole-host", WithTransport(transport))
