@@ -20,10 +20,15 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"fmt"
+	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -159,4 +164,41 @@ func TestTOFU_HashedEntry_MismatchRejected(t *testing.T) {
 	require.ErrorAs(t, err, &keyErr)
 	assert.NotEmpty(t, keyErr.Want, "KeyError.Want must name the recorded (hashed) key")
 	assert.Contains(t, err.Error(), "host key mismatch")
+}
+
+func TestTOFU_Flock_CrossProcessExclusion(t *testing.T) {
+	if os.Getenv("HOLODECK_FLOCK_CHILD") == "1" {
+		// Child: lock the file exclusively, signal readiness, hold until killed.
+		path := os.Getenv("HOLODECK_FLOCK_PATH")
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			os.Exit(2)
+		}
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			os.Exit(3)
+		}
+		fmt.Println("locked")
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "known_hosts")
+	require.NoError(t, os.WriteFile(path, nil, 0600))
+
+	cmd := exec.Command(os.Args[0], "-test.run", "TestTOFU_Flock_CrossProcessExclusion") //nolint:gosec // re-exec of the test binary
+	cmd.Env = append(os.Environ(), "HOLODECK_FLOCK_CHILD=1", "HOLODECK_FLOCK_PATH="+path)
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() })
+
+	buf := make([]byte, 6)
+	_, _ = io.ReadFull(stdout, buf) // wait for "locked"
+
+	f, err := os.OpenFile(path, os.O_RDWR, 0600)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	assert.ErrorIs(t, err, syscall.EWOULDBLOCK, "parent must be blocked while child holds LOCK_EX")
 }
