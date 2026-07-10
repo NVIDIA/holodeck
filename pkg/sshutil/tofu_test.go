@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -140,6 +141,35 @@ func TestTOFU_UnreadableFile_ReturnsError(t *testing.T) {
 	}
 }
 
+// hashKnownHostsEntry seeds a plaintext known_hosts line for host->key and
+// hashes it via the real ssh-keygen -H binary (an implementation
+// independent of golang.org/x/crypto/ssh/knownhosts, the package under
+// test), returning the resulting hashed line. This is deliberately NOT
+// knownhosts.HashHostname: that helper lives in the same package as the
+// parser being exercised, so a shared hashing bug could make the guard
+// pass for the wrong reason. ssh-keygen -H is the canonical, independently
+// implemented producer of the OpenSSH |1|salt|hash format.
+func hashKnownHostsEntry(t *testing.T, host string, key ssh.PublicKey) string {
+	t.Helper()
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not available in this environment")
+	}
+
+	dir := t.TempDir()
+	seedPath := filepath.Join(dir, "known_hosts")
+	plain := knownhosts.Normalize(host) + " " + strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
+	require.NoError(t, os.WriteFile(seedPath, []byte(plain+"\n"), 0600))
+
+	out, err := exec.Command("ssh-keygen", "-H", "-f", seedPath).CombinedOutput() //nolint:gosec // fixed binary name, test-controlled path
+	require.NoError(t, err, "ssh-keygen -H failed: %s", out)
+
+	hashed, err := os.ReadFile(seedPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	line := strings.TrimSpace(string(hashed))
+	require.True(t, strings.HasPrefix(line, "|1|"), "ssh-keygen -H must produce a |1|salt|hash entry, got: %s", line)
+	return line
+}
+
 func TestTOFU_HashedEntry_MismatchRejected(t *testing.T) {
 	path := setupTOFUTest(t)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
@@ -148,13 +178,12 @@ func TestTOFU_HashedEntry_MismatchRejected(t *testing.T) {
 	key2 := generateTestKey(t)
 	host := "testhost:22"
 
-	// Seed a HASHED known_hosts entry for host→key1 (the |1|salt|hash form
-	// ssh-keygen -H produces). The legacy parser splits on space, sees
-	// parts[0]=="|1|...", never matches "testhost:22", and treats the host as
-	// unknown — so it would RECORD key2 and accept. knownhosts matches the
-	// hashed line and rejects the changed key.
-	hashed := knownhosts.HashHostname(knownhosts.Normalize(host))
-	line := knownhosts.Line([]string{hashed}, key1)
+	// Seed a HASHED known_hosts entry for host→key1, produced by the real
+	// ssh-keygen -H binary (see hashKnownHostsEntry). The legacy parser
+	// splits on space, sees parts[0]=="|1|...", never matches "testhost:22",
+	// and treats the host as unknown — so it would RECORD key2 and accept.
+	// knownhosts matches the hashed line and rejects the changed key.
+	line := hashKnownHostsEntry(t, host, key1)
 	require.NoError(t, os.WriteFile(path, []byte(line+"\n"), 0600))
 
 	cb := HostKeyCallback(HostKeyPolicyAcceptNew)
