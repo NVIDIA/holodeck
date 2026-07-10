@@ -36,6 +36,7 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/cli/common"
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
+	"github.com/NVIDIA/holodeck/pkg/provisioner"
 )
 
 const (
@@ -206,11 +207,16 @@ var _ = Describe("Real SSH ProviderSSH E2E", Label("real-ssh"), func() {
 		cfg.Spec.Username = sshUser
 		cfg.Spec.HostUrl = hostURL
 
-		// GREEN (Step 3) wires the production single-node SSH path here:
-		//   provisioner.New(log, cfg.Spec.PrivateKey, cfg.Spec.Username, cfg.Spec.HostUrl)
-		//   -> p.Run(cfg), which executes the post-install marker template on the
-		// container. Until that is wired, /tmp/holodeck-marker is never written and
-		// the read-back below fails — the honest RED.
+		// Production single-node SSH path (mirrors cmd/cli/create
+		// runSingleNodeProvision): connect, then run the dependency graph, whose
+		// only node here is the post-install marker template. Run executes it on
+		// the container, writing /tmp/holodeck-marker.
+		p, err := provisioner.New(log, cfg.Spec.PrivateKey, cfg.Spec.Username, cfg.Spec.HostUrl)
+		Expect(err).NotTo(HaveOccurred(), "provisioner.New failed to connect")
+		DeferCleanup(func() { _ = p.Close() })
+
+		_, err = p.Run(cfg)
+		Expect(err).NotTo(HaveOccurred(), "provisioning run failed")
 
 		// Read the marker back through the holodeck ssh exec path.
 		client, err := common.ConnectSSH(log, keyPath, sshUser, hostURL)
