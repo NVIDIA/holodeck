@@ -39,6 +39,15 @@ var tofuMu sync.Mutex
 // subsequent connections the stored key is compared and a mismatch — indicating
 // a potential MITM attack — is rejected with an error.
 func TOFUHostKeyCallback() ssh.HostKeyCallback {
+	return HostKeyCallback(HostKeyPolicyAcceptNew)
+}
+
+// HostKeyCallback is a compile stub for the RED step of Slice 1: it still
+// routes through the legacy hand-rolled parser below, so the hashed-entry
+// guard test fails on assertion (the parser silently accepts a changed key
+// against a hashed known_hosts entry) rather than on a build error. Slice 1
+// Step 2 replaces the body with the knownhosts-backed implementation.
+func HostKeyCallback(_ HostKeyPolicy) ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		tofuMu.Lock()
 		defer tofuMu.Unlock()

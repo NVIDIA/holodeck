@@ -25,7 +25,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 func generateTestKey(t *testing.T) ssh.PublicKey {
@@ -129,4 +132,31 @@ func TestTOFU_UnreadableFile_ReturnsError(t *testing.T) {
 	if err := cb("testhost:22", addr, key); err == nil {
 		t.Fatal("should return error when known_hosts is not readable")
 	}
+}
+
+func TestTOFU_HashedEntry_MismatchRejected(t *testing.T) {
+	path := setupTOFUTest(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+
+	key1 := generateTestKey(t)
+	key2 := generateTestKey(t)
+	host := "testhost:22"
+
+	// Seed a HASHED known_hosts entry for host→key1 (the |1|salt|hash form
+	// ssh-keygen -H produces). The legacy parser splits on space, sees
+	// parts[0]=="|1|...", never matches "testhost:22", and treats the host as
+	// unknown — so it would RECORD key2 and accept. knownhosts matches the
+	// hashed line and rejects the changed key.
+	hashed := knownhosts.HashHostname(knownhosts.Normalize(host))
+	line := knownhosts.Line([]string{hashed}, key1)
+	require.NoError(t, os.WriteFile(path, []byte(line+"\n"), 0600))
+
+	cb := HostKeyCallback(HostKeyPolicyAcceptNew)
+	err := cb(host, &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}, key2)
+	require.Error(t, err, "changed key against a hashed entry must be rejected")
+
+	var keyErr *knownhosts.KeyError
+	require.ErrorAs(t, err, &keyErr)
+	assert.NotEmpty(t, keyErr.Want, "KeyError.Want must name the recorded (hashed) key")
+	assert.Contains(t, err.Error(), "host key mismatch")
 }
