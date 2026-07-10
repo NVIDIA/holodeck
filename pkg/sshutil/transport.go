@@ -18,7 +18,7 @@ package sshutil
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net"
 )
 
@@ -33,12 +33,29 @@ type Transport interface {
 type DirectTransport struct{ host string }
 
 // NewDirectTransport dials host; ":22" is appended only when host has no port.
-func NewDirectTransport(host string) *DirectTransport { return &DirectTransport{host: host} }
+func NewDirectTransport(host string) *DirectTransport {
+	addr := host
+	if _, _, err := net.SplitHostPort(host); err != nil {
+		addr = net.JoinHostPort(host, "22")
+	}
+	return &DirectTransport{host: addr}
+}
 
 func (d *DirectTransport) DialContext(ctx context.Context) (net.Conn, error) {
-	return nil, errors.New("not implemented")
+	dialer := net.Dialer{Timeout: DefaultDirectDialTimeout} // const from dialer.go
+	conn, err := dialer.DialContext(ctx, "tcp", d.host)
+	if err != nil {
+		return nil, fmt.Errorf("direct transport dial %s: %w", d.host, err)
+	}
+	return conn, nil
 }
 
 func (d *DirectTransport) Close() error { return nil }
 
-func (d *DirectTransport) Target() string { return d.host }
+func (d *DirectTransport) Target() string {
+	host, _, err := net.SplitHostPort(d.host)
+	if err != nil {
+		return d.host
+	}
+	return host
+}
