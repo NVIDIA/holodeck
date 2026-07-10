@@ -214,7 +214,11 @@ func (d *Dialer) hostKeyCallback(target string) (ssh.HostKeyCallback, error) {
 		}
 		return ssh.InsecureIgnoreHostKey(), nil //nolint:gosec // G106: explicit opt-in via policy=off
 	}
-	return TOFUHostKeyCallback(), nil
+	policy := d.HostKey
+	if policy == "" {
+		policy = HostKeyPolicyAcceptNew
+	}
+	return HostKeyCallback(policy), nil
 }
 
 // hostPort appends ":22" only when target lacks a port.
