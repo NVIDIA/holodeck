@@ -171,7 +171,7 @@ func TestTOFU_Flock_CrossProcessExclusion(t *testing.T) {
 	if os.Getenv("HOLODECK_FLOCK_CHILD") == "1" {
 		// Child: lock the file exclusively, signal readiness, hold until killed.
 		path := os.Getenv("HOLODECK_FLOCK_PATH")
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600) //nolint:gosec // path from test-controlled env var
 		if err != nil {
 			os.Exit(2)
 		}
@@ -197,7 +197,7 @@ func TestTOFU_Flock_CrossProcessExclusion(t *testing.T) {
 	buf := make([]byte, 6)
 	_, _ = io.ReadFull(stdout, buf) // wait for "locked"
 
-	f, err := os.OpenFile(path, os.O_RDWR, 0600)
+	f, err := os.OpenFile(path, os.O_RDWR, 0600) //nolint:gosec // path from t.TempDir()
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
@@ -223,7 +223,7 @@ func TestTOFU_Flock_BlocksConcurrentHostKeyCallback(t *testing.T) {
 	key := generateTestKey(t)
 	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}
 
-	holder, err := os.OpenFile(path, os.O_RDWR, 0600)
+	holder, err := os.OpenFile(path, os.O_RDWR, 0600) //nolint:gosec // path from setupTOFUTest's tmpdir
 	require.NoError(t, err)
 	defer func() { _ = holder.Close() }()
 	require.NoError(t, syscall.Flock(int(holder.Fd()), syscall.LOCK_EX))
