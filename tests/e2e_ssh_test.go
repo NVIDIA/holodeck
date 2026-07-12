@@ -106,12 +106,49 @@ func generateSSHKey() (keyPath, authorizedKey string) {
 
 // startSSHContainer boots a detached openssh-server container publishing its
 // internal 2222 on a random 127.0.0.1 port, installs bash (route A), and
-// returns the container ID and the "127.0.0.1:<port>" address. The container is
-// killed via DeferCleanup.
+// returns the container ID and the "127.0.0.1:<port>" address. Container
+// startup occasionally crashes before sshd/bash come up (PR #856's first CI
+// run: a container crashed at boot, --rm reaped it, and a blind 30x1s exec
+// retry loop burned 30s getting daemon 404s against the gone ID with no logs
+// surviving). One retry with a fresh container self-heals that flake; a
+// second consecutive failure fails fast with the crash evidence gathered by
+// installBash. The container is removed (not just killed, so it can never
+// linger as a stopped orphan) via DeferCleanup.
 func startSSHContainer(authorizedKey string) (containerID, hostURL string) {
 	GinkgoHelper()
+
+	containerID, err := attemptStartSSHContainer(authorizedKey)
+	if err != nil {
+		By(fmt.Sprintf("real-ssh: container startup attempt failed (%v); removing it and retrying once with a fresh container", err))
+		if containerID != "" {
+			//nolint:gosec // G204: containerID is the id docker just returned.
+			_ = exec.Command("docker", "rm", "-f", containerID).Run()
+		}
+		containerID, err = attemptStartSSHContainer(authorizedKey)
+		if err != nil {
+			if containerID != "" {
+				//nolint:gosec // G204: containerID is the id docker just returned.
+				_ = exec.Command("docker", "rm", "-f", containerID).Run()
+			}
+			Fail(fmt.Sprintf("container startup failed on retry: %v", err))
+		}
+	}
+
+	DeferCleanup(func() {
+		//nolint:gosec // G204: containerID is the id docker just returned.
+		_ = exec.Command("docker", "rm", "-f", containerID).Run()
+	})
+
+	return containerID, dockerHostPort(containerID)
+}
+
+// attemptStartSSHContainer runs a single docker-run + installBash attempt and
+// returns the container ID (even on failure, so the caller can remove it)
+// alongside any error. It never calls Fail itself, so startSSHContainer can
+// retry once before turning a failure into a spec failure.
+func attemptStartSSHContainer(authorizedKey string) (containerID string, err error) {
 	//nolint:gosec // G204: controlled test args; image is digest-pinned, key is test-generated.
-	out, err := exec.Command("docker", "run", "-d", "--rm",
+	out, err := exec.Command("docker", "run", "-d",
 		"-p", "127.0.0.1:0:2222",
 		"-e", "PUID=1000",
 		"-e", "PGID=1000",
@@ -120,34 +157,55 @@ func startSSHContainer(authorizedKey string) (containerID, hostURL string) {
 		"-e", "PUBLIC_KEY="+authorizedKey,
 		sshImage,
 	).CombinedOutput()
-	Expect(err).NotTo(HaveOccurred(), "docker run failed: %s", out)
+	if err != nil {
+		return "", fmt.Errorf("docker run failed: %w: %s", err, out)
+	}
 	containerID = strings.TrimSpace(string(out))
-	Expect(containerID).NotTo(BeEmpty(), "docker run returned no container id")
-	DeferCleanup(func() {
-		//nolint:gosec // G204: containerID is the id docker just returned.
-		_ = exec.Command("docker", "kill", containerID).Run()
-	})
+	if containerID == "" {
+		return "", fmt.Errorf("docker run returned no container id")
+	}
 
-	installBash(containerID)
-	return containerID, dockerHostPort(containerID)
+	if bashErr := installBash(containerID); bashErr != nil {
+		return containerID, bashErr
+	}
+	return containerID, nil
 }
 
-// installBash runs `apk add bash` in the container, retrying until the image's
-// package DB is ready. holo's login shell is /bin/bash, so bash must exist
-// before sshd execs the (bash-only) provision script.
-func installBash(containerID string) {
-	GinkgoHelper()
+// installBash runs `apk add bash` in the container, retrying until the
+// image's package DB is ready. holo's login shell is /bin/bash, so bash must
+// exist before sshd execs the (bash-only) provision script. Before each exec
+// attempt it checks the container is still running via `docker inspect`; a
+// crashed container fails fast with its inspect state and docker-logs tail
+// instead of spinning through the full 30x1s retry budget against a dead (or,
+// pre-fix, already-reaped) container.
+func installBash(containerID string) error {
 	var lastErr error
 	for i := 0; i < 30; i++ {
 		//nolint:gosec // G204: containerID is docker-provided; args are constant.
+		stateOut, inspectErr := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerID).CombinedOutput()
+		running := strings.TrimSpace(string(stateOut))
+		if inspectErr != nil || running != "true" {
+			return fmt.Errorf("container %s is not running (docker inspect state=%q, err=%v)\n%s",
+				containerID, running, inspectErr, containerLogsTail(containerID))
+		}
+
+		//nolint:gosec // G204: containerID is docker-provided; args are constant.
 		out, err := exec.Command("docker", "exec", containerID, "apk", "add", "--no-cache", "bash").CombinedOutput()
 		if err == nil {
-			return
+			return nil
 		}
 		lastErr = fmt.Errorf("%v: %s", err, out)
 		time.Sleep(time.Second)
 	}
-	Fail(fmt.Sprintf("apk add bash never succeeded in container %s: %v", containerID, lastErr))
+	return fmt.Errorf("apk add bash never succeeded in container %s: %v\n%s", containerID, lastErr, containerLogsTail(containerID))
+}
+
+// containerLogsTail best-effort fetches the tail of `docker logs` for
+// containerID, for inclusion in installBash failure diagnostics.
+func containerLogsTail(containerID string) string {
+	//nolint:gosec // G204: containerID is docker-provided; args are constant.
+	out, _ := exec.Command("docker", "logs", "--tail", "50", containerID).CombinedOutput()
+	return "docker logs (tail):\n" + string(out)
 }
 
 // dockerHostPort resolves the host-side address mapped to the container's 2222.
