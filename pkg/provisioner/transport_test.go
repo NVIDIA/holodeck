@@ -17,6 +17,7 @@
 package provisioner
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -48,13 +49,11 @@ func TestDirectTransport_Dial_Success(t *testing.T) {
 	}()
 
 	addr := ln.Addr().String()
-	host, port, err := net.SplitHostPort(addr)
-	require.NoError(t, err)
 
-	// DirectTransport appends :22 by default, so we need to test with the actual port
-	// We'll test the internal dial logic by creating a transport with the right address
-	dt := &DirectTransport{host: host + ":" + port}
-	conn, err := dt.Dial()
+	// sshutil.NewDirectTransport keeps an explicit host:port (it only appends
+	// :22 when the port is absent), so we can point it straight at the listener.
+	dt := NewDirectTransport(addr)
+	conn, err := dt.DialContext(context.Background())
 	require.NoError(t, err)
 	assert.NotNil(t, conn)
 	_ = conn.Close()
@@ -62,8 +61,8 @@ func TestDirectTransport_Dial_Success(t *testing.T) {
 
 func TestDirectTransport_Dial_Failure(t *testing.T) {
 	// Use a port that nothing is listening on
-	dt := &DirectTransport{host: "127.0.0.1:1"}
-	conn, err := dt.Dial()
+	dt := NewDirectTransport("127.0.0.1:1")
+	conn, err := dt.DialContext(context.Background())
 	assert.Error(t, err)
 	assert.Nil(t, conn)
 }
@@ -97,7 +96,7 @@ func TestSSMTransport_RetryDial_Success(t *testing.T) {
 	addr := ln.Addr().String()
 
 	// Test the retry dial function directly
-	conn, err := retryDial(addr, 5, 50*time.Millisecond)
+	conn, err := retryDial(context.Background(), addr, 5, 50*time.Millisecond)
 	require.NoError(t, err)
 	assert.NotNil(t, conn)
 	_ = conn.Close()
@@ -105,7 +104,7 @@ func TestSSMTransport_RetryDial_Success(t *testing.T) {
 
 func TestSSMTransport_RetryDial_AllAttemptsFail(t *testing.T) {
 	// Use a port that nothing is listening on
-	conn, err := retryDial("127.0.0.1:1", 3, 10*time.Millisecond)
+	conn, err := retryDial(context.Background(), "127.0.0.1:1", 3, 10*time.Millisecond)
 	assert.Error(t, err)
 	assert.Nil(t, conn)
 	assert.Contains(t, err.Error(), "after 3 attempts")
@@ -117,7 +116,7 @@ func TestSSMTransport_RetryDial_ExponentialBackoff(t *testing.T) {
 	// Expected: attempt 0 (immediate), sleep 10ms, attempt 1, sleep 20ms, attempt 2
 	// Total ~30ms minimum
 	start := time.Now()
-	_, err := retryDial("127.0.0.1:1", 3, 10*time.Millisecond)
+	_, err := retryDial(context.Background(), "127.0.0.1:1", 3, 10*time.Millisecond)
 	elapsed := time.Since(start)
 
 	assert.Error(t, err)
@@ -161,9 +160,11 @@ func TestDirectTransport_Close(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// R2: Verify DirectTransport satisfies the Transport interface (which now embeds io.Closer)
+// R2: Verify DirectTransport satisfies the Transport interface (which includes Close).
 func TestDirectTransport_ImplementsTransport(t *testing.T) {
-	var _ Transport = (*DirectTransport)(nil)
+	dt := NewDirectTransport("10.0.1.5")
+	assert.Implements(t, (*Transport)(nil), dt, "DirectTransport must satisfy Transport")
+	assert.Equal(t, "10.0.1.5", dt.Target())
 }
 
 // R1: SSMTransport.Dial() should be idempotent — calling Close() before re-dial

@@ -112,6 +112,18 @@ func (m command) build() *cli.Command {
 				return ctx, fmt.Errorf("error reading config file: %w", err)
 			}
 
+			// Reject a malformed sshConfig up front, before any cloud/SSH action.
+			if err := opts.cfg.Spec.SSHConfig.Validate(); err != nil {
+				return ctx, fmt.Errorf("invalid sshConfig in %s: %w", opts.envFile, err)
+			}
+
+			// Cluster-mode sshConfig semantics (bastion, agent, per-node
+			// host-key policy) are undesigned (#851); reject rather than
+			// silently ignore.
+			if err := opts.cfg.Spec.ValidateSSHConfigMode(); err != nil {
+				return ctx, err
+			}
+
 			// if no containerruntime is specified, default to none
 			if opts.cfg.Spec.ContainerRuntime.Name == "" {
 				opts.cfg.Spec.ContainerRuntime.Name = v1alpha1.ContainerRuntimeNone
@@ -434,7 +446,8 @@ func runSingleNodeProvision(log *logger.FunLogger, opts *options) error {
 		hostUrl = opts.cfg.Spec.HostUrl
 	}
 
-	p, err := provisioner.New(log, opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, hostUrl)
+	p, err := provisioner.New(log, opts.cfg.Spec.PrivateKey, opts.cfg.Spec.Username, hostUrl,
+		provisioner.WithSSHConfig(opts.cfg.Spec.SSHConfig))
 	if err != nil {
 		return err
 	}

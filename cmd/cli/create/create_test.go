@@ -18,9 +18,12 @@ package create
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	cli "github.com/urfave/cli/v3"
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
@@ -590,4 +593,89 @@ func TestCreateSSHProviderDoesNotPanic(t *testing.T) {
 	assert.NotPanics(t, func() {
 		_ = cmd.run(opts)
 	})
+}
+
+// TestCreateBeforeHook_ClusterModeSSHConfig guards #851 T8b: cluster-mode
+// sshConfig semantics (bastion, agent auth, per-node host-key policy) are
+// undesigned, so the create Before hook must reject a cluster env carrying
+// auth.sshConfig before any cloud action, and must not regress single-node
+// sshConfig handling (T8's wiring).
+func TestCreateBeforeHook_ClusterModeSSHConfig(t *testing.T) {
+	wantErrMsg := "auth.sshConfig is not yet supported in cluster mode (see NVIDIA/holodeck#851); remove the sshConfig block or use single-node mode"
+
+	tests := []struct {
+		name       string
+		envContent string
+		wantErrMsg string // empty means: must NOT be wantErrMsg (other errors are fine)
+	}{
+		{
+			name: "cluster env with sshConfig is rejected",
+			envContent: "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-cluster-env\n" +
+				"spec:\n" +
+				"  provider: aws\n" +
+				"  auth:\n" +
+				"    sshConfig:\n" +
+				"      knownHostsPolicy: accept-new\n" +
+				"  cluster:\n" +
+				"    region: us-west-2\n" +
+				"    controlPlane:\n" +
+				"      count: 1\n",
+			wantErrMsg: wantErrMsg,
+		},
+		{
+			name: "cluster env without sshConfig is not rejected",
+			envContent: "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-cluster-env\n" +
+				"spec:\n" +
+				"  provider: aws\n" +
+				"  cluster:\n" +
+				"    region: us-west-2\n" +
+				"    controlPlane:\n" +
+				"      count: 1\n",
+		},
+		{
+			name: "single-node env with sshConfig is not rejected",
+			envContent: "apiVersion: holodeck.nvidia.com/v1alpha1\n" +
+				"kind: Environment\n" +
+				"metadata:\n" +
+				"  name: test-single-node-env\n" +
+				"spec:\n" +
+				"  provider: ssh\n" +
+				"  auth:\n" +
+				"    privateKey: /nonexistent/key\n" +
+				"    sshConfig:\n" +
+				"      knownHostsPolicy: accept-new\n" +
+				"  instance:\n" +
+				"    hostUrl: localhost\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			envFile := filepath.Join(tmpDir, "env.yaml")
+			require.NoError(t, os.WriteFile(envFile, []byte(tt.envContent), 0600))
+
+			log := logger.NewLogger()
+			cmd := NewCommand(log)
+			app := &cli.Command{Commands: []*cli.Command{cmd}}
+
+			err := app.Run(context.Background(), []string{"holodeck", "create", "-f", envFile})
+			if tt.wantErrMsg != "" {
+				require.Error(t, err)
+				assert.Equal(t, tt.wantErrMsg, err.Error())
+				return
+			}
+			// May still fail later (missing key file, no AWS creds, etc.),
+			// but must not be the sshConfig-cluster-mode rejection.
+			if err != nil {
+				assert.NotContains(t, err.Error(), "not yet supported in cluster mode")
+			}
+		})
+	}
 }

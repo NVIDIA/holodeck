@@ -119,7 +119,8 @@ func GetKubeConfig(log *logger.FunLogger, cfg *v1alpha1.Environment, hostUrl str
 	remoteFilePath := "${HOME}/.kube/config"
 
 	// Create a new ssh session
-	p, err := provisioner.New(log, cfg.Spec.PrivateKey, cfg.Spec.Username, hostUrl)
+	p, err := provisioner.New(log, cfg.Spec.PrivateKey, cfg.Spec.Username, hostUrl,
+		provisioner.WithSSHConfig(cfg.Spec.SSHConfig))
 	if err != nil {
 		return err
 	}

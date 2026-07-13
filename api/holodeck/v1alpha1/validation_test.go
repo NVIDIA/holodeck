@@ -1194,3 +1194,54 @@ func TestKubernetes_Validate(t *testing.T) {
 		})
 	}
 }
+
+// TestEnvironmentSpec_ValidateSSHConfigMode guards #851 T8b: cluster-mode
+// sshConfig semantics (per-node bastion/agent/host-key policy) are
+// undesigned, so a cluster env carrying auth.sshConfig must be rejected
+// loudly instead of silently ignored (the 7 in-package New() sites in
+// pkg/provisioner/cluster.go never wire WithSSHConfig).
+func TestEnvironmentSpec_ValidateSSHConfigMode(t *testing.T) {
+	const wantErrMsg = "auth.sshConfig is not yet supported in cluster mode (see NVIDIA/holodeck#851); remove the sshConfig block or use single-node mode"
+
+	tests := []struct {
+		name   string
+		spec   EnvironmentSpec
+		errMsg string // empty means no error
+	}{
+		{
+			name: "cluster mode with sshConfig is rejected",
+			spec: EnvironmentSpec{
+				Cluster: &ClusterSpec{Region: "us-west-2", ControlPlane: ControlPlaneSpec{Count: 1}},
+				Auth:    Auth{SSHConfig: &SSHConfig{KnownHostsPolicy: "strict"}},
+			},
+			errMsg: wantErrMsg,
+		},
+		{
+			name: "cluster mode without sshConfig is not rejected",
+			spec: EnvironmentSpec{
+				Cluster: &ClusterSpec{Region: "us-west-2", ControlPlane: ControlPlaneSpec{Count: 1}},
+			},
+		},
+		{
+			name: "single-node mode with sshConfig is not rejected",
+			spec: EnvironmentSpec{
+				Auth: Auth{SSHConfig: &SSHConfig{KnownHostsPolicy: "strict"}},
+			},
+		},
+		{
+			name: "single-node mode without sshConfig is not rejected",
+			spec: EnvironmentSpec{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.spec.ValidateSSHConfigMode()
+			if tt.errMsg == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.EqualError(t, err, tt.errMsg)
+		})
+	}
+}

@@ -18,9 +18,9 @@ package provisioner
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,19 +50,8 @@ var (
 	commonFuncsTmpl = template.Must(template.New("common-functions").Parse(templates.CommonFunctions))
 )
 
-const (
-	// sshMaxRetries is the number of SSH connection attempts before giving up.
-	sshMaxRetries = 20
-	// sshRetryDelay is the delay between SSH connection retry attempts.
-	sshRetryDelay = 1 * time.Second
-	// sshKeepaliveInterval is how often we send keepalive requests to prevent
-	// network middleboxes from dropping idle SSH connections during long-running
-	// commands like kubeadm init (~10-20 minutes).
-	sshKeepaliveInterval = 30 * time.Second
-	// sshHandshakeTimeout is the maximum time for the SSH handshake to complete.
-	// Without this, connections to unresponsive hosts block indefinitely.
-	sshHandshakeTimeout = 15 * time.Second
-)
+// The SSH dial envelope (20 attempts x 1s, 15s handshake, 30s keepalive) now
+// lives in pkg/sshutil as the Dialer defaults; see dialerFromSSHConfig.
 
 type Provisioner struct {
 	Client         *ssh.Client
@@ -73,6 +62,8 @@ type Provisioner struct {
 	KeyPath   string
 	tpl       bytes.Buffer
 	transport Transport
+	dialer    *sshutil.Dialer
+	sshConfig *v1alpha1.SSHConfig
 
 	log *logger.FunLogger
 }
@@ -91,18 +82,75 @@ func New(log *logger.FunLogger, keyPath, userName, hostUrl string, opts ...Optio
 		opt(p)
 	}
 
-	// Default to DirectTransport if none provided
-	if p.transport == nil {
-		p.transport = NewDirectTransport(hostUrl)
+	// Fail fast on a malformed sshConfig before building the transport/dialer or
+	// dialing: an invalid knownHostsPolicy would otherwise silently degrade to
+	// accept-new, discarding the operator's security intent (B1). This is the
+	// single choke point every production New call site passes through; Validate
+	// is nil-safe, so the common (no sshConfig) path is a no-op.
+	if err := p.sshConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid sshConfig: %w", err)
 	}
 
-	client, err := connectOrDie(keyPath, userName, hostUrl, p.transport)
-	if err != nil {
+	// Default the transport (bastion when configured, else direct) and the
+	// dialer (sshutil owns the dial envelope) before the heal-connect.
+	if p.transport == nil {
+		p.transport = transportFromSSHConfig(hostUrl, keyPath, userName, p.sshConfig, log)
+	}
+	if p.dialer == nil {
+		p.dialer = dialerFromSSHConfig(keyPath, userName, p.sshConfig, log)
+	}
+
+	//nolint:contextcheck // New has no ctx parameter (follow-up); Background is the adoption boundary.
+	if err := p.ensureClient(context.Background()); err != nil {
+		// Error path: close the transport so a failed SSM/bastion dial does not
+		// leak the aws process or the hop-1 SSH client (T3-critic carry-forward).
+		_ = p.transport.Close()
 		return nil, fmt.Errorf("failed to connect to %s: %w", hostUrl, err)
 	}
-	p.Client = client
 
 	return p, nil
+}
+
+// ensureClient guarantees p.Client is a live SSH connection. A live client is
+// reused (cheap NewSession liveness probe); a dead one is closed and re-dialed
+// through p.transport. This is the reuse-with-heal primitive shared by New,
+// provision, and waitForNodeReboot.
+func (p *Provisioner) ensureClient(ctx context.Context) error {
+	if p.Client != nil {
+		if sess, err := p.Client.NewSession(); err == nil {
+			_ = sess.Close()
+			return nil
+		}
+		_ = p.Client.Close()
+		p.Client = nil
+	}
+	client, err := p.dialer.Dial(ctx, p.HostUrl, p.transport)
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s: %w", p.HostUrl, err)
+	}
+	p.Client = client
+	return nil
+}
+
+// Close tears down the resources the provisioner owns: the SSH client and the
+// transport (which for SSM/bastion holds an OS process or a hop-1 SSH client).
+// It is idempotent and safe on a partially-constructed Provisioner. The Dialer
+// never closes the transport — that lifecycle belongs to the caller, i.e. here.
+func (p *Provisioner) Close() error {
+	var err error
+	if p.Client != nil {
+		if cerr := p.Client.Close(); cerr != nil {
+			err = cerr
+		}
+		p.Client = nil
+	}
+	if p.transport != nil {
+		if terr := p.transport.Close(); terr != nil && err == nil {
+			err = terr
+		}
+		p.transport = nil
+	}
+	return err
 }
 
 // waitForNodeReboot waits for the node to reboot and come back online after a kernel version change
@@ -132,10 +180,9 @@ func (p *Provisioner) waitForNodeReboot() error {
 		p.log.Info("Waiting for node to come back online...")
 		time.Sleep(retryInterval)
 
-		// Try to establish a new connection
-		client, err := connectOrDie(p.KeyPath, p.UserName, p.HostUrl, p.transport)
-		if err == nil {
-			p.Client = client
+		// p.Client is nil here, so ensureClient re-dials the rebooted node.
+		//nolint:contextcheck // Run/waitForNodeReboot have no ctx parameter (follow-up); Background is the adoption boundary.
+		if err := p.ensureClient(context.Background()); err == nil {
 			p.log.Info("Node is back online, continuing with provisioning...")
 			return nil
 		}
@@ -221,7 +268,11 @@ func (p *Provisioner) Run(env v1alpha1.Environment) (*v1alpha1.ComponentsStatus,
 	return BuildComponentsStatus(env), nil
 }
 
-// resetConnection resets the ssh connection, and retries if it fails to connect
+// resetConnection is the deliberate force-refresh between dependencies: it
+// closes and nils p.Client so the NEXT ensureClient re-dials from scratch. This
+// is the one place a fresh connection is mandatory (e.g. so a just-added docker
+// group membership takes effect on the new login session); it must NOT reuse.
+// The transport is left intact — it is reused by the subsequent re-dial.
 func (p *Provisioner) resetConnection() error {
 	// Check if the connection is still active before closing
 	if p.Client != nil {
@@ -242,18 +293,11 @@ func (p *Provisioner) resetConnection() error {
 }
 
 func (p *Provisioner) provision() error {
-	var err error
-
-	// Close existing client before creating new connection
-	if p.Client != nil {
-		_ = p.Client.Close()
-		p.Client = nil
-	}
-
-	// Create a new ssh connection
-	p.Client, err = connectOrDie(p.KeyPath, p.UserName, p.HostUrl, p.transport)
-	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %w", p.HostUrl, err)
+	// Reuse a live connection, heal a dropped one (resetConnection between
+	// dependencies force-refreshes by nil-ing p.Client, which makes this re-dial).
+	//nolint:contextcheck // Run/provision have no ctx parameter (follow-up); Background is the adoption boundary.
+	if err := p.ensureClient(context.Background()); err != nil {
+		return err
 	}
 
 	// Create a session
@@ -473,92 +517,72 @@ func addScriptHeader(tpl *bytes.Buffer) error {
 	return nil
 }
 
-// startKeepalive sends periodic SSH keepalive requests to prevent network
-// middleboxes (NATs, firewalls) from dropping idle connections during
-// long-running remote commands. The goroutine self-terminates when the
-// client connection is closed.
-func startKeepalive(client *ssh.Client) {
-	go func() {
-		ticker := time.NewTicker(sshKeepaliveInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			_, _, err := client.SendRequest("keepalive@holodeck", true, nil)
-			if err != nil {
-				return
-			}
-		}
-	}()
+// WithSSHConfig supplies advanced SSH settings (bastion hop, agent auth,
+// host-key policy, timeouts, retries). A nil cfg preserves the historical
+// direct-dial envelope: 20 attempts x 1s, 15s handshake, 30s keepalive.
+func WithSSHConfig(cfg *v1alpha1.SSHConfig) Option {
+	return func(p *Provisioner) {
+		p.sshConfig = cfg
+	}
 }
 
-// createSshClient creates a ssh client, and retries if it fails to connect.
-// When transport is non-nil, it uses transport.Dial() to get a net.Conn and
-// creates the SSH client via ssh.NewClientConn. When transport is nil, it
-// falls back to direct ssh.Dial("tcp", ...) behavior.
-func connectOrDie(keyPath, userName, hostUrl string, transport Transport) (*ssh.Client, error) {
-	var client *ssh.Client
-	var err error
-	if strings.HasPrefix(keyPath, "~") {
-		home, homeErr := os.UserHomeDir()
-		if homeErr != nil {
-			return nil, fmt.Errorf("expanding key path: %w", homeErr)
+// dialerFromSSHConfig builds the sshutil.Dialer for the target hop. A nil cfg
+// leaves the retry/timeout fields zero so sshutil applies its defaults, which
+// are exactly the legacy provisioner envelope (20x1s handshake=15s keepalive=30s).
+func dialerFromSSHConfig(keyPath, userName string, cfg *v1alpha1.SSHConfig, log *logger.FunLogger) *sshutil.Dialer {
+	d := &sshutil.Dialer{
+		Auth:    sshutil.AuthConfig{User: userName, KeyPath: keyPath},
+		HostKey: sshutil.HostKeyPolicyAcceptNew,
+		Log:     log,
+	}
+	if cfg == nil {
+		return d
+	}
+	if cfg.KnownHostsPolicy != "" {
+		d.HostKey = sshutil.HostKeyPolicy(cfg.KnownHostsPolicy)
+	}
+	d.Auth.UseAgent = cfg.UseAgent
+	d.Auth.AgentSocket = cfg.AgentSocket
+	if cfg.MaxRetries > 0 {
+		d.Retry.MaxAttempts = cfg.MaxRetries
+	}
+	d.Timeouts.Handshake = cfg.HandshakeTimeout.Duration
+	d.Timeouts.Keepalive = cfg.KeepaliveInterval.Duration
+	return d
+}
+
+// transportFromSSHConfig selects the transport for hostUrl. A bastion in cfg
+// yields a two-hop BastionTransport whose hop-1 Dialer carries the bastion's own
+// credentials (falling back to the target's when unset) and the configured
+// host-key policy; hop-2 targets hostUrl. Otherwise a plain DirectTransport.
+func transportFromSSHConfig(hostUrl, keyPath, userName string, cfg *v1alpha1.SSHConfig, log *logger.FunLogger) Transport {
+	if cfg == nil || cfg.Bastion == nil {
+		// N1: connectTimeout bounds the TCP dial phase. A zero/unset value keeps
+		// the legacy DefaultDirectDialTimeout (10s) exactly.
+		if cfg != nil && cfg.ConnectTimeout.Duration > 0 {
+			return sshutil.NewDirectTransportTimeout(hostUrl, cfg.ConnectTimeout.Duration)
 		}
-		if keyPath == "~" {
-			keyPath = home
-		} else {
-			keyPath = filepath.Join(home, keyPath[2:])
-		}
+		return sshutil.NewDirectTransport(hostUrl)
 	}
-	key, err := os.ReadFile(keyPath) // nolint:gosec
-	if err != nil {
-		return nil, fmt.Errorf("failed to read key file: %w", err)
+	bastionUser := cfg.Bastion.Username
+	if bastionUser == "" {
+		bastionUser = userName
 	}
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	bastionKey := cfg.Bastion.PrivateKey
+	if bastionKey == "" {
+		bastionKey = keyPath
 	}
-	sshConfig := &ssh.ClientConfig{
-		User: userName,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
+	policy := sshutil.HostKeyPolicyAcceptNew
+	if cfg.KnownHostsPolicy != "" {
+		policy = sshutil.HostKeyPolicy(cfg.KnownHostsPolicy)
+	}
+	return &sshutil.BastionTransport{
+		Bastion:    cfg.Bastion.Host,
+		TargetHost: hostUrl,
+		Dialer: &sshutil.Dialer{
+			Auth:    sshutil.AuthConfig{User: bastionUser, KeyPath: bastionKey},
+			HostKey: policy,
+			Log:     log,
 		},
-		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
-		Timeout:         sshHandshakeTimeout,
 	}
-
-	addr := hostUrl + ":22"
-	for range sshMaxRetries {
-		if transport != nil {
-			// Use transport to establish the underlying connection
-			var conn net.Conn
-			conn, err = transport.Dial()
-			if err == nil {
-				// Set a deadline for the SSH handshake. ssh.NewClientConn
-				// does not use ClientConfig.Timeout (that only applies to
-				// ssh.Dial), so we set it on the underlying connection.
-				_ = conn.SetDeadline(time.Now().Add(sshHandshakeTimeout))
-				var sshConn ssh.Conn
-				var chans <-chan ssh.NewChannel
-				var reqs <-chan *ssh.Request
-				sshConn, chans, reqs, err = ssh.NewClientConn(conn, addr, sshConfig)
-				if err == nil {
-					// Clear the deadline for normal operation
-					_ = conn.SetDeadline(time.Time{})
-					client = ssh.NewClient(sshConn, chans, reqs)
-					startKeepalive(client)
-					return client, nil
-				}
-				_ = conn.Close()
-			}
-		} else {
-			// Fall back to direct SSH dial
-			client, err = ssh.Dial("tcp", addr, sshConfig)
-			if err == nil {
-				startKeepalive(client)
-				return client, nil
-			}
-		}
-		time.Sleep(sshRetryDelay)
-	}
-
-	return nil, fmt.Errorf("failed to connect to %s after %d retries: %w", hostUrl, sshMaxRetries, err)
 }

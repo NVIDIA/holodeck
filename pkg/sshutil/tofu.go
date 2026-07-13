@@ -17,72 +17,102 @@
 package sshutil
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
+	"syscall"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-// tofuMu serialises access to the known_hosts file so that concurrent SSH
-// connections (e.g. during multi-node cluster provisioning) do not race on the
-// read-then-write.
 var tofuMu sync.Mutex
 
-// TOFUHostKeyCallback returns an ssh.HostKeyCallback implementing a
-// Trust-On-First-Use (TOFU) pattern for SSH host key verification. On first
-// connection to a host, the key is recorded in a holodeck-specific known_hosts
-// file at $CACHE/holodeck/known_hosts (where $CACHE is os.UserCacheDir). On
-// subsequent connections the stored key is compared and a mismatch — indicating
-// a potential MITM attack — is rejected with an error.
-func TOFUHostKeyCallback() ssh.HostKeyCallback {
+// TOFUHostKeyCallback preserves the historical accept-new behavior.
+func TOFUHostKeyCallback() ssh.HostKeyCallback { return HostKeyCallback(HostKeyPolicyAcceptNew) }
+
+// HostKeyCallback verifies host keys against $CACHE/holodeck/known_hosts using
+// x/crypto/ssh/knownhosts (hashed entries, multiple keys, key-type awareness).
+// accept-new records unknown hosts (TOFU); strict rejects them; off skips.
+func HostKeyCallback(policy HostKeyPolicy) ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		if policy == HostKeyPolicyOff {
+			return nil
+		}
+		path, err := knownHostsPath()
+		if err != nil {
+			return err
+		}
 		tofuMu.Lock()
 		defer tofuMu.Unlock()
-
-		cacheBase, err := os.UserCacheDir()
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return fmt.Errorf("create known_hosts dir: %w", err)
+		}
+		// tofuMu only serialises this process; concurrent holodeck processes
+		// (e.g. multi-node provisioning) still race on the file, so an
+		// advisory cross-process flock guards the read-verify-append below.
+		lockF, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600) //nolint:gosec // path from UserCacheDir
 		if err != nil {
-			return fmt.Errorf("cannot determine cache directory for TOFU host keys: %w", err)
+			return fmt.Errorf("open known_hosts for lock: %w", err)
 		}
-		knownHostsPath := filepath.Join(cacheBase, "holodeck", "known_hosts")
-
-		if err := os.MkdirAll(filepath.Dir(knownHostsPath), 0700); err != nil {
-			return fmt.Errorf("failed to create known_hosts directory: %w", err)
+		defer func() { _ = lockF.Close() }()
+		if err := syscall.Flock(int(lockF.Fd()), syscall.LOCK_EX); err != nil {
+			return fmt.Errorf("lock known_hosts: %w", err)
 		}
-
-		keyStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
-
-		// Try to read existing known hosts file
-		data, err := os.ReadFile(knownHostsPath) //nolint:gosec // path from UserCacheDir + static components
-		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to read known_hosts: %w", err)
-		}
-		if err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
-				parts := strings.SplitN(line, " ", 2)
-				if len(parts) == 2 && parts[0] == hostname {
-					if strings.TrimSpace(parts[1]) == keyStr {
-						return nil // Key matches
-					}
-					return fmt.Errorf("host key mismatch for %s: stored key differs from presented key (possible MITM)", hostname)
-				}
-			}
-		}
-
-		// First connection to this host: record the key (TOFU)
-		f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec
-		if err != nil {
-			return fmt.Errorf("failed to open known_hosts for writing: %w", err)
-		}
-		defer func() { _ = f.Close() }()
-
-		if _, err := fmt.Fprintf(f, "%s %s\n", hostname, keyStr); err != nil {
-			return fmt.Errorf("failed to write known host: %w", err)
-		}
-
-		return nil
+		defer func() { _ = syscall.Flock(int(lockF.Fd()), syscall.LOCK_UN) }()
+		return verifyOrRecord(path, policy, hostname, remote, key)
 	}
+}
+
+func verifyOrRecord(path string, policy HostKeyPolicy, hostname string, remote net.Addr, key ssh.PublicKey) error {
+	// knownhosts.New requires the file to exist; create it empty on first use.
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		if err := os.WriteFile(path, nil, 0600); err != nil {
+			return fmt.Errorf("init known_hosts: %w", err)
+		}
+	}
+	cb, err := knownhosts.New(path)
+	if err != nil {
+		return fmt.Errorf("load known_hosts: %w", err)
+	}
+	verr := cb(hostname, remote, key)
+	if verr == nil {
+		return nil // known and matches
+	}
+	var keyErr *knownhosts.KeyError
+	if errors.As(verr, &keyErr) {
+		if len(keyErr.Want) > 0 {
+			return fmt.Errorf("host key mismatch for %s (possible MITM): %w", hostname, verr)
+		}
+		// Unknown host (Want empty).
+		if policy == HostKeyPolicyStrict {
+			return fmt.Errorf("unknown host %s rejected by strict host-key policy: %w", hostname, verr)
+		}
+		return appendKnownHost(path, hostname, key)
+	}
+	return verr
+}
+
+func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // path from UserCacheDir
+	if err != nil {
+		return fmt.Errorf("open known_hosts for append: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	// knownhosts.Line emits a valid, unhashed OpenSSH line (format unchanged).
+	if _, err := fmt.Fprintln(f, knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)); err != nil {
+		return fmt.Errorf("write known host: %w", err)
+	}
+	return nil
+}
+
+func knownHostsPath() (string, error) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine cache directory for TOFU host keys: %w", err)
+	}
+	return filepath.Join(base, "holodeck", "known_hosts"), nil
 }

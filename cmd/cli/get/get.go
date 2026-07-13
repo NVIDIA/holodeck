@@ -101,6 +101,7 @@ Examples:
 			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
+			//nolint:contextcheck // runKubeconfig -> GetKubeConfig -> provisioner.New has no ctx parameter (adoption boundary, follow-up per #851); threading requires New's signature change outside cmd/cli, out of scope here.
 			return m.runKubeconfig(cmd.Args().Get(0))
 		},
 	}

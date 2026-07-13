@@ -52,6 +52,14 @@ type ClusterProvisioner struct {
 	ControlPlaneEndpoint string
 	// CACertHash is the CA certificate hash for secure joins
 	CACertHash string
+
+	// err holds a construction-time validation error (e.g. auth.sshConfig
+	// rejected in cluster mode, #851). NewClusterProvisioner cannot return
+	// an error without breaking its existing signature/call sites, so the
+	// rejection is captured here and surfaced by every exported action
+	// method (ProvisionCluster, GetClusterHealth) before any node is
+	// touched — defense in depth mirroring T8's provisioner.New guard.
+	err error
 }
 
 // NodeInfo represents a node to be provisioned
@@ -67,12 +75,16 @@ type NodeInfo struct {
 
 // NewClusterProvisioner creates a new cluster provisioner
 func NewClusterProvisioner(log *logger.FunLogger, keyPath, userName string, env *v1alpha1.Environment) *ClusterProvisioner {
-	return &ClusterProvisioner{
+	cp := &ClusterProvisioner{
 		log:         log,
 		KeyPath:     keyPath,
 		UserName:    userName,
 		Environment: env,
 	}
+	if env != nil {
+		cp.err = env.Spec.ValidateSSHConfigMode()
+	}
+	return cp
 }
 
 // getUsernameForNode returns the SSH username for a node, preferring the
@@ -108,6 +120,9 @@ func hostForNode(node NodeInfo) string {
 // ProvisionCluster provisions a multinode Kubernetes cluster
 // It follows the order: init first CP → join additional CPs → join workers
 func (cp *ClusterProvisioner) ProvisionCluster(nodes []NodeInfo) error {
+	if cp.err != nil {
+		return cp.err
+	}
 	if len(nodes) == 0 {
 		return fmt.Errorf("no nodes to provision")
 	}
@@ -656,6 +671,9 @@ type NodeHealth struct {
 // GetClusterHealth checks the health of a multinode cluster by querying the first control-plane.
 // firstCPHost is the SSH-reachable address — PublicIP for direct SSH, PrivateIP for SSM transport.
 func (cp *ClusterProvisioner) GetClusterHealth(firstCPHost string) (*ClusterHealth, error) {
+	if cp.err != nil {
+		return nil, cp.err
+	}
 	// Resolve SSH username: check per-node username from cluster status first,
 	// then fall back to global username. This handles OS-based provisioning
 	// where the provider resolves the SSH username per node.

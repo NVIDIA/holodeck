@@ -17,6 +17,8 @@
 package v1alpha1
 
 import (
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -508,6 +510,92 @@ type Auth struct {
 	PublicKey string `json:"publicKey"`
 	// Path to the private key file on the local machine
 	PrivateKey string `json:"privateKey"` //nolint:gosec // G117: stores a file path, not key material
+
+	// SSHConfig configures advanced SSH connection behavior (bastion hop,
+	// agent auth, host-key policy, timeouts, retries). Omitting it
+	// preserves today's direct-dial defaults.
+	// +optional
+	SSHConfig *SSHConfig `json:"sshConfig,omitempty"`
+}
+
+// SSHConfig defines advanced SSH connection settings for the ssh provider.
+// All fields are optional. Not yet supported in cluster mode (single-node
+// only); see https://github.com/NVIDIA/holodeck/issues/851.
+type SSHConfig struct {
+	// Bastion configures a jump host to reach the target instance through.
+	// +optional
+	Bastion *BastionConfig `json:"bastion,omitempty"`
+
+	// UseAgent dials using the local SSH agent instead of a key file.
+	// +optional
+	UseAgent bool `json:"useAgent,omitempty"`
+
+	// AgentSocket overrides the SSH_AUTH_SOCK path used for agent dialing.
+	// +optional
+	AgentSocket string `json:"agentSocket,omitempty"`
+
+	// KnownHostsPolicy controls host-key verification behavior:
+	// accept-new (default, TOFU), strict (unknown host = error), or
+	// off (insecure, logged loudly).
+	// +kubebuilder:validation:Enum=accept-new;strict;off
+	// +optional
+	KnownHostsPolicy string `json:"knownHostsPolicy,omitempty"` // accept-new|strict|off
+
+	// ConnectTimeout bounds the TCP dial phase.
+	// +optional
+	ConnectTimeout metav1.Duration `json:"connectTimeout,omitempty"`
+
+	// HandshakeTimeout bounds the SSH handshake phase.
+	// +optional
+	HandshakeTimeout metav1.Duration `json:"handshakeTimeout,omitempty"`
+
+	// KeepaliveInterval sets the SSH keepalive ping interval.
+	// +optional
+	KeepaliveInterval metav1.Duration `json:"keepaliveInterval,omitempty"`
+
+	// MaxRetries caps the number of dial retry attempts.
+	// +optional
+	MaxRetries int `json:"maxRetries,omitempty"`
+}
+
+// BastionConfig defines a jump host used to reach the target instance.
+//
+// Credential fallback (hop-1): when Username or PrivateKey is empty, the bastion
+// connection reuses the target's SSH username and private key respectively.
+// Agent authentication does NOT apply to hop-1 — SSHConfig.UseAgent and
+// SSHConfig.AgentSocket configure the target hop only; the bastion always
+// authenticates with a key file (its own PrivateKey, or the target's fallback).
+type BastionConfig struct {
+	// Host is the bastion's address (host or host:port).
+	Host string `json:"host"`
+
+	// Username for the bastion SSH connection.
+	// +optional
+	Username string `json:"username,omitempty"`
+
+	// PrivateKey is the path to the private key file for the bastion hop.
+	// +optional
+	PrivateKey string `json:"privateKey,omitempty"` //nolint:gosec // G117: stores a file path, not key material
+}
+
+// Validate validates the SSHConfig configuration. It is nil-safe: callers pass
+// the (possibly-nil) Auth.SSHConfig field directly.
+func (c *SSHConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+	switch c.KnownHostsPolicy {
+	case "", "accept-new", "strict", "off":
+	default:
+		return fmt.Errorf("invalid knownHostsPolicy %q (want accept-new|strict|off)", c.KnownHostsPolicy)
+	}
+	if c.MaxRetries < 0 {
+		return fmt.Errorf("maxRetries must be >= 0, got %d", c.MaxRetries)
+	}
+	if c.Bastion != nil && c.Bastion.Host == "" {
+		return fmt.Errorf("bastion.host is required when bastion is set")
+	}
+	return nil
 }
 
 // DriverSource defines where to install the NVIDIA driver from.

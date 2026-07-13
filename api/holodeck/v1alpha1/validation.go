@@ -35,6 +35,18 @@ func validateLabels(labels map[string]string) error {
 	return nil
 }
 
+// ValidateSSHConfigMode rejects auth.sshConfig when cluster mode (Cluster
+// != nil) is enabled. Cluster-mode SSH semantics (per-node bastion/agent
+// auth/host-key policy/timeouts) are undesigned; see
+// https://github.com/NVIDIA/holodeck/issues/851. Single-node mode is
+// unaffected.
+func (s *EnvironmentSpec) ValidateSSHConfigMode() error {
+	if s.Cluster != nil && s.SSHConfig != nil {
+		return fmt.Errorf("auth.sshConfig is not yet supported in cluster mode (see NVIDIA/holodeck#851); remove the sshConfig block or use single-node mode")
+	}
+	return nil
+}
+
 // Validate validates the ClusterSpec configuration.
 func (c *ClusterSpec) Validate() error {
 	if c == nil {

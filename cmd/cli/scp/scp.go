@@ -97,6 +97,7 @@ Examples:
 			if cmd.NArg() != 2 {
 				return fmt.Errorf("source and destination are required")
 			}
+			//nolint:contextcheck // run -> common.ConnectSSH is a CLI action boundary with no ctx parameter by design (public signature is locked); threading requires a signature change out of scope here.
 			return m.run(cmd.Args().Get(0), cmd.Args().Get(1))
 		},
 	}

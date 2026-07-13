@@ -144,6 +144,7 @@ func (m command) build() *cli.Command {
 			if cmd.NArg() != 1 {
 				return fmt.Errorf("instance ID is required")
 			}
+			//nolint:contextcheck // run -> GetClusterHealthFromEnv -> GetClusterHealth -> provisioner.New has no ctx parameter (adoption boundary, follow-up per #851); threading requires New's signature change outside cmd/cli, out of scope here.
 			return m.run(cmd.Args().Get(0))
 		},
 	}

@@ -28,10 +28,8 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 	"github.com/NVIDIA/holodeck/pkg/provisioner"
 	"github.com/NVIDIA/holodeck/pkg/sshutil"
-	"github.com/NVIDIA/holodeck/pkg/utils"
 
 	cli "github.com/urfave/cli/v3"
-	"golang.org/x/crypto/ssh"
 )
 
 type options struct {
@@ -73,6 +71,18 @@ func (m command) build() *cli.Command {
 			opts.cfg, err = jyaml.UnmarshalFromFile[v1alpha1.Environment](opts.envFile)
 			if err != nil {
 				return ctx, fmt.Errorf("failed to read config file %s: %w", opts.envFile, err)
+			}
+
+			// Reject a malformed sshConfig up front, before any SSH action.
+			if err := opts.cfg.Spec.SSHConfig.Validate(); err != nil {
+				return ctx, fmt.Errorf("invalid sshConfig in %s: %w", opts.envFile, err)
+			}
+
+			// Cluster-mode sshConfig semantics (bastion, agent, per-node
+			// host-key policy) are undesigned (#851); reject rather than
+			// silently ignore.
+			if err := opts.cfg.Spec.ValidateSSHConfigMode(); err != nil {
+				return ctx, err
 			}
 
 			return ctx, nil
@@ -131,39 +141,26 @@ func validateAWS(log *logger.FunLogger, opts *options) error {
 	return nil
 }
 
-// createSshClient creates a ssh client, and retries if it fails to connect
+// dryrunDialer builds the sshutil.Dialer used by connectOrDie. Extracted so
+// it is independently testable: it must carry a non-zero handshake timeout
+// (the reported bug — dryrun previously set none and could block forever on
+// an unresponsive host) while keeping the historical 20x1s retry envelope.
+func dryrunDialer(keyPath, userName string, log *logger.FunLogger) *sshutil.Dialer {
+	return &sshutil.Dialer{
+		Auth:     sshutil.AuthConfig{User: userName, KeyPath: keyPath},
+		HostKey:  sshutil.HostKeyPolicyAcceptNew,
+		Retry:    sshutil.RetryPolicy{MaxAttempts: 20, Delay: 1 * time.Second},
+		Timeouts: sshutil.TimeoutConfig{Handshake: 15 * time.Second},
+		Log:      log,
+	}
+}
+
+// connectOrDie creates a ssh client, and retries if it fails to connect.
 func connectOrDie(keyPath, userName, hostUrl string) error {
-	var err error
-	keyPath, err = utils.ExpandPath(keyPath)
+	client, err := dryrunDialer(keyPath, userName, logger.NewLogger()).Dial(context.Background(), hostUrl, nil) //nolint:contextcheck // CLI action boundary; no ctx to thread yet
 	if err != nil {
-		return fmt.Errorf("expanding key path: %w", err)
+		return err
 	}
-	key, err := os.ReadFile(keyPath) // nolint:gosec
-	if err != nil {
-		return fmt.Errorf("failed to read key file: %w", err)
-	}
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return fmt.Errorf("failed to parse private key: %w", err)
-	}
-	sshConfig := &ssh.ClientConfig{
-		User: userName,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: sshutil.TOFUHostKeyCallback(),
-	}
-
-	var lastErr error
-	for range 20 {
-		client, err := ssh.Dial("tcp", hostUrl+":22", sshConfig)
-		if err == nil {
-			_ = client.Close()
-			return nil
-		}
-		lastErr = err
-		time.Sleep(1 * time.Second)
-	}
-
-	return fmt.Errorf("failed to connect to %s after 20 retries: %w", hostUrl, lastErr)
+	_ = client.Close()
+	return nil
 }

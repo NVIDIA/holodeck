@@ -97,3 +97,42 @@ jobs:
         name: ginkgo-smoke-logs
         path: ginkgo.json
         retention-days: 15
+
+  e2e-real-ssh:
+    runs-on: linux-amd64-cpu4
+    name: E2E Real SSH
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Install Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+        check-latest: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y make
+
+    # Fail loudly and early if the runner has no docker daemon, rather than
+    # deep inside Ginkgo. runner-docker-availability on linux-amd64-cpu4 is
+    # UNCONFIRMED; this probe surfaces it on the first CI run.
+    - name: Verify docker is available
+      run: docker info
+
+    - name: Run real-ssh e2e test
+      env:
+        LOG_ARTIFACT_DIR: e2e_logs
+      run: |
+        make -f tests/Makefile test GINKGO_ARGS="--label-filter='real-ssh' --json-report ginkgo.json"
+
+    - name: Archive Ginkgo logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ginkgo-real-ssh-logs
+        path: ginkgo.json
+        retention-days: 15

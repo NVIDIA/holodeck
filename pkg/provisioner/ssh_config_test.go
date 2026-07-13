@@ -17,6 +17,7 @@
 package provisioner
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
@@ -27,29 +28,191 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/sshutil"
 )
 
-// countingTransport counts Dial() calls while connecting to a black hole.
+// TestDialerFromSSHConfig proves dialerFromSSHConfig maps every
+// v1alpha1.SSHConfig field onto the returned sshutil.Dialer. Neutering the
+// entire non-nil branch — including the security-relevant
+// KnownHostsPolicy->HostKey mapping — previously left the provisioner suite
+// green; TestTransportFromSSHConfig_Bastion only exercises the bastion hop-1
+// Dialer, not this function.
+func TestDialerFromSSHConfig(t *testing.T) {
+	const (
+		keyPath  = "/keys/target"
+		userName = "tester"
+	)
+	log := logger.NewLogger()
+
+	populated := func(policy string) *v1alpha1.SSHConfig {
+		return &v1alpha1.SSHConfig{
+			KnownHostsPolicy:  policy,
+			UseAgent:          true,
+			AgentSocket:       "/run/agent.sock",
+			MaxRetries:        7,
+			HandshakeTimeout:  metav1.Duration{Duration: 42 * time.Second},
+			KeepaliveInterval: metav1.Duration{Duration: 77 * time.Second},
+		}
+	}
+
+	tests := []struct {
+		name string
+		cfg  *v1alpha1.SSHConfig
+		want *sshutil.Dialer
+	}{
+		{
+			// nil cfg must leave Retry/Timeouts at the Go zero value so
+			// sshutil.Dial applies its own envelope (20 attempts x 1s delay,
+			// 15s handshake, 30s keepalive — guarded independently by
+			// TestDialer_DefaultEnvelope in pkg/sshutil/dialer_test.go). A
+			// non-zero literal here would mean the legacy default moved into
+			// the provisioner and silently diverged from sshutil's.
+			name: "nil cfg defers retry and timeout fields to sshutil's defaults",
+			cfg:  nil,
+			want: &sshutil.Dialer{
+				Auth:    sshutil.AuthConfig{User: userName, KeyPath: keyPath},
+				HostKey: sshutil.HostKeyPolicyAcceptNew,
+			},
+		},
+		{
+			name: "accept-new policy maps every field",
+			cfg:  populated("accept-new"),
+			want: &sshutil.Dialer{
+				Auth: sshutil.AuthConfig{
+					User: userName, KeyPath: keyPath,
+					UseAgent: true, AgentSocket: "/run/agent.sock",
+				},
+				HostKey:  sshutil.HostKeyPolicyAcceptNew,
+				Retry:    sshutil.RetryPolicy{MaxAttempts: 7},
+				Timeouts: sshutil.TimeoutConfig{Handshake: 42 * time.Second, Keepalive: 77 * time.Second},
+			},
+		},
+		{
+			name: "strict policy maps every field",
+			cfg:  populated("strict"),
+			want: &sshutil.Dialer{
+				Auth: sshutil.AuthConfig{
+					User: userName, KeyPath: keyPath,
+					UseAgent: true, AgentSocket: "/run/agent.sock",
+				},
+				HostKey:  sshutil.HostKeyPolicyStrict,
+				Retry:    sshutil.RetryPolicy{MaxAttempts: 7},
+				Timeouts: sshutil.TimeoutConfig{Handshake: 42 * time.Second, Keepalive: 77 * time.Second},
+			},
+		},
+		{
+			name: "off policy maps every field",
+			cfg:  populated("off"),
+			want: &sshutil.Dialer{
+				Auth: sshutil.AuthConfig{
+					User: userName, KeyPath: keyPath,
+					UseAgent: true, AgentSocket: "/run/agent.sock",
+				},
+				HostKey:  sshutil.HostKeyPolicyOff,
+				Retry:    sshutil.RetryPolicy{MaxAttempts: 7},
+				Timeouts: sshutil.TimeoutConfig{Handshake: 42 * time.Second, Keepalive: 77 * time.Second},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dialerFromSSHConfig(keyPath, userName, tt.cfg, log)
+			require.NotNil(t, got)
+			assert.Equal(t, tt.want.Auth, got.Auth, "Auth (User/KeyPath/UseAgent/AgentSocket)")
+			assert.Equal(t, tt.want.HostKey, got.HostKey, "KnownHostsPolicy->HostKey")
+			assert.Equal(t, tt.want.Retry, got.Retry, "MaxRetries->Retry.MaxAttempts")
+			assert.Equal(t, tt.want.Timeouts, got.Timeouts, "HandshakeTimeout/KeepaliveInterval->Timeouts")
+		})
+	}
+}
+
+// TestTransportFromSSHConfig_ConnectTimeout proves N1: auth.sshConfig.connectTimeout
+// maps onto the DirectTransport's TCP dial timeout, and an unset connectTimeout
+// preserves the legacy DefaultDirectDialTimeout (10s). Without the mapping in
+// transportFromSSHConfig, a user-set connectTimeout is silently discarded — the
+// same class of inert-config bug B1 fixed for the other sshConfig fields.
+func TestTransportFromSSHConfig_ConnectTimeout(t *testing.T) {
+	const (
+		keyPath  = "/keys/target"
+		userName = "tester"
+		hostURL  = "10.0.0.5"
+	)
+	log := logger.NewLogger()
+
+	tests := []struct {
+		name string
+		cfg  *v1alpha1.SSHConfig
+		want time.Duration
+	}{
+		{
+			name: "nil cfg keeps the legacy default dial timeout",
+			cfg:  nil,
+			want: sshutil.DefaultDirectDialTimeout,
+		},
+		{
+			name: "unset connectTimeout keeps the legacy default dial timeout",
+			cfg:  &v1alpha1.SSHConfig{KnownHostsPolicy: "accept-new"},
+			want: sshutil.DefaultDirectDialTimeout,
+		},
+		{
+			name: "connectTimeout maps to the direct-transport dial timeout",
+			cfg:  &v1alpha1.SSHConfig{ConnectTimeout: metav1.Duration{Duration: 25 * time.Second}},
+			want: 25 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := transportFromSSHConfig(hostURL, keyPath, userName, tt.cfg, log)
+			dt, ok := tr.(*sshutil.DirectTransport)
+			require.True(t, ok, "non-bastion config must select a DirectTransport")
+			assert.Equal(t, tt.want, dt.DialTimeout(), "connectTimeout -> DirectTransport dial timeout")
+		})
+	}
+}
+
+// TestNew_RejectsInvalidSSHConfig proves New validates the sshConfig BEFORE
+// dialing: an invalid knownHostsPolicy fails fast with an actionable error
+// naming the bad field, rather than silently degrading to accept-new (B1) or
+// surfacing only as an opaque connection failure. MaxRetries:1 keeps the
+// no-validation regression path fast (one failed dial to a dead port) instead
+// of the 20x1s default envelope.
+func TestNew_RejectsInvalidSSHConfig(t *testing.T) {
+	_, err := New(logger.NewLogger(), "/keys/target", "tester", "127.0.0.1:1",
+		WithSSHConfig(&v1alpha1.SSHConfig{KnownHostsPolicy: "bogus", MaxRetries: 1}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "knownHostsPolicy",
+		"an invalid knownHostsPolicy must fail before any dial, naming the bad field")
+}
+
+// countingTransport counts DialContext() calls while connecting to a black hole.
 type countingTransport struct {
 	addr  string
 	calls atomic.Int32
 }
 
-func (t *countingTransport) Dial() (net.Conn, error) {
+func (t *countingTransport) DialContext(ctx context.Context) (net.Conn, error) {
 	t.calls.Add(1)
-	return net.DialTimeout("tcp", t.addr, 5*time.Second)
+	d := net.Dialer{Timeout: 5 * time.Second}
+	return d.DialContext(ctx, "tcp", t.addr)
 }
 
 func (t *countingTransport) Target() string { return t.addr }
 func (t *countingTransport) Close() error   { return nil }
 
-// TestNew_HandshakeTimeout verifies that New() (via connectOrDie) configures
-// an SSH handshake timeout. Without the timeout, ssh.NewClientConn blocks
-// forever against a host that accepts TCP but never responds with the SSH
-// banner. With the timeout, each attempt fails in ~15s.
+// TestNew_HandshakeTimeout verifies that New() (via the sshutil.Dialer default
+// envelope) configures an SSH handshake timeout. Without the timeout,
+// ssh.NewClientConn blocks forever against a host that accepts TCP but never
+// responds with the SSH banner. With the default 15s handshake, each attempt
+// fails in ~15s.
 //
 // We verify this by connecting to a black hole server and checking that
 // multiple retry attempts complete within a bounded time (proving the
@@ -66,9 +229,9 @@ func TestNew_HandshakeTimeout(t *testing.T) {
 
 	transport := &countingTransport{addr: addr}
 
-	// Run New() in a goroutine — it will retry up to sshMaxRetries times,
-	// each timing out in sshHandshakeTimeout (~15s). We don't want to wait
-	// for all 20 retries (~5 min), so we observe progress from the outside.
+	// Run New() in a goroutine — it will retry up to the default 20 attempts,
+	// each timing out at the default 15s handshake. We don't want to wait for
+	// all 20 retries (~5 min), so we observe progress from the outside.
 	errCh := make(chan error, 1)
 	go func() {
 		_, err := New(log, keyPath, "testuser", "black-hole-host", WithTransport(transport))
