@@ -72,9 +72,15 @@ declares `depends_on :linux`) should be syntactically valid Ruby.
 
 ### 2. Tag and push
 
+The tag must reach `NVIDIA/holodeck` itself, so push it to the remote that
+points there. In a fork-based checkout that remote is usually `upstream`,
+not `origin`. A tag pushed to a fork does not trigger the release workflow.
+Tag the tip of `NVIDIA/holodeck` `main`:
+
 ```bash
-git tag -s vX.Y.Z -m "Release vX.Y.Z"
-git push origin vX.Y.Z
+git fetch upstream
+git tag -s vX.Y.Z -m "Release vX.Y.Z" upstream/main
+git push upstream vX.Y.Z
 ```
 
 Watch the release workflow on the [Actions tab][actions].
@@ -140,7 +146,7 @@ Gatekeeper, the `postflight` hook didn't run (re-install with
 ```bash
 # Delete the bad release + tag locally and remotely
 gh release delete vX.Y.Z --yes
-git push origin :refs/tags/vX.Y.Z
+git push upstream :refs/tags/vX.Y.Z
 git tag -d vX.Y.Z
 
 # Close the auto-opened formula-bump PR without merging
