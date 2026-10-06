@@ -1,3 +1,11 @@
+# v1.57.0 (2026-07-15)
+
+* **Feature**: This release adds support for the IpAddressType field on SourceIpConfig, enabling Network Load Balancer listener rules to match traffic based on whether the source IP is IPv4 or IPv6.
+
+# v1.56.1 (2026-07-13)
+
+* No change notes available for this release.
+
 # v1.56.0 (2026-07-06)
 
 * **Feature**: Add request serialization snapshot tests.
