@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 
-- **golang.org/x/crypto bumped to v0.56.0**: Fixes GO-2026-6355 and GO-2026-6354 (denial of service on deadlocked SSH channels) and GO-2026-6303 (source-address critical option not enforced for non-public-key auth callbacks). `pkg/sshutil` reaches the affected code.
+- **golang.org/x/crypto bumped to v0.56.0 (#881)**: Fixes GO-2026-6355 and GO-2026-6354 (denial of service on deadlocked SSH channels) and GO-2026-6303 (source-address critical option not enforced for non-public-key auth callbacks). `pkg/sshutil` reaches the affected code.
 - **docs: add SECURITY.md security policy (#871)**
 
 ### Dependencies
