@@ -2,6 +2,80 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.0] - Unreleased
+
+### Features
+
+#### Unified SSH Subsystem (#856)
+- **feat(ssh): unified SSH subsystem (#856)**: The provisioner, CLI and dryrun now share one context-aware dialer in `pkg/sshutil` with a single retry, timeout and keepalive policy. The earlier code had three separate dial implementations.
+- **New optional `auth.sshConfig` block in env.yaml**: Configures a bastion (ProxyJump-style two-hop), ssh-agent authentication, the known_hosts policy (`accept-new`, `strict` or `off`), timeouts and retries. It is validated before any cloud action. An env.yaml without `sshConfig` behaves exactly as before. Cluster mode rejects `sshConfig` with an error until its semantics are designed (#855).
+- **Hardened trust-on-first-use host key checking**: known_hosts verification now uses `x/crypto/ssh/knownhosts`, which handles hashed entries and is guarded by a cross-process file lock. The known_hosts location and format are unchanged.
+- **Credential-free real-SSH E2E**: A new `real-ssh` lane provisions against a digest-pinned dockerized openssh-server in PR CI.
+
+### Security
+
+- **golang.org/x/crypto bumped to v0.56.0 (#881)**: Fixes GO-2026-6355 and GO-2026-6354 (denial of service on deadlocked SSH channels) and GO-2026-6303 (source-address critical option not enforced for non-public-key auth callbacks). `pkg/sshutil` reaches the affected code.
+- **docs: add SECURITY.md security policy (#871)**
+
+### Dependencies
+
+- Go module, GitHub Actions and Dockerfile bumps (#845, #846, #847, #849, #857, #858, #859, #860, #861, #879). The release image builder moves to Go 1.27.1. `actions/setup-go` moves to v7 and `actions/stale` to v11.
+
+## [v0.3.7] - 2026-07-13
+
+### Bug Fixes
+
+- **fix(cli): migrate to urfave/cli v3 (#850)**: Flags and positional arguments can now be interleaved in any order on the command line.
+
+### CI
+
+- **test(e2e): credential-free mock E2E suite (#844)**: Adds a mock E2E suite that needs no cloud credentials. Real-AWS runs are capped at 1 per PR, 2 post-merge and a weekly matrix.
+
+### Documentation
+
+- **docs(brew): split macOS Cask and Linux Formula install commands (#836)**
+
+## [v0.3.6] - 2026-06-10
+
+### Features
+
+- **feat(release): ship macOS via Homebrew Cask (#835)**: macOS installs use a Cask, which avoids the Formula build-sandbox failure on macOS Tahoe. Linux keeps the Formula.
+
+## [v0.3.5] - 2026-06-09
+
+### Features
+
+- **feat(release): make holodeck installable via Homebrew (#825)**
+
+## [v0.3.4] - 2026-05-26
+
+### Features
+
+- **feat(api): add Kubernetes.RemoteAccess for external kubeconfig access (#818)**
+- **feat: holodeck skill command (#812)**: Ships a skill catalog with installers for Claude, Cursor, Codex and Gemini.
+- **Add Ubuntu 26.04 support (#811)**
+
+### Bug Fixes
+
+- **fix(provisioner): expose CRI-O bundled runtimes on PATH for AL2023 (#824)**
+
+### Documentation
+
+- **docs(guides): add holodeck + AICR integration preview (#819)**
+
+## [v0.3.3] - 2026-05-06
+
+### Bug Fixes
+
+- **fix(provisioner): route containerd 2.x through the containerd.io package (#800)**: Removes the separate containerd 2.x binary-download template. All OS families now use the unified containerd.io template.
+
+### Changes
+
+- **update default driver branch to 580 (#790)**
+- **update default versions of k8s components (#796)**
+- **remove go dependency on sigs.k8s.io/controller-runtime (#793)**
+- **chore(repo): adopt DGXC OSS issue-mgmt policy (#801)**
+
 ## [v0.3.2] - 2026-04-22
 
 ### Bug Fixes
