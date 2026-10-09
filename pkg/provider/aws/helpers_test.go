@@ -31,3 +31,16 @@ func strPtr(s string) *string {
 
 // ErrMockDescribeImages is a sentinel error injected for DescribeImages failures.
 var ErrMockDescribeImages = fmt.Errorf("mock describe images error")
+
+type apiError struct {
+	code    string
+	message string
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("api error %s: %s", e.code, e.message)
+}
+
+func (e *apiError) ErrorCode() string {
+	return e.code
+}

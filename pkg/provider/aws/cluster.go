@@ -112,7 +112,7 @@ func (p *Provider) CreateCluster() error {
 		return fmt.Errorf("pre-flight check failed: %w", err)
 	}
 
-	cache := &ClusterCache{}
+	cache := &ClusterCache{AWS: AWS{AvailabilityZone: p.selectedAvailabilityZone}}
 
 	_ = p.updateProgressingCondition(*p.DeepCopy(), &cache.AWS, "v1alpha1.Creating", "Creating multinode cluster resources")
 

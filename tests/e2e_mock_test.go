@@ -18,7 +18,6 @@ package e2e
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -50,6 +49,12 @@ func newMockProvider(cfgFile string) (provider.Provider, *awsfake.Fake, *v1alpha
 	cfg, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cfgPath)
 	Expect(err).NotTo(HaveOccurred(), "failed to read config %s", cfgPath)
 	cfg.Name += "-" + common.GenerateUID()
+	// The fake only seeds us-west-2 zones; keep the region consistent with the zone Create records.
+	if cfg.Spec.Cluster != nil {
+		cfg.Spec.Cluster.Region = "us-west-2"
+	} else {
+		cfg.Spec.Region = "us-west-2"
+	}
 
 	cacheFile := filepath.Join(GinkgoT().TempDir(), "cache.yaml")
 
@@ -94,8 +99,19 @@ var _ = Describe("AWS Mock E2E", Label("mock"), func() {
 					"non-HA topology must not provision an NLB: %v", counts)
 			}
 
-			_, err := os.Stat(cacheFile)
+			env, err := jyaml.UnmarshalFromFile[v1alpha1.Environment](cacheFile)
 			Expect(err).NotTo(HaveOccurred(), "Create must write the cache file")
+			var availabilityZone string
+			for _, property := range env.Status.Properties {
+				if property.Name == aws.AvailabilityZone {
+					availabilityZone = property.Value
+				}
+			}
+			Expect(availabilityZone).NotTo(BeEmpty(), "Create must record the availability zone")
+			for _, subnet := range fake.Store.Subnets {
+				Expect(subnet.AvailabilityZone).To(HaveValue(Equal(availabilityZone)),
+					"the recorded zone must be the one the subnets were created in")
+			}
 
 			Expect(p.Delete()).To(Succeed())
 			Expect(fake.Store.Empty()).To(BeTrue(),

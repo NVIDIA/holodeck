@@ -17,6 +17,7 @@
 package aws
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -212,7 +213,8 @@ func TestPublicSubnetCreatedInCorrectCIDR(t *testing.T) {
 
 	provider := newTestProvider(f.EC2)
 	cache := &AWS{
-		Vpcid: "vpc-test",
+		Vpcid:            "vpc-test",
+		AvailabilityZone: "us-west-2a",
 	}
 
 	if err := provider.createPublicSubnet(cache); err != nil {
@@ -240,6 +242,159 @@ func TestPublicSubnetCreatedInCorrectCIDR(t *testing.T) {
 	}
 	if cache.Subnetid != "" {
 		t.Errorf("cache.Subnetid = %q, want empty (public subnet must not overwrite it)", cache.Subnetid)
+	}
+}
+
+// Each type alone is offered in other zones; only us-west-2c offers both.
+func TestCreateClusterPlacesSubnetsInZoneOfferingAllInstanceTypes(t *testing.T) {
+	f := awsfake.New()
+	f.Store.SeedInstanceTypeZones("m5.xlarge", "us-west-2a", "us-west-2c")
+	f.Store.SeedInstanceTypeZones("g5g.xlarge", "us-west-2b", "us-west-2c", "us-west-2d")
+	f.Store.FailNext("CreateRouteTable", errors.New("stop after subnets"))
+
+	provider := newTestProvider(f.EC2)
+	provider.Spec.Cluster = &v1alpha1.ClusterSpec{
+		Region:       "us-west-2",
+		ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1, InstanceType: "m5.xlarge"},
+		Workers:      &v1alpha1.WorkerPoolSpec{Count: 1, InstanceType: "g5g.xlarge"},
+	}
+
+	err := provider.CreateCluster()
+	if err == nil || !strings.Contains(err.Error(), "stop after subnets") {
+		t.Fatalf("expected CreateCluster() to stop at the public route table, got: %v", err)
+	}
+
+	subnetZones := requestedSubnetZones(f)
+	if len(subnetZones) != 2 || subnetZones[0] != "us-west-2c" || subnetZones[1] != "us-west-2c" {
+		t.Errorf("expected the private and public subnets in us-west-2c, got zones %q", subnetZones)
+	}
+}
+
+// Unseeded types are offered in every zone, so us-west-2d offers both; the default would be us-west-2a.
+func TestCreateClusterHonoursRequestedAvailabilityZone(t *testing.T) {
+	f := awsfake.New()
+	f.Store.FailNext("CreateRouteTable", errors.New("stop after subnets"))
+
+	provider := newTestProvider(f.EC2)
+	provider.Spec.Cluster = &v1alpha1.ClusterSpec{
+		Region:           "us-west-2",
+		AvailabilityZone: "us-west-2d",
+		ControlPlane:     v1alpha1.ControlPlaneSpec{Count: 1, InstanceType: "m5.xlarge"},
+		Workers:          &v1alpha1.WorkerPoolSpec{Count: 1, InstanceType: "g5g.xlarge"},
+	}
+
+	err := provider.CreateCluster()
+	if err == nil || !strings.Contains(err.Error(), "stop after subnets") {
+		t.Fatalf("expected CreateCluster() to stop at the public route table, got: %v", err)
+	}
+
+	subnetZones := requestedSubnetZones(f)
+	if len(subnetZones) != 2 || subnetZones[0] != "us-west-2d" || subnetZones[1] != "us-west-2d" {
+		t.Errorf("expected the private and public subnets in us-west-2d, got zones %q", subnetZones)
+	}
+}
+
+// Each type is offered somewhere, just never in the same zone.
+func TestCreateClusterRejectsWhenNoZoneOffersAllInstanceTypes(t *testing.T) {
+	f := awsfake.New()
+	f.Store.SeedInstanceTypeZones("m5.xlarge", "us-west-2a")
+	f.Store.SeedInstanceTypeZones("g5g.xlarge", "us-west-2b")
+
+	provider := newTestProvider(f.EC2)
+	provider.Spec.Cluster = &v1alpha1.ClusterSpec{
+		Region:       "us-west-2",
+		ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1, InstanceType: "m5.xlarge"},
+		Workers:      &v1alpha1.WorkerPoolSpec{Count: 1, InstanceType: "g5g.xlarge"},
+	}
+
+	err := provider.CreateCluster()
+	if err == nil {
+		t.Fatal("expected CreateCluster() to fail when no zone offers every instance type")
+	}
+	for _, want := range []string{"pre-flight check failed", "g5g.xlarge", "m5.xlarge", "us-west-2"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to mention %q, got: %v", want, err)
+		}
+	}
+	if !f.Store.Empty() {
+		t.Errorf("resources were created despite the failed pre-flight: %v", f.Store.ResourceCounts())
+	}
+}
+
+// A zero-count worker pool still names an instance type, but CreateCluster() launches none of it.
+func TestCreateClusterIgnoresWorkerInstanceTypeWithoutWorkers(t *testing.T) {
+	f := awsfake.New()
+	f.Store.SeedInstanceTypeZones("m5.xlarge", "us-west-2a")
+	f.Store.SeedInstanceTypeZones("g5g.xlarge", "us-west-2b")
+	f.Store.FailNext("CreateRouteTable", errors.New("stop after subnets"))
+
+	provider := newTestProvider(f.EC2)
+	provider.Spec.Cluster = &v1alpha1.ClusterSpec{
+		Region:       "us-west-2",
+		ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1, InstanceType: "m5.xlarge"},
+		Workers:      &v1alpha1.WorkerPoolSpec{Count: 0, InstanceType: "g5g.xlarge"},
+	}
+
+	err := provider.CreateCluster()
+	if err == nil || !strings.Contains(err.Error(), "stop after subnets") {
+		t.Fatalf("expected CreateCluster() to stop at the public route table, got: %v", err)
+	}
+
+	subnetZones := requestedSubnetZones(f)
+	if len(subnetZones) != 2 || subnetZones[0] != "us-west-2a" || subnetZones[1] != "us-west-2a" {
+		t.Errorf("expected the private and public subnets in us-west-2a, got zones %q", subnetZones)
+	}
+}
+
+// createPublicSubnet builds its own CreateSubnetInput, separate from createSubnet.
+func TestCreateClusterLetsAWSChooseZoneWithoutZoneDiscoveryPermissions(t *testing.T) {
+	f := awsfake.New()
+	f.Store.FailNext("DescribeAvailabilityZones", &apiError{code: "UnauthorizedOperation", message: "not authorized"})
+	f.Store.FailNext("CreateRouteTable", errors.New("stop after subnets"))
+
+	provider := newTestProvider(f.EC2)
+	provider.Spec.Cluster = &v1alpha1.ClusterSpec{
+		Region:       "us-west-2",
+		ControlPlane: v1alpha1.ControlPlaneSpec{Count: 1, InstanceType: "m5.xlarge"},
+		Workers:      &v1alpha1.WorkerPoolSpec{Count: 1, InstanceType: "g5g.xlarge"},
+	}
+
+	err := provider.CreateCluster()
+	if err == nil || !strings.Contains(err.Error(), "stop after subnets") {
+		t.Fatalf("expected CreateCluster() to stop at the public route table, got: %v", err)
+	}
+
+	if subnetCount := len(f.Store.Inputs("CreateSubnet")); subnetCount != 2 {
+		t.Fatalf("expected the private and public subnets to be created, got %d CreateSubnet calls", subnetCount)
+	}
+	if subnetRequestsWithZoneCount(f) != 0 {
+		t.Errorf("expected both subnets to be created without an AvailabilityZone, got zones %q", requestedSubnetZones(f))
+	}
+}
+
+func TestCreateClusterRejectsRequestedZoneWithoutZoneDiscoveryPermissions(t *testing.T) {
+	f := awsfake.New()
+	f.Store.FailNext("DescribeInstanceTypeOfferings", &apiError{code: "UnauthorizedOperation", message: "not authorized"})
+
+	provider := newTestProvider(f.EC2)
+	provider.Spec.Cluster = &v1alpha1.ClusterSpec{
+		Region:           "us-west-2",
+		AvailabilityZone: "us-west-2b",
+		ControlPlane:     v1alpha1.ControlPlaneSpec{Count: 1, InstanceType: "m5.xlarge"},
+		Workers:          &v1alpha1.WorkerPoolSpec{Count: 1, InstanceType: "g5g.xlarge"},
+	}
+
+	err := provider.CreateCluster()
+	if err == nil {
+		t.Fatal("expected CreateCluster() to fail when the requested zone cannot be validated")
+	}
+	for _, want := range []string{"pre-flight check failed", "us-west-2b", "ec2:DescribeInstanceTypeOfferings"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to mention %q, got: %v", want, err)
+		}
+	}
+	if !f.Store.Empty() {
+		t.Errorf("resources were created despite the failed pre-flight: %v", f.Store.ResourceCounts())
 	}
 }
 

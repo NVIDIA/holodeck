@@ -66,6 +66,7 @@ func TestCacheRoundTrip(t *testing.T) {
 		SecurityGroupid:           "sg-mno345",
 		Instanceid:                "i-pqr678",
 		PublicDnsName:             "ec2-1-2-3-4.compute.amazonaws.com",
+		AvailabilityZone:          "us-west-2c",
 		// New cluster networking fields
 		PublicSubnetid:        "subnet-pub789",
 		NatGatewayid:          "nat-abc123",
@@ -101,6 +102,7 @@ func TestCacheRoundTrip(t *testing.T) {
 		{"SecurityGroupid", restored.SecurityGroupid, original.SecurityGroupid},
 		{"Instanceid", restored.Instanceid, original.Instanceid},
 		{"PublicDnsName", restored.PublicDnsName, original.PublicDnsName},
+		{"AvailabilityZone", restored.AvailabilityZone, original.AvailabilityZone},
 		{"PublicSubnetid", restored.PublicSubnetid, original.PublicSubnetid},
 		{"NatGatewayid", restored.NatGatewayid, original.NatGatewayid},
 		{"PublicRouteTable", restored.PublicRouteTable, original.PublicRouteTable},
@@ -173,6 +175,9 @@ func TestCacheRoundTripSingleNode(t *testing.T) {
 	}
 	if restored.NatGatewayid != "" {
 		t.Errorf("NatGatewayid should be empty, got %q", restored.NatGatewayid)
+	}
+	if restored.AvailabilityZone != "" {
+		t.Errorf("AvailabilityZone should be empty, got %q", restored.AvailabilityZone)
 	}
 
 	// Original fields must survive

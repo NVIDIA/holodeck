@@ -97,6 +97,12 @@ type Instance struct {
 	Type   string `json:"type"`
 	Region string `json:"region"`
 
+	// AvailabilityZone places the instance in a specific zone of Region
+	// (e.g., "us-west-2a"). When unset, Holodeck picks a zone that offers
+	// the instance type.
+	// +optional
+	AvailabilityZone string `json:"availabilityZone,omitempty"`
+
 	// OS specifies the operating system by ID (e.g., "ubuntu-22.04").
 	// When set, the AMI is automatically resolved for the region and
 	// architecture. Takes precedence over Image.ImageId if both are specified.
@@ -168,6 +174,12 @@ type ClusterSpec struct {
 	// Region specifies the AWS region for all cluster nodes.
 	// +required
 	Region string `json:"region"`
+
+	// AvailabilityZone places all cluster nodes in a specific zone of Region
+	// (e.g., "us-west-2a"). When unset, Holodeck picks a zone that offers
+	// both the control-plane and worker instance types.
+	// +optional
+	AvailabilityZone string `json:"availabilityZone,omitempty"`
 
 	// ControlPlane defines the control-plane node configuration.
 	// +required
