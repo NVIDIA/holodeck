@@ -746,7 +746,7 @@ func TestDryRun_ArchitectureMismatch(t *testing.T) {
 			Provider: v1alpha1.ProviderAWS,
 			Instance: v1alpha1.Instance{
 				Type:   "t3.medium", // x86_64 only
-				Region: "us-east-1",
+				Region: "us-west-2",
 				Image: v1alpha1.Image{
 					ImageId:      aws.String("ami-arm64-image"),
 					Architecture: "arm64", // Mismatched!
@@ -791,7 +791,7 @@ func TestDryRun_ArchitectureMatch(t *testing.T) {
 			Provider: v1alpha1.ProviderAWS,
 			Instance: v1alpha1.Instance{
 				Type:   "t4g.medium", // arm64
-				Region: "us-east-1",
+				Region: "us-west-2",
 				Image: v1alpha1.Image{
 					ImageId:      aws.String("ami-arm64-image"),
 					Architecture: "arm64", // Matches!
@@ -811,6 +811,44 @@ func TestDryRun_ArchitectureMatch(t *testing.T) {
 
 	err := p.DryRun()
 	require.NoError(t, err)
+}
+
+func TestDryRun_LetsAWSChooseZoneWithoutZoneDiscoveryPermissions(t *testing.T) {
+	f := awsfake.New()
+	f.Store.FailNext("DescribeAvailabilityZones", &apiError{code: "UnauthorizedOperation", message: "not authorized"})
+	f.Store.SetImages(types.Image{
+		ImageId:      aws.String("ami-x86-image"),
+		CreationDate: aws.String("2026-01-01T00:00:00.000Z"),
+		Architecture: types.ArchitectureValuesX8664,
+	})
+
+	env := v1alpha1.Environment{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+		Spec: v1alpha1.EnvironmentSpec{
+			Provider: v1alpha1.ProviderAWS,
+			Instance: v1alpha1.Instance{
+				Type:   "t3.medium",
+				Region: "us-west-2",
+				Image: v1alpha1.Image{
+					ImageId:      aws.String("ami-x86-image"),
+					Architecture: "x86_64",
+				},
+			},
+			Auth: v1alpha1.Auth{
+				KeyName: "test-key",
+			},
+		},
+	}
+
+	p := &Provider{
+		Environment: &env,
+		ec2:         f.EC2,
+		log:         mockLogger(),
+	}
+
+	err := p.DryRun()
+	require.NoError(t, err)
+	assert.Empty(t, p.selectedAvailabilityZone)
 }
 
 func TestInferArchFromInstanceType(t *testing.T) {

@@ -481,7 +481,7 @@ status:
 					Provider: v1alpha1.ProviderAWS,
 					Instance: v1alpha1.Instance{
 						Type:   "t3.medium",
-						Region: "us-east-1",
+						Region: "us-west-2",
 					},
 				},
 			}
@@ -795,7 +795,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -824,7 +824,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -855,7 +855,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -886,7 +886,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -916,7 +916,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -948,7 +948,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -977,7 +977,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -1006,7 +1006,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -1037,7 +1037,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -1068,7 +1068,7 @@ spec:
 							Provider: v1alpha1.ProviderAWS,
 							Instance: v1alpha1.Instance{
 								Type:   "t3.medium",
-								Region: "us-east-1",
+								Region: "us-west-2",
 								Image:  v1alpha1.Image{Architecture: "x86_64"},
 							},
 							Auth: v1alpha1.Auth{
@@ -1100,7 +1100,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -1136,7 +1136,7 @@ spec:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{ImageId: &imageID},
 						},
 						Auth: v1alpha1.Auth{
@@ -1174,7 +1174,7 @@ spec:
 					Provider: v1alpha1.ProviderAWS,
 					Instance: v1alpha1.Instance{
 						Type:   "t3.medium",
-						Region: "us-east-1",
+						Region: "us-west-2",
 						Image:  v1alpha1.Image{Architecture: "x86_64"},
 					},
 					Auth: v1alpha1.Auth{
@@ -1207,7 +1207,7 @@ spec:
 					Provider: v1alpha1.ProviderAWS,
 					Instance: v1alpha1.Instance{
 						Type:   "t3.medium",
-						Region: "us-east-1",
+						Region: "us-west-2",
 						Image:  v1alpha1.Image{Architecture: "x86_64"},
 					},
 					Auth: v1alpha1.Auth{
@@ -1236,7 +1236,7 @@ spec:
 					Provider: v1alpha1.ProviderAWS,
 					Instance: v1alpha1.Instance{
 						Type:   "t3.medium",
-						Region: "us-east-1",
+						Region: "us-west-2",
 						Image:  v1alpha1.Image{Architecture: "x86_64"},
 					},
 					Auth: v1alpha1.Auth{
@@ -1376,7 +1376,7 @@ status:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "x86_64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -1410,7 +1410,7 @@ status:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t4g.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "arm64"},
 						},
 						Auth: v1alpha1.Auth{
@@ -1437,7 +1437,7 @@ status:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{Architecture: "invalid_arch"},
 						},
 						Auth: v1alpha1.Auth{
@@ -1471,7 +1471,7 @@ status:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{ImageId: &imageID},
 						},
 						Auth: v1alpha1.Auth{
@@ -1504,7 +1504,7 @@ status:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image:  v1alpha1.Image{ImageId: &imageID},
 						},
 						Auth: v1alpha1.Auth{
@@ -1539,7 +1539,7 @@ status:
 						Provider: v1alpha1.ProviderAWS,
 						Instance: v1alpha1.Instance{
 							Type:   "t3.medium",
-							Region: "us-east-1",
+							Region: "us-west-2",
 							Image: v1alpha1.Image{
 								Architecture: "x86_64",
 								OwnerId:      &ownerID,

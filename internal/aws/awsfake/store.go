@@ -85,14 +85,20 @@ type Store struct {
 	Parameters map[string]string
 
 	// Seed data (excluded from ResourceCounts/Empty).
-	Images        []ec2types.Image
-	InstanceTypes map[string][]ec2types.ArchitectureType
+	Images            []ec2types.Image
+	InstanceTypes     map[string][]ec2types.ArchitectureType
+	AvailabilityZones []ec2types.AvailabilityZone
 
 	// Per-instance-type overrides for filtered DescribeInstanceTypes queries:
 	// explicit architectures (bypassing the prefix heuristic) and types marked
 	// as not offered (so a filtered query returns no results).
 	instanceTypeArchs   map[string][]ec2types.ArchitectureType
 	absentInstanceTypes map[string]bool
+
+	// Per-instance-type Availability Zone offerings for
+	// DescribeInstanceTypeOfferings. Types without an entry are offered in
+	// every standard zone of AvailabilityZones, unless seeded absent.
+	instanceTypeZones map[string][]string
 
 	// Recorder + fault injection + id generator.
 	calls    map[string]int
@@ -142,6 +148,7 @@ func newStore() *Store {
 		InstanceTypes:       map[string][]ec2types.ArchitectureType{},
 		instanceTypeArchs:   map[string][]ec2types.ArchitectureType{},
 		absentInstanceTypes: map[string]bool{},
+		instanceTypeZones:   map[string][]string{},
 		calls:               map[string]int{},
 		inputs:              map[string][]any{},
 		failures:            map[string][]error{},
@@ -202,6 +209,15 @@ func (s *Store) seed() {
 		"g4dn.xlarge", "g5.xlarge", "g5g.xlarge",
 	} {
 		s.InstanceTypes[t] = archsFor(t)
+	}
+
+	for _, zoneName := range []string{"us-west-2a", "us-west-2b", "us-west-2c", "us-west-2d"} {
+		s.AvailabilityZones = append(s.AvailabilityZones, ec2types.AvailabilityZone{
+			ZoneName:   aws.String(zoneName),
+			ZoneType:   aws.String("availability-zone"),
+			State:      ec2types.AvailabilityZoneStateAvailable,
+			RegionName: aws.String("us-west-2"),
+		})
 	}
 }
 
@@ -345,6 +361,54 @@ func (s *Store) SeedInstanceTypeAbsent(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.absentInstanceTypes[name] = true
+}
+
+// SeedInstanceTypeZones restricts the Availability Zones in which
+// DescribeInstanceTypeOfferings reports an instance type as offered. Passing
+// no zones models a type that no zone in the region offers.
+func (s *Store) SeedInstanceTypeZones(name string, zoneNames ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.instanceTypeZones[name] = zoneNames
+}
+
+// SeedAvailabilityZone adds a zone to the DescribeAvailabilityZones catalog,
+// e.g. a Local Zone (ZoneType "local-zone") or a zone in a non-available state.
+func (s *Store) SeedAvailabilityZone(zone ec2types.AvailabilityZone) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.AvailabilityZones = append(s.AvailabilityZones, zone)
+}
+
+// SeedAvailabilityZoneState changes the state DescribeAvailabilityZones
+// reports for an already-seeded zone. DescribeInstanceTypeOfferings ignores
+// zone state, so the zone keeps being listed as offering instance types.
+func (s *Store) SeedAvailabilityZoneState(zoneName string, state ec2types.AvailabilityZoneState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.AvailabilityZones {
+		if aws.ToString(s.AvailabilityZones[i].ZoneName) == zoneName {
+			s.AvailabilityZones[i].State = state
+		}
+	}
+}
+
+// zonesOffering returns the zones that offer an instance type. Callers must
+// hold mu.
+func (s *Store) zonesOffering(instanceType string) []string {
+	if zoneNames, ok := s.instanceTypeZones[instanceType]; ok {
+		return zoneNames
+	}
+	if s.absentInstanceTypes[instanceType] {
+		return nil
+	}
+	var zoneNames []string
+	for _, zone := range s.AvailabilityZones {
+		if aws.ToString(zone.ZoneType) == "availability-zone" {
+			zoneNames = append(zoneNames, aws.ToString(zone.ZoneName))
+		}
+	}
+	return zoneNames
 }
 
 // SetImages replaces the DescribeImages catalog (clearing the seeded default

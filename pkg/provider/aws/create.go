@@ -61,7 +61,7 @@ func (p *Provider) Create() error {
 		return fmt.Errorf("pre-flight check failed: %w", err)
 	}
 
-	cache := new(AWS)
+	cache := &AWS{AvailabilityZone: p.selectedAvailabilityZone}
 	var cleanupStack []cleanupFunc
 	var err error
 
@@ -215,6 +215,10 @@ func (p *Provider) createVPC(cache *AWS) error {
 
 // createSubnet creates a subnet for the VPC
 func (p *Provider) createSubnet(cache *AWS) error {
+	if cache.AvailabilityZone == "" && !p.letAWSChooseAvailabilityZone {
+		return fmt.Errorf("no availability zone selected for subnet; the pre-flight must run first")
+	}
+
 	cancelLoading := p.log.Loading("Creating subnet")
 
 	subnetInput := &ec2.CreateSubnetInput{
@@ -226,6 +230,9 @@ func (p *Provider) createSubnet(cache *AWS) error {
 				Tags:         p.Tags,
 			},
 		},
+	}
+	if cache.AvailabilityZone != "" {
+		subnetInput.AvailabilityZone = aws.String(cache.AvailabilityZone)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), defaultSubnetTimeout)
 
@@ -568,6 +575,10 @@ func (p *Provider) createEC2Instance(cache *AWS) error {
 // createPublicSubnet creates a public subnet (10.0.1.0/24) for NAT gateway and NLB.
 // The subnet is configured with MapPublicIpOnLaunch enabled.
 func (p *Provider) createPublicSubnet(cache *AWS) error {
+	if cache.AvailabilityZone == "" && !p.letAWSChooseAvailabilityZone {
+		return fmt.Errorf("no availability zone selected for public subnet; the pre-flight must run first")
+	}
+
 	cancelLoading := p.log.Loading("Creating public subnet")
 
 	// Build tags with a public-specific Name tag
@@ -592,6 +603,9 @@ func (p *Provider) createPublicSubnet(cache *AWS) error {
 				Tags:         publicTags,
 			},
 		},
+	}
+	if cache.AvailabilityZone != "" {
+		subnetInput.AvailabilityZone = aws.String(cache.AvailabilityZone)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), defaultSubnetTimeout)
 	defer cancel()

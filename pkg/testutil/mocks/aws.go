@@ -153,9 +153,11 @@ type MockEC2Client struct {
 	DescribeTagsFunc                    func(ctx context.Context, params *ec2.DescribeTagsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeTagsOutput, error)
 
 	// Additional operations required by internal/aws.EC2Client
-	DescribeInternetGatewaysFunc     func(ctx context.Context, params *ec2.DescribeInternetGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)
-	DescribeInstanceTypesFunc        func(ctx context.Context, params *ec2.DescribeInstanceTypesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error)
-	ReplaceRouteTableAssociationFunc func(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error)
+	DescribeInternetGatewaysFunc      func(ctx context.Context, params *ec2.DescribeInternetGatewaysInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInternetGatewaysOutput, error)
+	DescribeInstanceTypesFunc         func(ctx context.Context, params *ec2.DescribeInstanceTypesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error)
+	DescribeInstanceTypeOfferingsFunc func(ctx context.Context, params *ec2.DescribeInstanceTypeOfferingsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypeOfferingsOutput, error)
+	DescribeAvailabilityZonesFunc     func(ctx context.Context, params *ec2.DescribeAvailabilityZonesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error)
+	ReplaceRouteTableAssociationFunc  func(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error)
 
 	// Security Group Revoke operations
 	RevokeSecurityGroupIngressFunc func(ctx context.Context, params *ec2.RevokeSecurityGroupIngressInput, optFns ...func(*ec2.Options)) (*ec2.RevokeSecurityGroupIngressOutput, error)
@@ -440,6 +442,20 @@ func (m *MockEC2Client) DescribeInstanceTypes(ctx context.Context, params *ec2.D
 		return m.DescribeInstanceTypesFunc(ctx, params, optFns...)
 	}
 	return &ec2.DescribeInstanceTypesOutput{}, nil
+}
+
+func (m *MockEC2Client) DescribeInstanceTypeOfferings(ctx context.Context, params *ec2.DescribeInstanceTypeOfferingsInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypeOfferingsOutput, error) { //nolint:revive
+	if m.DescribeInstanceTypeOfferingsFunc != nil {
+		return m.DescribeInstanceTypeOfferingsFunc(ctx, params, optFns...)
+	}
+	return &ec2.DescribeInstanceTypeOfferingsOutput{}, nil
+}
+
+func (m *MockEC2Client) DescribeAvailabilityZones(ctx context.Context, params *ec2.DescribeAvailabilityZonesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error) { //nolint:revive
+	if m.DescribeAvailabilityZonesFunc != nil {
+		return m.DescribeAvailabilityZonesFunc(ctx, params, optFns...)
+	}
+	return &ec2.DescribeAvailabilityZonesOutput{}, nil
 }
 
 func (m *MockEC2Client) ReplaceRouteTableAssociation(ctx context.Context, params *ec2.ReplaceRouteTableAssociationInput, optFns ...func(*ec2.Options)) (*ec2.ReplaceRouteTableAssociationOutput, error) {

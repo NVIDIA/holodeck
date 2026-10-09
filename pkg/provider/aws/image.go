@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -340,7 +342,7 @@ func (p *Provider) checkInstanceTypes() error {
 		if t := p.Spec.Cluster.ControlPlane.InstanceType; t != "" {
 			needed[t] = false
 		}
-		if p.Spec.Cluster.Workers != nil {
+		if p.Spec.Cluster.Workers != nil && p.Spec.Cluster.Workers.Count > 0 {
 			if t := p.Spec.Cluster.Workers.InstanceType; t != "" {
 				needed[t] = false
 			}
@@ -375,7 +377,7 @@ func (p *Provider) checkInstanceTypes() error {
 			}
 		}
 		if allFound {
-			return nil
+			break
 		}
 
 		if resp.NextToken != nil {
@@ -395,7 +397,117 @@ func (p *Provider) checkInstanceTypes() error {
 			return fmt.Errorf("instance type %s is not supported in the current region %s", instanceType, region)
 		}
 	}
+
+	availabilityZone, err := p.selectAvailabilityZone(slices.Sorted(maps.Keys(needed)), region)
+	if err != nil {
+		return err
+	}
+	p.selectedAvailabilityZone = availabilityZone
+	if availabilityZone != "" {
+		p.log.Info("Using availability zone %s", availabilityZone)
+	}
 	return nil
+}
+
+// selectAvailabilityZone returns the zone to create the environment's subnets
+// in. Left to itself, AWS picks a subnet's zone without regard to instance
+// types, and not every zone of a region offers every type, so RunInstances can
+// fail with "Unsupported" after the VPC and its networking already exist.
+func (p *Provider) selectAvailabilityZone(instanceTypes []string, region string) (string, error) {
+	requestedZone := p.Spec.AvailabilityZone
+	if p.Spec.Cluster != nil {
+		requestedZone = p.Spec.Cluster.AvailabilityZone
+	}
+	joinedInstanceTypes := strings.Join(instanceTypes, ", ")
+
+	offeringZones, err := p.zonesOfferingAllInstanceTypes(instanceTypes)
+	if isUnauthorizedOperation(err) {
+		if requestedZone != "" {
+			return "", fmt.Errorf("cannot validate availability zone %s without the %s permissions: %w",
+				requestedZone, zoneDiscoveryPermissions, err)
+		}
+		p.log.Warning("Cannot pick an availability zone without the %s permissions; AWS will choose the subnet's zone, which may not offer instance type(s) %s",
+			zoneDiscoveryPermissions, joinedInstanceTypes)
+		p.letAWSChooseAvailabilityZone = true
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+
+	if len(offeringZones) == 0 {
+		return "", fmt.Errorf("no availability zone in region %s offers instance type(s) %s", region, joinedInstanceTypes)
+	}
+
+	if requestedZone == "" {
+		return offeringZones[0], nil
+	}
+	if !slices.Contains(offeringZones, requestedZone) {
+		return "", fmt.Errorf("availability zone %s does not offer instance type(s) %s; zones in region %s that do: %s",
+			requestedZone, joinedInstanceTypes, region, strings.Join(offeringZones, ", "))
+	}
+	return requestedZone, nil
+}
+
+// zonesOfferingAllInstanceTypes returns, sorted, the available standard zones of
+// the region that offer every one of the given instance types. Local and
+// Wavelength Zones are excluded: they sort before the region's own zones and
+// support only a subset of AWS services.
+func (p *Provider) zonesOfferingAllInstanceTypes(instanceTypes []string) ([]string, error) {
+	zonesOutput, err := p.ec2.DescribeAvailabilityZones(context.TODO(), &ec2.DescribeAvailabilityZonesInput{
+		Filters: []types.Filter{
+			{Name: aws.String("zone-type"), Values: []string{"availability-zone"}},
+			{Name: aws.String("state"), Values: []string{string(types.AvailabilityZoneStateAvailable)}},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe availability zones: %w", err)
+	}
+
+	offeredTypesByZone := make(map[string]map[types.InstanceType]bool)
+	offeringsInput := &ec2.DescribeInstanceTypeOfferingsInput{
+		LocationType: types.LocationTypeAvailabilityZone,
+		Filters: []types.Filter{
+			{Name: aws.String("instance-type"), Values: instanceTypes},
+		},
+	}
+	for {
+		offeringsOutput, err := p.ec2.DescribeInstanceTypeOfferings(context.TODO(), offeringsInput)
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe instance type offerings: %w", err)
+		}
+		for _, offering := range offeringsOutput.InstanceTypeOfferings {
+			zoneName := aws.ToString(offering.Location)
+			if offeredTypesByZone[zoneName] == nil {
+				offeredTypesByZone[zoneName] = make(map[types.InstanceType]bool)
+			}
+			offeredTypesByZone[zoneName][offering.InstanceType] = true
+		}
+		if offeringsOutput.NextToken == nil {
+			break
+		}
+		offeringsInput.NextToken = offeringsOutput.NextToken
+	}
+
+	var offeringZones []string
+	for _, zone := range zonesOutput.AvailabilityZones {
+		zoneName := aws.ToString(zone.ZoneName)
+		if len(offeredTypesByZone[zoneName]) == len(instanceTypes) {
+			offeringZones = append(offeringZones, zoneName)
+		}
+	}
+	slices.Sort(offeringZones)
+	return offeringZones, nil
+}
+
+const zoneDiscoveryPermissions = "ec2:DescribeAvailabilityZones and ec2:DescribeInstanceTypeOfferings"
+
+// isUnauthorizedOperation reports whether err is an AWS API error with the
+// UnauthorizedOperation code. It matches smithy.APIError's ErrorCode method
+// rather than the type so that smithy-go stays an indirect dependency.
+func isUnauthorizedOperation(err error) bool {
+	var apiErr interface{ ErrorCode() string }
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == "UnauthorizedOperation"
 }
 
 // normalizeArchToEC2 converts architecture aliases to EC2 canonical form.
