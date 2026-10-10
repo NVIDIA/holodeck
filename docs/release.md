@@ -25,20 +25,19 @@ and the Formula on Linux automatically.
 
 ### `HOMEBREW_TAP_GITHUB_TOKEN` repo secret
 
-The release workflow needs a Personal Access Token (PAT) with
-`contents: write` scope on `NVIDIA/holodeck` to open the formula-bump
-PR. The workflow's default `GITHUB_TOKEN` cannot do this because:
+The release workflow needs a fine-grained Personal Access Token (PAT)
+on `NVIDIA/holodeck` to push the tap-bump branches and open the bump
+PRs. GoReleaser never writes to `main` with it: each bump is committed
+to a per-release branch and merged through a normal PR (see
+[Tap-bump PRs](#tap-bump-prs)), so the PAT needs only `Contents` and
+`Pull requests` write access. It does **not** need to belong to a repo
+admin, and must not rely on the admin bypass of `main`'s branch
+protection.
 
-- Main branch protection requires PR review (default token can't
-  approve its own PR).
-- Main branch protection requires signed commits — commits authored via
-  the GitHub API (which a PAT enables) are server-signed and satisfy
-  this.
-- Main branch protection requires DCO sign-off — the
-  `commit_msg_template` in `.goreleaser.yaml` includes a
-  `Signed-off-by:` trailer for the `nvidia-ci` identity to satisfy
-  this. Without the trailer the formula-bump PR is opened but cannot
-  merge.
+The workflow's default `GITHUB_TOKEN` is not used for this because
+pull requests opened with it do not trigger other workflows, so the
+required `DCO`, `Build`, and CodeQL checks would never run on the bump
+PRs.
 
 **Setup steps:**
 
@@ -47,12 +46,51 @@ PR. The workflow's default `GITHUB_TOKEN` cannot do this because:
    repositories` → `NVIDIA/holodeck`.
 1. Repository permissions: `Contents: Read and write`, `Pull requests:
    Read and write`, `Metadata: Read` (auto-selected).
-1. Expiration: 1 year (rotate per NVIDIA security policy).
+1. Expiration: 1 year (rotate per NVIDIA security policy). The PAT
+   owner needs write access to the repo; admin is not required.
 1. Generate and copy the token.
 1. Repo settings → Secrets and variables → Actions → New repository
    secret. Name it `HOMEBREW_TAP_GITHUB_TOKEN` and paste the PAT.
 
 [pat-settings]: https://github.com/settings/personal-access-tokens/new
+
+### Tap-bump PRs
+
+For a stable tag `vX.Y.Z`, GoReleaser (via the GitHub Contents API, as
+configured in the `brews:` and `homebrew_casks:` blocks of
+`.goreleaser.yaml`):
+
+1. Creates branch `brew/holodeck-formula-X.Y.Z` from `main`, commits
+   `Formula/holodeck.rb` to it, and opens a PR into `main`.
+1. Creates branch `brew/holodeck-cask-X.Y.Z` from `main`, commits
+   `Casks/holodeck.rb` to it, and opens a PR into `main`.
+
+Properties of those commits:
+
+- **Author and committer** are `nvidia-ci
+  <nvidia-ci@users.noreply.github.com>` (`commit_author` in
+  `.goreleaser.yaml`).
+- **DCO**: `commit_msg_template` ends with a `Signed-off-by:` trailer
+  for the same `nvidia-ci` identity, so the `DCO` check passes.
+- **Not signed.** GitHub signs Contents API commits only when the
+  request is authenticated as a GitHub App or bot and carries no custom
+  author or committer. GoReleaser authenticates with the PAT and sets
+  `nvidia-ci` as committer, so the commit is unsigned (the v0.3.6
+  bumps, `3c492cfe` and `ad15197f`, report `verification.reason:
+  unsigned`). `main` requires signed commits, and GitHub checks every
+  commit on the head branch, so an unsigned bump commit can block the
+  PR even with **Squash and merge**. Re-sign it before merging, as
+  described in step 3 of [Releasing a new version](#releasing-a-new-version).
+
+Prerelease tags (anything with a semver prerelease suffix, such as
+`vX.Y.Z-rc.1`) publish the GitHub Release but skip both tap bumps
+(`skip_upload: auto`), so `brew install` keeps resolving to the latest
+stable version.
+
+Up to v0.3.6 both blocks set `branch: main`. When the branch equals
+`pull_request.base.branch`, GoReleaser commits directly to `main` and
+the PR it then tries to open is rejected as empty, which only worked
+because the PAT owner could bypass branch protection as an admin.
 
 ## Releasing a new version
 
@@ -103,13 +141,30 @@ checksums.txt
 holodeck-X.Y.Z.tar.gz   (source archive, auto-attached)
 ```
 
-Two PRs (or two direct commits, depending on whether branch protection
-forces PR mode for the `nvidia-ci` PAT) should also land on `main`:
+Two PRs into `main` should also be open (see
+[Tap-bump PRs](#tap-bump-prs)):
 
-- `chore(brew): bump holodeck cask to vX.Y.Z`    — touches `Casks/holodeck.rb`
-- `chore(brew): bump holodeck formula to vX.Y.Z` — touches `Formula/holodeck.rb`
+- `chore(brew): bump holodeck cask to vX.Y.Z` from
+  `brew/holodeck-cask-X.Y.Z`, touching `Casks/holodeck.rb`
+- `chore(brew): bump holodeck formula to vX.Y.Z` from
+  `brew/holodeck-formula-X.Y.Z`, touching `Formula/holodeck.rb`
 
-Review and merge any that aren't direct commits.
+Each bump commit is unsigned (see [Tap-bump PRs](#tap-bump-prs)), so
+a maintainer re-signs it before merging. Amending keeps `nvidia-ci` as
+the author, so the existing `Signed-off-by:` trailer still satisfies
+DCO; the maintainer becomes the committer and signs:
+
+```bash
+git fetch origin brew/holodeck-cask-X.Y.Z
+git switch -c brew/holodeck-cask-X.Y.Z origin/brew/holodeck-cask-X.Y.Z
+git commit --amend --no-edit -S
+git push --force-with-lease origin brew/holodeck-cask-X.Y.Z
+# repeat for brew/holodeck-formula-X.Y.Z
+```
+
+Then wait for `DCO`, `Build`, CodeQL, and `homebrew-validate` to pass,
+get the one required review, squash-merge each PR, and delete its
+branch. Users keep getting the previous version until both are merged.
 
 [release-tag]: https://github.com/NVIDIA/holodeck/releases
 
@@ -149,8 +204,9 @@ gh release delete vX.Y.Z --yes
 git push upstream :refs/tags/vX.Y.Z
 git tag -d vX.Y.Z
 
-# Close the auto-opened formula-bump PR without merging
-gh pr close <PR_NUMBER>
+# Close the auto-opened tap-bump PRs without merging, deleting their branches
+gh pr close <CASK_PR_NUMBER> --delete-branch
+gh pr close <FORMULA_PR_NUMBER> --delete-branch
 ```
 
 Then fix the underlying issue and re-tag.
@@ -161,10 +217,17 @@ Then fix the underlying issue and re-tag.
 `--skip=announce` to the snapshot command (already done in the
 Makefile), and ensure your local git has at least one tag.
 
-**Formula/Cask bump not landing on main:** check that
-`HOMEBREW_TAP_GITHUB_TOKEN` is set and not expired. Check the release
-workflow logs for the `homebrew formula` and `homebrew cask` step
-output.
+**No tap-bump PRs after a release:** prerelease tags skip the bumps by
+design. For a stable tag, check that `HOMEBREW_TAP_GITHUB_TOKEN` is set,
+not expired, and has `Contents` and `Pull requests` write access. Check
+the release workflow logs for the `homebrew formula` and `homebrew
+cask` step output. If the `brew/holodeck-*-X.Y.Z` branch exists but no
+PR does, open one manually from that branch into `main`.
+
+**Tap-bump PR cannot be merged ("commits must have verified
+signatures"):** the `nvidia-ci` commit on the bump branch was not
+re-signed. Follow the re-sign steps in step 3 of
+[Releasing a new version](#releasing-a-new-version).
 
 **`brew install` builds from source instead of using the binary:** the
 formula isn't pointing at a valid archive URL. Inspect

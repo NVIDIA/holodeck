@@ -10,6 +10,13 @@
 #                                            docs/release.md)
 #   - Linux  → Formula at Formula/holodeck.rb
 #
+# Each tap bump is committed to its own per-release branch
+# (brew/holodeck-{formula,cask}-<version>) and opened as a PR into main,
+# so the bumps go through main's branch protection like any other change.
+# The branch must differ from pull_request.base.branch: when they match,
+# GoReleaser commits straight to main and opens no PR. skip_upload: auto
+# keeps prerelease tags (vX.Y.Z-rc.N) from touching the tap at all.
+#
 # See docs/release.md for the release process.
 
 version: 2
@@ -122,10 +129,11 @@ brews:
   - name: holodeck
     ids:
       - holodeck-linux
+    skip_upload: auto
     repository:
       owner: NVIDIA
       name: holodeck
-      branch: main
+      branch: "brew/holodeck-formula-{{ .Version }}"
       pull_request:
         enabled: true
         draft: false
@@ -160,10 +168,11 @@ homebrew_casks:
       - holodeck-darwin
     binaries:
       - holodeck
+    skip_upload: auto
     repository:
       owner: NVIDIA
       name: holodeck
-      branch: main
+      branch: "brew/holodeck-cask-{{ .Version }}"
       pull_request:
         enabled: true
         draft: false
