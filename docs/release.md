@@ -87,7 +87,7 @@ Prerelease tags (anything with a semver prerelease suffix, such as
 (`skip_upload: auto`), so `brew install` keeps resolving to the latest
 stable version.
 
-Up to v0.3.6 both blocks set `branch: main`. When the branch equals
+Through v0.4.0 both blocks set `branch: main`. When the branch equals
 `pull_request.base.branch`, GoReleaser commits directly to `main` and
 the PR it then tries to open is rejected as empty, which only worked
 because the PAT owner could bypass branch protection as an admin.
@@ -152,13 +152,16 @@ Two PRs into `main` should also be open (see
 Each bump commit is unsigned (see [Tap-bump PRs](#tap-bump-prs)), so
 a maintainer re-signs it before merging. Amending keeps `nvidia-ci` as
 the author, so the existing `Signed-off-by:` trailer still satisfies
-DCO; the maintainer becomes the committer and signs:
+DCO; the maintainer becomes the committer and signs. The bump branches
+exist only on `NVIDIA/holodeck`, so fetch and push them through the
+remote that points there (`upstream` in a fork-based checkout, as in
+step 2):
 
 ```bash
-git fetch origin brew/holodeck-cask-X.Y.Z
-git switch -c brew/holodeck-cask-X.Y.Z origin/brew/holodeck-cask-X.Y.Z
+git fetch upstream brew/holodeck-cask-X.Y.Z
+git switch -c brew/holodeck-cask-X.Y.Z upstream/brew/holodeck-cask-X.Y.Z
 git commit --amend --no-edit -S
-git push --force-with-lease origin brew/holodeck-cask-X.Y.Z
+git push --force-with-lease upstream brew/holodeck-cask-X.Y.Z
 # repeat for brew/holodeck-formula-X.Y.Z
 ```
 
