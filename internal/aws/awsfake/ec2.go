@@ -19,6 +19,9 @@ package awsfake
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -114,11 +117,12 @@ func (f *FakeEC2) CreateSubnet(ctx context.Context, params *ec2.CreateSubnetInpu
 	}
 	id := f.store.nextID("subnet")
 	sn := ec2types.Subnet{
-		SubnetId:  aws.String(id),
-		VpcId:     params.VpcId,
-		CidrBlock: params.CidrBlock,
-		State:     ec2types.SubnetStateAvailable,
-		Tags:      tagsFromSpecs(params.TagSpecifications),
+		SubnetId:         aws.String(id),
+		VpcId:            params.VpcId,
+		CidrBlock:        params.CidrBlock,
+		AvailabilityZone: params.AvailabilityZone,
+		State:            ec2types.SubnetStateAvailable,
+		Tags:             tagsFromSpecs(params.TagSpecifications),
 	}
 	f.store.Subnets[id] = &sn
 	return &ec2.CreateSubnetOutput{Subnet: &sn}, nil
@@ -620,6 +624,75 @@ func (f *FakeEC2) DescribeInstanceTypes(ctx context.Context, params *ec2.Describ
 	return &ec2.DescribeInstanceTypesOutput{InstanceTypes: infos, NextToken: nil}, nil
 }
 
+// instanceTypeOfferingsPageSize is deliberately small so callers must follow
+// NextToken to see every offering, as they must against the real API.
+const instanceTypeOfferingsPageSize = 2
+
+// DescribeInstanceTypeOfferings models only the availability-zone location
+// type, honouring the "instance-type" filter.
+func (f *FakeEC2) DescribeInstanceTypeOfferings(_ context.Context, params *ec2.DescribeInstanceTypeOfferingsInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstanceTypeOfferingsOutput, error) {
+	f.store.mu.Lock()
+	defer f.store.mu.Unlock()
+	f.store.record("DescribeInstanceTypeOfferings", params)
+	if err := f.store.failure("DescribeInstanceTypeOfferings"); err != nil {
+		return nil, err
+	}
+	instanceTypes := filterValues(params.Filters, "instance-type")
+	if len(instanceTypes) == 0 {
+		instanceTypes = slices.Sorted(maps.Keys(f.store.InstanceTypes))
+	}
+	var offerings []ec2types.InstanceTypeOffering
+	for _, instanceType := range instanceTypes {
+		for _, zoneName := range f.store.zonesOffering(instanceType) {
+			offerings = append(offerings, ec2types.InstanceTypeOffering{
+				InstanceType: ec2types.InstanceType(instanceType),
+				LocationType: ec2types.LocationTypeAvailabilityZone,
+				Location:     aws.String(zoneName),
+			})
+		}
+	}
+
+	start := 0
+	if params.NextToken != nil {
+		var err error
+		if start, err = strconv.Atoi(*params.NextToken); err != nil || start < 0 || start > len(offerings) {
+			return nil, fmt.Errorf("InvalidNextToken: %q", *params.NextToken)
+		}
+	}
+	end := min(start+instanceTypeOfferingsPageSize, len(offerings))
+	out := &ec2.DescribeInstanceTypeOfferingsOutput{InstanceTypeOfferings: offerings[start:end]}
+	if end < len(offerings) {
+		out.NextToken = aws.String(strconv.Itoa(end))
+	}
+	return out, nil
+}
+
+// ---- Availability Zones ----
+
+// DescribeAvailabilityZones honours only the "zone-type" and "state" filters;
+// ZoneNames, ZoneIds and AllAvailabilityZones are ignored.
+func (f *FakeEC2) DescribeAvailabilityZones(_ context.Context, params *ec2.DescribeAvailabilityZonesInput, _ ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error) {
+	f.store.mu.Lock()
+	defer f.store.mu.Unlock()
+	f.store.record("DescribeAvailabilityZones", params)
+	if err := f.store.failure("DescribeAvailabilityZones"); err != nil {
+		return nil, err
+	}
+	zoneTypes := filterValues(params.Filters, "zone-type")
+	states := filterValues(params.Filters, "state")
+	var zones []ec2types.AvailabilityZone
+	for _, zone := range f.store.AvailabilityZones {
+		if len(zoneTypes) > 0 && !slices.Contains(zoneTypes, aws.ToString(zone.ZoneType)) {
+			continue
+		}
+		if len(states) > 0 && !slices.Contains(states, string(zone.State)) {
+			continue
+		}
+		zones = append(zones, zone)
+	}
+	return &ec2.DescribeAvailabilityZonesOutput{AvailabilityZones: zones}, nil
+}
+
 func instanceTypeInfo(name string) ec2types.InstanceTypeInfo {
 	return ec2types.InstanceTypeInfo{
 		InstanceType:  ec2types.InstanceType(name),
@@ -912,6 +985,16 @@ func (f *FakeEC2) ModifySubnetAttribute(ctx context.Context, params *ec2.ModifyS
 		return nil, err
 	}
 	return &ec2.ModifySubnetAttributeOutput{}, nil
+}
+
+// filterValues returns every value of the named filter, or nil if absent.
+func filterValues(filters []ec2types.Filter, name string) []string {
+	for _, filter := range filters {
+		if aws.ToString(filter.Name) == name {
+			return filter.Values
+		}
+	}
+	return nil
 }
 
 // filterValue returns the first value of the named filter, or "" if absent.

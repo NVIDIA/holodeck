@@ -83,6 +83,7 @@ var _ = Describe("AWS Provider", func() {
 			Expect(SecurityGroupID).To(Equal("security-group-id"))
 			Expect(InstanceID).To(Equal("instance-id"))
 			Expect(PublicDnsName).To(Equal("public-dns-name"))
+			Expect(AvailabilityZone).To(Equal("availability-zone"))
 		})
 	})
 
@@ -164,6 +165,7 @@ status:
 				Expect(aws.SecurityGroupid).To(Equal("sg-44444"))
 				Expect(aws.Instanceid).To(Equal("i-55555"))
 				Expect(aws.PublicDnsName).To(Equal("ec2-1-2-3-4.compute.amazonaws.com"))
+				Expect(aws.AvailabilityZone).To(BeEmpty())
 			})
 		})
 
@@ -325,7 +327,7 @@ status:
 					Provider: v1alpha1.ProviderAWS,
 					Instance: v1alpha1.Instance{
 						Type:   "t3.medium",
-						Region: "us-east-1",
+						Region: "us-west-2",
 					},
 				},
 			}
@@ -464,7 +466,7 @@ status:
 					Provider: v1alpha1.ProviderAWS,
 					Instance: v1alpha1.Instance{
 						Type:   "t3.medium",
-						Region: "us-east-1",
+						Region: "us-west-2",
 					},
 				},
 			}
@@ -497,6 +499,15 @@ status:
 			err := provider.DryRun()
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not supported"))
+		})
+
+		It("should fail when no availability zone offers the instance type", func() {
+			f.Store.SeedInstanceTypeZones("t3.medium")
+
+			err := provider.DryRun()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("no availability zone"))
+			Expect(err.Error()).To(ContainSubstring("t3.medium"))
 		})
 
 		It("should fail when image check fails (triggers fail())", func() {

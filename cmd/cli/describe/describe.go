@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/holodeck/internal/logger"
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 	"github.com/NVIDIA/holodeck/pkg/output"
+	"github.com/NVIDIA/holodeck/pkg/provider/aws"
 
 	cli "github.com/urfave/cli/v3"
 )
@@ -59,10 +60,11 @@ type InstanceInfo struct {
 
 // ProviderInfo contains provider configuration
 type ProviderInfo struct {
-	Type     string `json:"type" yaml:"type"`
-	Region   string `json:"region,omitempty" yaml:"region,omitempty"`
-	Username string `json:"username" yaml:"username"`
-	KeyName  string `json:"keyName" yaml:"keyName"`
+	Type             string `json:"type" yaml:"type"`
+	Region           string `json:"region,omitempty" yaml:"region,omitempty"`
+	AvailabilityZone string `json:"availabilityZone,omitempty" yaml:"availabilityZone,omitempty"`
+	Username         string `json:"username" yaml:"username"`
+	KeyName          string `json:"keyName" yaml:"keyName"`
 }
 
 // ClusterInfo contains cluster configuration
@@ -307,6 +309,11 @@ func (m command) buildDescribeOutput(instance *instances.Instance, env *v1alpha1
 		output.Provider.Region = env.Spec.Cluster.Region
 	} else {
 		output.Provider.Region = env.Spec.Region
+	}
+	for _, property := range env.Status.Properties {
+		if property.Name == aws.AvailabilityZone {
+			output.Provider.AvailabilityZone = property.Value
+		}
 	}
 
 	// Cluster info
@@ -554,6 +561,9 @@ func (m command) printTableFormat(d *DescribeOutput) error {
 	fmt.Printf("Type:     %s\n", d.Provider.Type)
 	if d.Provider.Region != "" {
 		fmt.Printf("Region:   %s\n", d.Provider.Region)
+	}
+	if d.Provider.AvailabilityZone != "" {
+		fmt.Printf("Zone:     %s\n", d.Provider.AvailabilityZone)
 	}
 	fmt.Printf("Username: %s\n", d.Provider.Username)
 	fmt.Printf("Key Name: %s\n", d.Provider.KeyName)

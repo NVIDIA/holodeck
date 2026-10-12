@@ -91,6 +91,28 @@ spec:
 See the [Multinode Clusters Guide](../guides/multinode-clusters.md) for detailed
 configuration options and examples.
 
+### Availability Zone
+
+Not every instance type is offered in every Availability Zone of a region.
+Holodeck creates the environment's subnets in a zone that offers all of the
+requested instance types, and fails before creating any resources if no zone
+does. To pin a zone, set `availabilityZone` under `instance` (or `cluster`):
+
+```yaml
+  instance:
+    type: g5g.xlarge
+    region: us-west-2
+    availabilityZone: <zone>
+```
+
+Zone names differ between AWS accounts, so leave `availabilityZone` unset to let
+Holodeck choose, or pick a zone that offers the instance type; if it does not,
+the pre-flight error lists the zones that do.
+
+Choosing a zone needs the `ec2:DescribeAvailabilityZones` and
+`ec2:DescribeInstanceTypeOfferings` permissions; without them Holodeck lets AWS
+choose the zone and rejects a pinned `availabilityZone`.
+
 ## Automated IP Detection
 
 Holodeck now automatically detects your public IP address when creating AWS

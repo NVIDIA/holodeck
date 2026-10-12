@@ -46,6 +46,7 @@ const (
 	SecurityGroupID           string = "security-group-id"
 	InstanceID                string = "instance-id"
 	PublicDnsName             string = "public-dns-name"
+	AvailabilityZone          string = "availability-zone"
 
 	// Cluster networking cache keys
 	PublicSubnetID        string = "public-subnet-id"
@@ -82,6 +83,7 @@ type AWS struct {
 	SecurityGroupid           string
 	Instanceid                string
 	PublicDnsName             string
+	AvailabilityZone          string
 
 	// Cluster networking fields
 	PublicSubnetid        string
@@ -101,6 +103,9 @@ type Provider struct {
 	amiResolver *ami.Resolver
 	cacheFile   string
 	sleep       func(time.Duration)
+
+	selectedAvailabilityZone     string
+	letAWSChooseAvailabilityZone bool
 
 	*v1alpha1.Environment
 	log *logger.FunLogger
@@ -262,6 +267,8 @@ func (p *Provider) unmarsalCache() (*AWS, error) {
 			aws.Instanceid = p.Value
 		case PublicDnsName:
 			aws.PublicDnsName = p.Value
+		case AvailabilityZone:
+			aws.AvailabilityZone = p.Value
 		case PublicSubnetID:
 			aws.PublicSubnetid = p.Value
 		case NatGatewayID:

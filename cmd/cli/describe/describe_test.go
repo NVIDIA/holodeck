@@ -19,6 +19,9 @@ package describe
 import (
 	"testing"
 	"time"
+
+	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
+	"github.com/NVIDIA/holodeck/internal/instances"
 )
 
 func TestDescribeOutput_InstanceInfo(t *testing.T) {
@@ -196,5 +199,48 @@ func TestAWSResourcesInfo(t *testing.T) {
 	}
 	if output.AWSResources.VpcID != "vpc-123" {
 		t.Errorf("expected vpc-123, got %s", output.AWSResources.VpcID)
+	}
+}
+
+func TestBuildDescribeOutput_AvailabilityZone(t *testing.T) {
+	singleNodeSpec := v1alpha1.EnvironmentSpec{
+		Provider: v1alpha1.ProviderAWS,
+		Instance: v1alpha1.Instance{Region: "us-west-2"},
+	}
+	clusterSpec := v1alpha1.EnvironmentSpec{
+		Provider: v1alpha1.ProviderAWS,
+		Cluster:  &v1alpha1.ClusterSpec{Region: "us-west-2"},
+	}
+	propertiesWithZone := []v1alpha1.Properties{
+		{Name: "vpc-id", Value: "vpc-123"},
+		{Name: "availability-zone", Value: "us-west-2c"},
+	}
+	propertiesWithoutZone := []v1alpha1.Properties{
+		{Name: "vpc-id", Value: "vpc-123"},
+	}
+
+	tests := []struct {
+		name       string
+		spec       v1alpha1.EnvironmentSpec
+		properties []v1alpha1.Properties
+		want       string
+	}{
+		{"single node", singleNodeSpec, propertiesWithZone, "us-west-2c"},
+		{"cluster", clusterSpec, propertiesWithZone, "us-west-2c"},
+		{"cache written before the zone was recorded", singleNodeSpec, propertiesWithoutZone, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := &v1alpha1.Environment{
+				Spec:   tt.spec,
+				Status: v1alpha1.EnvironmentStatus{Properties: tt.properties},
+			}
+
+			output := command{}.buildDescribeOutput(&instances.Instance{}, env, time.Hour)
+
+			if output.Provider.AvailabilityZone != tt.want {
+				t.Errorf("expected availability zone %q, got %q", tt.want, output.Provider.AvailabilityZone)
+			}
+		})
 	}
 }

@@ -29,6 +29,13 @@ To use the AWS provider, you need:
   - VPC configuration
   - Security group management
   - IAM role management
+  - Pre-flight checks run by `holodeck create` and `holodeck dryrun`:
+    `ec2:DescribeInstanceTypes`
+  - Recommended: `ec2:DescribeInstanceTypeOfferings` and
+    `ec2:DescribeAvailabilityZones`, used to find an Availability Zone that
+    offers the requested instance types. Without them Holodeck logs a
+    warning and lets AWS choose the zone, and rejects a pinned
+    `availabilityZone`
 
 ### SSH Provider
 

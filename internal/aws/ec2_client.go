@@ -115,6 +115,15 @@ type EC2Client interface {
 	DescribeInstanceTypes(ctx context.Context,
 		params *ec2.DescribeInstanceTypesInput,
 		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypesOutput, error)
+	DescribeInstanceTypeOfferings(ctx context.Context,
+		params *ec2.DescribeInstanceTypeOfferingsInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeInstanceTypeOfferingsOutput,
+		error)
+
+	// Availability Zone operations
+	DescribeAvailabilityZones(ctx context.Context,
+		params *ec2.DescribeAvailabilityZonesInput,
+		optFns ...func(*ec2.Options)) (*ec2.DescribeAvailabilityZonesOutput, error)
 
 	// Image operations
 	DescribeImages(ctx context.Context, params *ec2.DescribeImagesInput,

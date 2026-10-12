@@ -90,6 +90,7 @@ holodeck create -f cluster.yaml --provision -k kubeconfig.yaml
 | Field | Type | Description |
 |-------|------|-------------|
 | `region` | string | AWS region for all nodes (required) |
+| `availabilityZone` | string | Zone for all nodes (optional; by default a zone offering every instance type is picked). Zone names differ between AWS accounts |
 | `controlPlane` | ControlPlaneSpec | Control plane node configuration |
 | `workers` | WorkerPoolSpec | Worker node pool configuration |
 | `highAvailability` | HAConfig | HA settings (optional) |

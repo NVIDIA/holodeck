@@ -255,7 +255,8 @@ func TestCreateSubnet_Success(t *testing.T) {
 	f := awsfake.New()
 	provider := createTestProvider(f.EC2)
 	cache := &AWS{
-		Vpcid: "vpc-test-123",
+		Vpcid:            "vpc-test-123",
+		AvailabilityZone: "us-west-2a",
 	}
 
 	err := provider.createSubnet(cache)
@@ -272,6 +273,9 @@ func TestCreateSubnet_Success(t *testing.T) {
 	if aws.ToString(call.VpcId) != "vpc-test-123" {
 		t.Errorf("Expected VpcId 'vpc-test-123', got %v", call.VpcId)
 	}
+	if aws.ToString(call.AvailabilityZone) != "us-west-2a" {
+		t.Errorf("Expected AvailabilityZone 'us-west-2a', got %v", call.AvailabilityZone)
+	}
 
 	// Verify subnet ID was set in cache
 	subnetID := onlyID(t, f.Store.Subnets, "subnet")
@@ -286,7 +290,8 @@ func TestCreateSubnet_Error(t *testing.T) {
 	f.Store.FailNext("CreateSubnet", expectedErr)
 	provider := createTestProvider(f.EC2)
 	cache := &AWS{
-		Vpcid: "vpc-test-123",
+		Vpcid:            "vpc-test-123",
+		AvailabilityZone: "us-west-2a",
 	}
 
 	err := provider.createSubnet(cache)
@@ -296,6 +301,20 @@ func TestCreateSubnet_Error(t *testing.T) {
 
 	if !contains(err.Error(), "error creating subnet") {
 		t.Errorf("Expected error to contain 'error creating subnet', got: %v", err)
+	}
+}
+
+func TestCreateSubnet_FailsWithoutSelectedAvailabilityZone(t *testing.T) {
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
+	cache := &AWS{Vpcid: "vpc-test-123"}
+
+	err := provider.createSubnet(cache)
+	if err == nil || !contains(err.Error(), "no availability zone selected") {
+		t.Fatalf("Expected createSubnet to fail without a selected availability zone, got: %v", err)
+	}
+	if f.Store.CallsTo("CreateSubnet") != 0 || len(f.Store.Subnets) != 0 {
+		t.Errorf("A subnet was created without a selected availability zone: %v", f.Store.ResourceCounts())
 	}
 }
 
@@ -591,7 +610,7 @@ func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
 					// (the fake seeds only the types the test configs use), so
 					// checkInstanceTypes must reject it before any resource is created.
 					Type:   "p4d.24xlarge",
-					Region: "us-west-1",
+					Region: "us-west-2",
 					Image: v1alpha1.Image{
 						ImageId: aws.String("ami-123"),
 					},
@@ -622,11 +641,261 @@ func TestCreate_RejectsUnsupportedInstanceType(t *testing.T) {
 	}
 }
 
+// newSingleNodeProvider returns a provider for a single-node environment with
+// the given instance spec, backed by the fake.
+func newSingleNodeProvider(f *awsfake.Fake, instance v1alpha1.Instance) *Provider {
+	return &Provider{
+		ec2:   f.EC2,
+		log:   mockLogger(),
+		sleep: noopSleep,
+		Environment: &v1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-env"},
+			Spec: v1alpha1.EnvironmentSpec{
+				Auth:     v1alpha1.Auth{KeyName: "test-key"},
+				Instance: instance,
+			},
+		},
+		Tags: []types.Tag{
+			{Key: aws.String("Name"), Value: aws.String("test")},
+		},
+	}
+}
+
+// requestedSubnetZones returns the AvailabilityZone requested by each
+// CreateSubnet call, in call order ("" when none was requested).
+func requestedSubnetZones(f *awsfake.Fake) []string {
+	var subnetZones []string
+	for _, input := range f.Store.Inputs("CreateSubnet") {
+		subnetZones = append(subnetZones, aws.ToString(input.(*ec2.CreateSubnetInput).AvailabilityZone))
+	}
+	return subnetZones
+}
+
+// requestedSubnetZones reports an omitted AvailabilityZone as "", so it cannot
+// show that the field was left unset.
+func subnetRequestsWithZoneCount(f *awsfake.Fake) int {
+	count := 0
+	for _, input := range f.Store.Inputs("CreateSubnet") {
+		if input.(*ec2.CreateSubnetInput).AvailabilityZone != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func TestCreate_PlacesSubnetInZoneOfferingInstanceType(t *testing.T) {
+	f := awsfake.New()
+	f.Store.SeedInstanceTypeZones("g5g.xlarge", "us-west-2b", "us-west-2c")
+	f.Store.FailNext("CreateInternetGateway", errors.New("stop after subnet"))
+	provider := newSingleNodeProvider(f, v1alpha1.Instance{Type: "g5g.xlarge", Region: "us-west-2"})
+
+	err := provider.Create()
+	if err == nil || !contains(err.Error(), "stop after subnet") {
+		t.Fatalf("Expected Create() to stop at the Internet Gateway, got: %v", err)
+	}
+
+	subnetZones := requestedSubnetZones(f)
+	if len(subnetZones) != 1 || subnetZones[0] != "us-west-2b" {
+		t.Errorf("Expected one subnet in us-west-2b, got zones %q", subnetZones)
+	}
+}
+
+func TestCreate_RejectsInstanceTypeOfferedInNoZone(t *testing.T) {
+	f := awsfake.New()
+	f.Store.SeedInstanceTypeZones("g5g.xlarge")
+	provider := newSingleNodeProvider(f, v1alpha1.Instance{Type: "g5g.xlarge", Region: "us-west-2"})
+
+	err := provider.Create()
+	if err == nil {
+		t.Fatal("Expected Create() to fail when no zone offers the instance type")
+	}
+	for _, expected := range []string{"pre-flight check failed", "g5g.xlarge", "us-west-2"} {
+		if !contains(err.Error(), expected) {
+			t.Errorf("Expected error to mention %q, got: %v", expected, err)
+		}
+	}
+	if f.Store.CallsTo("CreateVpc") != 0 || !f.Store.Empty() {
+		t.Errorf("Resources were created despite the failed pre-flight: %v", f.Store.ResourceCounts())
+	}
+}
+
+func TestCreate_FailsPreflightWhenZoneLookupFails(t *testing.T) {
+	for _, operation := range []string{"DescribeAvailabilityZones", "DescribeInstanceTypeOfferings"} {
+		for _, testCase := range []struct {
+			name        string
+			injectedErr error
+		}{
+			{name: "plain error", injectedErr: errors.New(operation + " failed")},
+			{name: "API error", injectedErr: &apiError{code: "InternalError", message: operation + " failed"}},
+		} {
+			t.Run(operation+"/"+testCase.name, func(t *testing.T) {
+				f := awsfake.New()
+				f.Store.FailNext(operation, testCase.injectedErr)
+				provider := newSingleNodeProvider(f, v1alpha1.Instance{Type: "t3.medium", Region: "us-west-2"})
+
+				err := provider.Create()
+				if err == nil || !contains(err.Error(), "pre-flight check failed") || !contains(err.Error(), testCase.injectedErr.Error()) {
+					t.Fatalf("Expected Create() to fail the pre-flight with the injected failure, got: %v", err)
+				}
+				if f.Store.CallsTo("CreateVpc") != 0 || !f.Store.Empty() {
+					t.Errorf("Resources were created despite the failed pre-flight: %v", f.Store.ResourceCounts())
+				}
+			})
+		}
+	}
+}
+
+func TestCreate_LetsAWSChooseZoneWithoutZoneDiscoveryPermissions(t *testing.T) {
+	for _, operation := range []string{"DescribeAvailabilityZones", "DescribeInstanceTypeOfferings"} {
+		t.Run(operation, func(t *testing.T) {
+			f := awsfake.New()
+			f.Store.FailNext(operation, &apiError{code: "UnauthorizedOperation", message: "not authorized"})
+			f.Store.FailNext("CreateInternetGateway", errors.New("stop after subnet"))
+			provider := newSingleNodeProvider(f, v1alpha1.Instance{Type: "t3.medium", Region: "us-west-2"})
+
+			err := provider.Create()
+			if err == nil || !contains(err.Error(), "stop after subnet") {
+				t.Fatalf("Expected Create() to stop at the Internet Gateway, got: %v", err)
+			}
+
+			if subnetCount := len(f.Store.Inputs("CreateSubnet")); subnetCount != 1 {
+				t.Fatalf("Expected one CreateSubnet call, got %d", subnetCount)
+			}
+			if subnetRequestsWithZoneCount(f) != 0 {
+				t.Errorf("Expected the subnet to be created without an AvailabilityZone, got zones %q", requestedSubnetZones(f))
+			}
+		})
+	}
+}
+
+func TestCreate_RejectsRequestedZoneWithoutZoneDiscoveryPermissions(t *testing.T) {
+	for _, operation := range []string{"DescribeAvailabilityZones", "DescribeInstanceTypeOfferings"} {
+		t.Run(operation, func(t *testing.T) {
+			f := awsfake.New()
+			f.Store.FailNext(operation, &apiError{code: "UnauthorizedOperation", message: "not authorized"})
+			provider := newSingleNodeProvider(f, v1alpha1.Instance{
+				Type:             "t3.medium",
+				Region:           "us-west-2",
+				AvailabilityZone: "us-west-2b",
+			})
+
+			err := provider.Create()
+			if err == nil {
+				t.Fatal("Expected Create() to fail when the requested zone cannot be validated")
+			}
+			for _, expected := range []string{
+				"pre-flight check failed", "us-west-2b",
+				"ec2:DescribeAvailabilityZones", "ec2:DescribeInstanceTypeOfferings",
+			} {
+				if !contains(err.Error(), expected) {
+					t.Errorf("Expected error to mention %q, got: %v", expected, err)
+				}
+			}
+			if f.Store.CallsTo("CreateVpc") != 0 || !f.Store.Empty() {
+				t.Errorf("Resources were created despite the failed pre-flight: %v", f.Store.ResourceCounts())
+			}
+		})
+	}
+}
+
+func TestCreate_HonoursRequestedAvailabilityZone(t *testing.T) {
+	f := awsfake.New()
+	f.Store.SeedInstanceTypeZones("g5g.xlarge", "us-west-2b", "us-west-2c")
+	f.Store.FailNext("CreateInternetGateway", errors.New("stop after subnet"))
+	provider := newSingleNodeProvider(f, v1alpha1.Instance{
+		Type:             "g5g.xlarge",
+		Region:           "us-west-2",
+		AvailabilityZone: "us-west-2c",
+	})
+
+	err := provider.Create()
+	if err == nil || !contains(err.Error(), "stop after subnet") {
+		t.Fatalf("Expected Create() to stop at the Internet Gateway, got: %v", err)
+	}
+
+	subnetZones := requestedSubnetZones(f)
+	if len(subnetZones) != 1 || subnetZones[0] != "us-west-2c" {
+		t.Errorf("Expected one subnet in us-west-2c, got zones %q", subnetZones)
+	}
+}
+
+func TestCreate_RejectsRequestedZoneNotOfferingInstanceType(t *testing.T) {
+	f := awsfake.New()
+	f.Store.SeedInstanceTypeZones("g5g.xlarge", "us-west-2a", "us-west-2b", "us-west-2c")
+	provider := newSingleNodeProvider(f, v1alpha1.Instance{
+		Type:             "g5g.xlarge",
+		Region:           "us-west-2",
+		AvailabilityZone: "us-west-2d",
+	})
+
+	err := provider.Create()
+	if err == nil {
+		t.Fatal("Expected Create() to fail when the requested zone does not offer the instance type")
+	}
+	for _, expected := range []string{"us-west-2d", "g5g.xlarge", "us-west-2a, us-west-2b, us-west-2c"} {
+		if !contains(err.Error(), expected) {
+			t.Errorf("Expected error to mention %q, got: %v", expected, err)
+		}
+	}
+	if f.Store.CallsTo("CreateVpc") != 0 || !f.Store.Empty() {
+		t.Errorf("Resources were created despite the failed pre-flight: %v", f.Store.ResourceCounts())
+	}
+}
+
+func TestCreate_SkipsLocalZones(t *testing.T) {
+	f := awsfake.New()
+	// us-west-2-lax-1a sorts before us-west-2c, so it would win if not filtered out.
+	f.Store.SeedAvailabilityZone(types.AvailabilityZone{
+		ZoneName: aws.String("us-west-2-lax-1a"),
+		ZoneType: aws.String("local-zone"),
+		State:    types.AvailabilityZoneStateAvailable,
+	})
+	f.Store.SeedInstanceTypeZones("t3.medium", "us-west-2-lax-1a", "us-west-2c")
+	f.Store.FailNext("CreateInternetGateway", errors.New("stop after subnet"))
+	provider := newSingleNodeProvider(f, v1alpha1.Instance{Type: "t3.medium", Region: "us-west-2"})
+
+	err := provider.Create()
+	if err == nil || !contains(err.Error(), "stop after subnet") {
+		t.Fatalf("Expected Create() to stop at the Internet Gateway, got: %v", err)
+	}
+
+	subnetZones := requestedSubnetZones(f)
+	if len(subnetZones) != 1 || subnetZones[0] != "us-west-2c" {
+		t.Errorf("Expected one subnet in us-west-2c, got zones %q", subnetZones)
+	}
+}
+
+func TestCreate_SkipsZonesThatAreNotAvailable(t *testing.T) {
+	for _, state := range []types.AvailabilityZoneState{
+		types.AvailabilityZoneStateUnavailable,
+		types.AvailabilityZoneStateConstrained,
+	} {
+		t.Run(string(state), func(t *testing.T) {
+			f := awsfake.New()
+			f.Store.SeedAvailabilityZoneState("us-west-2a", state)
+			f.Store.SeedInstanceTypeZones("t3.medium", "us-west-2a", "us-west-2b")
+			f.Store.FailNext("CreateInternetGateway", errors.New("stop after subnet"))
+			provider := newSingleNodeProvider(f, v1alpha1.Instance{Type: "t3.medium", Region: "us-west-2"})
+
+			err := provider.Create()
+			if err == nil || !contains(err.Error(), "stop after subnet") {
+				t.Fatalf("Expected Create() to stop at the Internet Gateway, got: %v", err)
+			}
+
+			subnetZones := requestedSubnetZones(f)
+			if len(subnetZones) != 1 || subnetZones[0] != "us-west-2b" {
+				t.Errorf("Expected one subnet in us-west-2b, got zones %q", subnetZones)
+			}
+		})
+	}
+}
+
 func TestCreatePublicSubnet_Success(t *testing.T) {
 	f := awsfake.New()
 	provider := createTestProvider(f.EC2)
 	cache := &AWS{
-		Vpcid: "vpc-test-123",
+		Vpcid:            "vpc-test-123",
+		AvailabilityZone: "us-west-2a",
 	}
 
 	err := provider.createPublicSubnet(cache)
@@ -645,6 +914,9 @@ func TestCreatePublicSubnet_Success(t *testing.T) {
 	}
 	if aws.ToString(call.VpcId) != "vpc-test-123" {
 		t.Errorf("Expected VpcId 'vpc-test-123', got %v", call.VpcId)
+	}
+	if aws.ToString(call.AvailabilityZone) != "us-west-2a" {
+		t.Errorf("Expected AvailabilityZone 'us-west-2a', got %v", call.AvailabilityZone)
 	}
 
 	// Verify public subnet ID was set in cache
@@ -666,7 +938,8 @@ func TestCreatePublicSubnet_Error(t *testing.T) {
 	f.Store.FailNext("CreateSubnet", expectedErr)
 	provider := createTestProvider(f.EC2)
 	cache := &AWS{
-		Vpcid: "vpc-test-123",
+		Vpcid:            "vpc-test-123",
+		AvailabilityZone: "us-west-2a",
 	}
 
 	err := provider.createPublicSubnet(cache)
@@ -676,6 +949,20 @@ func TestCreatePublicSubnet_Error(t *testing.T) {
 
 	if !contains(err.Error(), "error creating public subnet") {
 		t.Errorf("Expected error to contain 'error creating public subnet', got: %v", err)
+	}
+}
+
+func TestCreatePublicSubnet_FailsWithoutSelectedAvailabilityZone(t *testing.T) {
+	f := awsfake.New()
+	provider := createTestProvider(f.EC2)
+	cache := &AWS{Vpcid: "vpc-test-123"}
+
+	err := provider.createPublicSubnet(cache)
+	if err == nil || !contains(err.Error(), "no availability zone selected") {
+		t.Fatalf("Expected createPublicSubnet to fail without a selected availability zone, got: %v", err)
+	}
+	if f.Store.CallsTo("CreateSubnet") != 0 || len(f.Store.Subnets) != 0 {
+		t.Errorf("A subnet was created without a selected availability zone: %v", f.Store.ResourceCounts())
 	}
 }
 

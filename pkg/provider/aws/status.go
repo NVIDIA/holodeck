@@ -93,6 +93,7 @@ func (p *Provider) updateStatus(env v1alpha1.Environment, cache *AWS, condition 
 			{Name: SecurityGroupID, Value: cache.SecurityGroupid},
 			{Name: InstanceID, Value: cache.Instanceid},
 			{Name: PublicDnsName, Value: cache.PublicDnsName},
+			{Name: AvailabilityZone, Value: cache.AvailabilityZone},
 			{Name: PublicSubnetID, Value: cache.PublicSubnetid},
 			{Name: NatGatewayID, Value: cache.NatGatewayid},
 			{Name: PublicRouteTable, Value: cache.PublicRouteTable},
@@ -143,6 +144,11 @@ func (p *Provider) updateStatus(env v1alpha1.Environment, cache *AWS, condition 
 			case PublicDnsName:
 				if properties.Value != cache.PublicDnsName {
 					properties.Value = cache.PublicDnsName
+					modified = true
+				}
+			case AvailabilityZone:
+				if properties.Value != cache.AvailabilityZone {
+					properties.Value = cache.AvailabilityZone
 					modified = true
 				}
 			case PublicSubnetID:

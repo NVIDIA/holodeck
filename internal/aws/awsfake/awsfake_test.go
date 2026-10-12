@@ -944,3 +944,101 @@ func TestSetInstanceTypeCatalog(t *testing.T) {
 		t.Fatalf("empty catalog must return no types, got %+v", empty.InstanceTypes)
 	}
 }
+
+// The provider's zone-selection tests depend on these seeding controls and on following NextToken.
+func TestDescribeInstanceTypeOfferings(t *testing.T) {
+	f := New()
+	f.Store.SeedInstanceTypeZones("g5g.xlarge", "us-west-2b", "us-west-2c")
+	f.Store.SeedInstanceTypeAbsent("t99.nonexistent")
+	f.Store.SeedAvailabilityZone(ec2types.AvailabilityZone{
+		ZoneName: aws.String("us-west-2-lax-1a"),
+		ZoneType: aws.String("local-zone"),
+		State:    ec2types.AvailabilityZoneStateAvailable,
+	})
+
+	zonesByInstanceType := map[string][]string{}
+	input := &ec2.DescribeInstanceTypeOfferingsInput{
+		LocationType: ec2types.LocationTypeAvailabilityZone,
+		Filters: []ec2types.Filter{{
+			Name:   aws.String("instance-type"),
+			Values: []string{"g5g.xlarge", "t3.medium", "t99.nonexistent"},
+		}},
+	}
+	pageCount := 0
+	for {
+		out, err := f.EC2.DescribeInstanceTypeOfferings(ctx, input)
+		if err != nil {
+			t.Fatalf("DescribeInstanceTypeOfferings: %v", err)
+		}
+		pageCount++
+		for _, offering := range out.InstanceTypeOfferings {
+			instanceType := string(offering.InstanceType)
+			zonesByInstanceType[instanceType] = append(zonesByInstanceType[instanceType], aws.ToString(offering.Location))
+		}
+		if out.NextToken == nil {
+			break
+		}
+		input.NextToken = out.NextToken
+	}
+
+	if pageCount < 2 {
+		t.Fatalf("expected paginated results, got %d page(s)", pageCount)
+	}
+	if got, want := zonesByInstanceType["g5g.xlarge"], []string{"us-west-2b", "us-west-2c"}; !slices.Equal(got, want) {
+		t.Fatalf("g5g.xlarge zones = %v, want %v", got, want)
+	}
+	if got, want := zonesByInstanceType["t3.medium"], []string{"us-west-2a", "us-west-2b", "us-west-2c", "us-west-2d"}; !slices.Equal(got, want) {
+		t.Fatalf("t3.medium zones = %v, want %v (local zones excluded by default)", got, want)
+	}
+	if got := zonesByInstanceType["t99.nonexistent"]; len(got) != 0 {
+		t.Fatalf("absent type must be offered nowhere, got %v", got)
+	}
+}
+
+// The provider filters on zone-type to exclude Local Zones, which sort before the region's own zones.
+func TestDescribeAvailabilityZonesFiltersByZoneType(t *testing.T) {
+	f := New()
+	f.Store.SeedAvailabilityZone(ec2types.AvailabilityZone{
+		ZoneName: aws.String("us-west-2-lax-1a"),
+		ZoneType: aws.String("local-zone"),
+		State:    ec2types.AvailabilityZoneStateAvailable,
+	})
+
+	zones, err := f.EC2.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
+		Filters: []ec2types.Filter{{Name: aws.String("zone-type"), Values: []string{"availability-zone"}}},
+	})
+	if err != nil {
+		t.Fatalf("DescribeAvailabilityZones: %v", err)
+	}
+	if len(zones.AvailabilityZones) != 4 {
+		t.Fatalf("zone-type filter must drop the local zone, got %+v", zones.AvailabilityZones)
+	}
+}
+
+// The mock e2e test compares each stored subnet's zone with the zone Create records.
+func TestCreateSubnetRecordsAvailabilityZone(t *testing.T) {
+	f := New()
+	subnet, err := f.EC2.CreateSubnet(ctx, &ec2.CreateSubnetInput{
+		VpcId:            aws.String("vpc-x"),
+		CidrBlock:        aws.String("10.0.0.0/24"),
+		AvailabilityZone: aws.String("us-west-2c"),
+	})
+	if err != nil {
+		t.Fatalf("CreateSubnet: %v", err)
+	}
+	if got := aws.ToString(subnet.Subnet.AvailabilityZone); got != "us-west-2c" {
+		t.Fatalf("subnet zone = %q, want us-west-2c", got)
+	}
+}
+
+// A negative NextToken parses cleanly, so it must be range-checked before it
+// is used as a slice index.
+func TestDescribeInstanceTypeOfferingsRejectsNegativeNextToken(t *testing.T) {
+	f := New()
+	_, err := f.EC2.DescribeInstanceTypeOfferings(ctx, &ec2.DescribeInstanceTypeOfferingsInput{
+		NextToken: aws.String("-1"),
+	})
+	if err == nil {
+		t.Fatal("expected an error for a negative NextToken")
+	}
+}
