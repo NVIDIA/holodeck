@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.30
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.3
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.57.0
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.72.0
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.2
 	github.com/mattn/go-isatty v0.0.23
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
