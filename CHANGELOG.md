@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.0] - 2026-10-13
+
+### Features
+
+- **feat(aws): optional `availabilityZone` on instance and cluster specs (#878, @abrarshivani)**: Pins every subnet and node to one zone of the region. The pre-flight rejects a pinned zone that does not offer the requested instance types and lists the zones that do.
+
+### Bug Fixes
+
+- **fix(aws): create subnets in an availability zone that offers the instance types (#878, @abrarshivani)**: Subnets were created without an Availability Zone, so AWS could place them in a zone that does not offer the instance type (for example `g5g.xlarge` in us-west-2d). RunInstances then failed after the VPC existed, and the rollback could leak the VPC. The pre-flight now uses `DescribeInstanceTypeOfferings` to pick a standard zone that offers every instance type the environment needs, and `Create()`, `CreateCluster()` and `DryRun()` fail before anything is created when no zone does. An identity without `ec2:DescribeAvailabilityZones` or `ec2:DescribeInstanceTypeOfferings` gets a warning and the previous behaviour, unless `availabilityZone` is set.
+- **fix(release): open tap bumps as PRs from per-release branches (#884)**: GoReleaser now commits the Homebrew Formula and Cask bumps to `brew/holodeck-formula-X.Y.Z` and `brew/holodeck-cask-X.Y.Z` and opens a PR for each, instead of committing to `main`. `HOMEBREW_TAP_GITHUB_TOKEN` needs only `Contents` and `Pull requests` write access.
+
+### Security
+
+- **golang.org/x/net bumped to v0.60.0 (#895)**: Fixes GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617. The other `golang.org/x` modules move with it (crypto v0.57.0, sys v0.48.0, text v0.42.0).
+
+### Dependencies
+
+- Go module, GitHub Actions and Dockerfile bumps (#894, #896). AWS SDK for Go v2 moves to v1.47.3 (`service/ec2` v1.338.4, `service/ssm` v1.79.3, `config` v1.33.9), `k8s.io/apimachinery` to v0.37.1 and `golang.org/x/sync` to v0.24.0. The release image builder moves to Go 1.27.2.
+
+### New Contributors
+
+- @abrarshivani made their first contribution in #878.
+
 ## [v0.4.0] - 2026-10-09
 
 ### Features
