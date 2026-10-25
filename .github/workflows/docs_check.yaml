@@ -28,7 +28,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.5'
+          ruby-version: '4.0'
 
       - name: Install mdl
         run: gem install mdl -v 0.13.0
