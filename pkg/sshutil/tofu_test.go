@@ -264,8 +264,8 @@ func TestTOFU_Flock_BlocksConcurrentHostKeyCallback(t *testing.T) {
 	}()
 
 	select {
-	case <-done:
-		t.Fatal("HostKeyCallback returned while the known_hosts lock was held externally — it did not block on flock")
+	case err := <-done:
+		t.Fatalf("HostKeyCallback returned (err=%v) while the known_hosts lock was held externally: it did not block on flock", err)
 	case <-time.After(200 * time.Millisecond):
 		// Expected: HostKeyCallback is still blocked waiting for the lock.
 	}
