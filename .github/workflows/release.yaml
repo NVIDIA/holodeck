@@ -21,10 +21,23 @@ jobs:
         with:
           fetch-depth: 0   # GoReleaser needs full history for the changelog
 
+      # Build releases with the same Go as CI: hack/golang-version.sh reads
+      # it from the Dockerfile, which Dependabot keeps current. go.mod's `go`
+      # line is the minimum language version, not the build toolchain.
+      - name: Get Golang version
+        id: go_version
+        run: |
+          GOLANG_VERSION=$(./hack/golang-version.sh)
+          if [ -z "$GOLANG_VERSION" ]; then
+            echo "::error::hack/golang-version.sh returned no version; check the Dockerfile FROM golang line."
+            exit 1
+          fi
+          echo "GOLANG_VERSION=${GOLANG_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.go_version.outputs.GOLANG_VERSION }}
           cache: true
 
       - name: Verify HOMEBREW_TAP_GITHUB_TOKEN secret is configured
