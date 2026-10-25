@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.1] - 2026-10-25
+
+### Security
+
+- **fix(build): build releases with the CI Go toolchain, now 1.27.3 (#910)**: Release binaries were built with Go 1.26.0, because `release.yaml` installed whatever Go version `go.mod`'s `go` line named. The v0.5.0 binaries embed go1.26.0 and contain 46 known standard-library vulnerabilities, including GO-2026-6809, the `crypto/x509` intermediate-CA block added in go1.27.3 and go1.26.10. Releases now build with the Dockerfile's Go, the same as CI, and the Dockerfile moves to `golang:1.27.3-bookworm`.
+
+### Bug Fixes
+
+- **CI: golangci-lint 2.15.0 and ubuntu-26.04 runner fixes (#908, #909)**: An unchecked error in a `pkg/sshutil` test now fails the test with the error message. The docs-check job pins Ruby 4.0, because `'3.5'` only ever resolved to a preview build that has no ubuntu-26.04 binary.
+
+### Dependencies
+
+- Go module and GitHub Actions bumps (#907): `golang.org/x/crypto` v0.58.0 (with `x/sys` v0.49.0, `x/text` v0.43.0, `x/tools` v0.51.0), `urfave/cli/v3` v3.14.0, `onsi/gomega` v1.44.0, `stretchr/testify` v1.12.1, `mattn/go-isatty` v0.0.24 and `github/codeql-action` v4.39.1.
+
 ## [v0.5.0] - 2026-10-13
 
 ### Features
