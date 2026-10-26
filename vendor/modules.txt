@@ -57,7 +57,7 @@ github.com/aws/aws-sdk-go-v2/internal/endpoints/v2
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
-# github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.4
+# github.com/aws/aws-sdk-go-v2/service/ec2 v1.341.0
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/ec2
 github.com/aws/aws-sdk-go-v2/service/ec2/internal/endpoints
@@ -67,10 +67,10 @@ github.com/aws/aws-sdk-go-v2/service/ec2/types
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types
-# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.21
+# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.22
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
-# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.6
+# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.7
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 # github.com/aws/aws-sdk-go-v2/service/signin v1.10.4
