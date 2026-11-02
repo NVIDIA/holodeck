@@ -353,7 +353,8 @@ func (c *Cleaner) deleteInstances(ctx context.Context, vpcID string) error {
 
 	// Terminate instances
 	terminateInput := &ec2.TerminateInstancesInput{
-		InstanceIds: instanceIDs,
+		InstanceIds:    instanceIDs,
+		SkipOsShutdown: new(true),
 	}
 
 	_, err = c.ec2.TerminateInstances(ctx, terminateInput)
