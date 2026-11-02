@@ -182,7 +182,8 @@ func (p *Provider) deleteEC2Instances(cache *AWS) error {
 		ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
 		defer cancel()
 		_, err := p.ec2.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
-			InstanceIds: instanceIDs,
+			InstanceIds:    instanceIDs,
+			SkipOsShutdown: new(true),
 		})
 		if err != nil {
 			// Check if instances are already terminated
