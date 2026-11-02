@@ -30,7 +30,7 @@ func TestNewContainerd_Defaults(t *testing.T) {
 	c, err := NewContainerd(env)
 	require.NoError(t, err)
 	assert.Equal(t, "package", c.Source)
-	assert.Equal(t, "1.7.27", c.Version)
+	assert.Equal(t, "2.3.6", c.Version)
 }
 
 func TestNewContainerd_CustomVersion(t *testing.T) {
@@ -56,7 +56,7 @@ func TestNewContainerd_EmptyVersion(t *testing.T) {
 	}
 	c, err := NewContainerd(env)
 	require.NoError(t, err)
-	assert.Equal(t, "1.7.27", c.Version)
+	assert.Equal(t, "2.3.6", c.Version)
 }
 
 func TestNewContainerd_Version2(t *testing.T) {

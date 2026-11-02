@@ -585,7 +585,7 @@ func NewContainerd(env v1alpha1.Environment) (*Containerd, error) {
 			// Legacy field support
 			version = cr.Version
 		default:
-			version = "1.7.27" // Default
+			version = "2.3.6" // Default
 		}
 		version = strings.TrimPrefix(version, "v")
 
