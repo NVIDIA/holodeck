@@ -1711,10 +1711,10 @@ var (
 
 // Default Versions
 const (
-	defaultKubernetesVersion     = "v1.35.3"
+	defaultKubernetesVersion     = "v1.36.5"
 	defaultKubeletReleaseVersion = "v0.18.0"
 	defaultCNIPluginsVersion     = "v1.9.1"
-	defaultCRIVersion            = "v1.35.0"
+	defaultCRIVersion            = "v1.36.0"
 	defaultCalicoVersion         = "v3.31.5"
 )
 
