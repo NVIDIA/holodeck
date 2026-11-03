@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.0] - 2026-11-03
+
+### Changes
+
+- **Default containerd moves from 1.7.27 to 2.3.6, and default Kubernetes from v1.35.3 to v1.36.5 (#923, @tariq1890)**: An environment that does not pin these versions now gets containerd 2.3.6, the current LTS release from the `containerd.io` package, with Kubernetes v1.36.5 and crictl v1.36.0. Kubernetes 1.36 is listed as compatible with containerd 2.3. This is a major-version change of the container runtime for anyone relying on the defaults. To keep the previous versions, pin them in `env.yaml`: `containerRuntime.package.version: "1.7.27"` and `kubernetes.release.version: v1.35.3`.
+
+### Performance
+
+- **aws: skip the guest OS shutdown when terminating EC2 instances (#922, @tariq1890)**: `holodeck delete`, `holodeck cleanup` and the GitHub Action's VPC cleanup now terminate instances with `SkipOsShutdown`. Terminations took over 7 minutes before this change.
+
+### Dependencies
+
+- Go module and GitHub Actions bumps (#924, #925): `aws-sdk-go-v2` v1.47.5 (`config` v1.33.13, `service/ec2` v1.343.0, `service/ssm` v1.81.2, `smithy-go` v1.28.7), `onsi/ginkgo/v2` v2.33.1, `docker/login-action` v4.7.0, and the `NVIDIA/holodeck` action v0.5.1 in the periodic workflow.
+
 ## [v0.5.1] - 2026-10-25
 
 ### Security
