@@ -5,20 +5,20 @@
 class Holodeck < Formula
   desc "Tool for creating and managing GPU-ready cloud test environments"
   homepage "https://github.com/NVIDIA/holodeck"
-  version "0.5.1"
+  version "0.6.0"
   license "Apache-2.0"
   depends_on :linux
 
   if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-    url "https://github.com/NVIDIA/holodeck/releases/download/v0.5.1/holodeck_0.5.1_linux_amd64.tar.gz"
-    sha256 "20ee54b5e5a0cf7fbcbd67fbb6f84012bf2773635a76c6e7365633755a3cb4c9"
+    url "https://github.com/NVIDIA/holodeck/releases/download/v0.6.0/holodeck_0.6.0_linux_amd64.tar.gz"
+    sha256 "213f55f2f2a7dc50e3be129e12eedee9c3d5d998ca963535913091fbb5872f53"
     define_method(:install) do
       bin.install "holodeck"
     end
   end
   if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-    url "https://github.com/NVIDIA/holodeck/releases/download/v0.5.1/holodeck_0.5.1_linux_arm64.tar.gz"
-    sha256 "024ce58c5366832d7a63fec9d5bb0594f6c9a743ed38ef1089d2ab9b61707288"
+    url "https://github.com/NVIDIA/holodeck/releases/download/v0.6.0/holodeck_0.6.0_linux_arm64.tar.gz"
+    sha256 "e1b6bdeb69bd3eb32391eb023974059e887da5018b30a9790fbe35cf4eb15cbb"
     define_method(:install) do
       bin.install "holodeck"
     end
