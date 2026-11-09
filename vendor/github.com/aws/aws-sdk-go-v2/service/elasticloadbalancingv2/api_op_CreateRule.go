@@ -6,20 +6,19 @@ import (
 	"context"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Creates a rule for the specified listener. The listener must be associated with
-// an Application Load Balancer.
+// an Application Load Balancer or a dual-stack Network Load Balancer.
 //
-// Each rule consists of a priority, one or more actions, one or more conditions,
-// and up to two optional transforms. Rules are evaluated in priority order, from
-// the lowest value to the highest value. When the conditions for a rule are met,
-// its actions are performed. If the conditions for no rules are met, the actions
-// for the default rule are performed. For more information, see [Listener rules]in the
-// Application Load Balancers Guide.
+// Each rule consists of a priority, one or more actions, and one or more
+// conditions. Rules are evaluated in priority order, from the lowest value to the
+// highest value. When the conditions for a rule are met, its actions are
+// performed. If the conditions for no rules are met, the actions for the default
+// rule are performed. For more information, see [Listener rules]in the Application Load Balancers
+// Guide or [Listener rules]in the Network Load Balancers Guide.
 //
-// [Listener rules]: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-listeners.html#listener-rules
+// [Listener rules]: https://docs.aws.amazon.com/elasticloadbalancing/latest/network/load-balancer-listeners.html#listener-rules
 func (c *Client) CreateRule(ctx context.Context, params *CreateRuleInput, optFns ...func(*Options)) (*CreateRuleOutput, error) {
 	if params == nil {
 		params = &CreateRuleInput{}
@@ -88,34 +87,19 @@ func (c *Client) addOperationCreateRuleMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateRuleValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "CreateRule"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
