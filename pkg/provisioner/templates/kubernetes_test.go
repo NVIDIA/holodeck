@@ -621,6 +621,46 @@ func TestNewKubeadmConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "config uses release version",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						Source: v1alpha1.K8sSourceRelease,
+						Release: &v1alpha1.K8sReleaseSpec{
+							Version: "v1.33.4",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: v1alpha1.ContainerRuntimeContainerd,
+					},
+				},
+			},
+			wantErr: false,
+			check: func(t *testing.T, c *KubeadmConfig) {
+				assert.Equal(t, "v1.33.4", c.KubernetesVersion)
+			},
+		},
+		{
+			name: "config release version takes precedence over legacy version",
+			env: v1alpha1.Environment{
+				Spec: v1alpha1.EnvironmentSpec{
+					Kubernetes: v1alpha1.Kubernetes{
+						KubernetesVersion: "v1.32.0",
+						Release: &v1alpha1.K8sReleaseSpec{
+							Version: "1.33.4",
+						},
+					},
+					ContainerRuntime: v1alpha1.ContainerRuntime{
+						Name: v1alpha1.ContainerRuntimeContainerd,
+					},
+				},
+			},
+			wantErr: false,
+			check: func(t *testing.T, c *KubeadmConfig) {
+				assert.Equal(t, "v1.33.4", c.KubernetesVersion)
+			},
+		},
+		{
 			name: "config with invalid runtime",
 			env: v1alpha1.Environment{
 				Spec: v1alpha1.EnvironmentSpec{

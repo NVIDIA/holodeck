@@ -1795,23 +1795,7 @@ func NewKubernetes(env v1alpha1.Environment) (*Kubernetes, error) {
 		}
 
 	default: // "release"
-		// Normalize Kubernetes version: always ensure it starts with 'v'
-		// Check Release.Version first, then legacy KubernetesVersion
-		version := ""
-		if env.Spec.Kubernetes.Release != nil && env.Spec.Kubernetes.Release.Version != "" {
-			version = env.Spec.Kubernetes.Release.Version
-		} else if env.Spec.Kubernetes.KubernetesVersion != "" {
-			version = env.Spec.Kubernetes.KubernetesVersion
-		}
-
-		switch {
-		case version == "":
-			kubernetes.Version = defaultKubernetesVersion
-		case !strings.HasPrefix(version, "v"):
-			kubernetes.Version = "v" + version
-		default:
-			kubernetes.Version = version
-		}
+		kubernetes.Version = releaseKubernetesVersion(env)
 
 		// Check if we need to use legacy mode (only for release)
 		kubernetes.UseLegacyInit = isLegacyKubernetesVersion(kubernetes.Version)
@@ -1925,16 +1909,12 @@ func NewKubeadmConfig(env v1alpha1.Environment) (*KubeadmConfig, error) {
 	kConfig := &KubeadmConfig{
 		CriSocket:            criSocket, // Assuming containerd as default
 		ClusterName:          "holodeck-cluster",
-		KubernetesVersion:    env.Spec.Kubernetes.KubernetesVersion, // Uses provided Kubernetes version
+		KubernetesVersion:    releaseKubernetesVersion(env), // Same version as the installed binaries
 		ControlPlaneEndpoint: env.Spec.Kubernetes.K8sEndpointHost,
 		PodSubnet:            "192.168.0.0/16",               // Default subnet, modify if needed
 		FeatureGates:         featureGates,                   // Convert slice to string for kubeadm
 		RuntimeConfig:        "resource.k8s.io/v1beta1=true", // Example runtime config
 		IsUbuntu:             isUbuntuOS(env.Spec.OS),        // Detect from OS spec
-	}
-
-	if env.Spec.Kubernetes.KubernetesVersion == "" {
-		kConfig.KubernetesVersion = defaultKubernetesVersion
 	}
 
 	if env.Spec.Kubernetes.KubeAdmConfig != "" {
@@ -2027,6 +2007,28 @@ func isUbuntuOS(os string) bool {
 		return true // backward compatible: assume Ubuntu when OS is not specified
 	}
 	return strings.HasPrefix(os, "ubuntu")
+}
+
+// releaseKubernetesVersion returns the Kubernetes version to install for the
+// release source. Release.Version takes precedence over the deprecated
+// KubernetesVersion field; the result always starts with 'v' and falls back
+// to defaultKubernetesVersion when neither field is set.
+func releaseKubernetesVersion(env v1alpha1.Environment) string {
+	version := ""
+	if env.Spec.Kubernetes.Release != nil && env.Spec.Kubernetes.Release.Version != "" {
+		version = env.Spec.Kubernetes.Release.Version
+	} else if env.Spec.Kubernetes.KubernetesVersion != "" {
+		version = env.Spec.Kubernetes.KubernetesVersion
+	}
+
+	switch {
+	case version == "":
+		return defaultKubernetesVersion
+	case !strings.HasPrefix(version, "v"):
+		return "v" + version
+	default:
+		return version
+	}
 }
 
 // isLegacyKubernetesVersion checks if the Kubernetes version is older than v1.32.0
