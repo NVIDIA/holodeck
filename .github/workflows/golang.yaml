@@ -46,6 +46,10 @@ jobs:
     - uses: actions/checkout@v7
       name: Checkout code
 
+    - name: Test stale-VPC selector
+      shell: bash
+      run: bash scripts/select-stale-vpcs_test.sh
+
     - name: Install Go
       uses: actions/setup-go@v7
       with:
