@@ -19,6 +19,7 @@ package testutil
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -60,4 +61,27 @@ func RunWithIsolatedHome(t *testing.T) bool {
 	}
 	t.Logf("isolated-HOME run (HOME=%s):\n%s", home, out)
 	return false
+}
+
+// IsolatedHome returns the HOME of a RunWithIsolatedHome child, after
+// removing its .aws directory; it removes it again when t ends, so each
+// (sub)test starts from an empty HOME. Fixtures written here are what the
+// SDK's package-init default paths point at, too. It fails t outside a
+// child.
+func IsolatedHome(t *testing.T) string {
+	t.Helper()
+	home := os.Getenv(IsolatedHomeEnv)
+	if home == "" {
+		t.Fatalf("IsolatedHome called outside a RunWithIsolatedHome child")
+	}
+	awsDir := filepath.Join(home, ".aws")
+	reset := func() {
+		//nolint:gosec // G703: awsDir is under the temp HOME this package created
+		if err := os.RemoveAll(awsDir); err != nil {
+			t.Errorf("reset %s: %v", awsDir, err)
+		}
+	}
+	reset()
+	t.Cleanup(reset)
+	return home
 }

@@ -76,14 +76,10 @@ func isolateAWSEnv(t *testing.T) string {
 // Elsewhere it is a fresh temp dir.
 func fixtureHome(t *testing.T) string {
 	t.Helper()
-	home := os.Getenv(testutil.IsolatedHomeEnv)
-	if home == "" {
+	if os.Getenv(testutil.IsolatedHomeEnv) == "" {
 		return t.TempDir()
 	}
-	awsDir := filepath.Join(home, ".aws")
-	require.NoError(t, os.RemoveAll(awsDir))
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(awsDir)) })
-	return home
+	return testutil.IsolatedHome(t)
 }
 
 func writeFile(t *testing.T, path, content string) {

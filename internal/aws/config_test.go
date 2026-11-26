@@ -127,7 +127,7 @@ func TestLoadConfigCredentialPrecedence(t *testing.T) {
 			name:        "P4 env static keys win over both files",
 			config:      defaultSSOSessionConfig,
 			credentials: "[default]\n" + staticKeys,
-			env: map[string]string{
+			env: map[string]string{ //nolint:gosec // G101: fake credentials, never sent anywhere
 				"AWS_ACCESS_KEY_ID":     "AKIAHOLODECKFAKEENV1",
 				"AWS_SECRET_ACCESS_KEY": "holodeck-fake-env-secret",
 			},
@@ -158,7 +158,7 @@ sso_role_name = HolodeckTest
 		{
 			name:     "P7 no ~/.aws at all with env static keys",
 			noAWSDir: true,
-			env: map[string]string{
+			env: map[string]string{ //nolint:gosec // G101: fake credentials, never sent anywhere
 				"AWS_ACCESS_KEY_ID":     "AKIAHOLODECKFAKEENV1",
 				"AWS_SECRET_ACCESS_KEY": "holodeck-fake-env-secret",
 			},

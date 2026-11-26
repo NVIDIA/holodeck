@@ -55,4 +55,17 @@ func TestRunWithIsolatedHome(t *testing.T) {
 			assert.Equal(t, tc.want, tc.got)
 		})
 	}
+
+	t.Run("IsolatedHome returns the isolated HOME with .aws removed", func(t *testing.T) {
+		first := testutil.IsolatedHome(t)
+		stale := filepath.Join(first, ".aws", "config")
+		require.NoError(t, os.MkdirAll(filepath.Dir(stale), 0o700))
+		require.NoError(t, os.WriteFile(stale, []byte("[default]\n"), 0o600))
+
+		second := testutil.IsolatedHome(t)
+		assert.Equal(t, home, first)
+		assert.Equal(t, home, second)
+		_, err := os.Stat(filepath.Join(second, ".aws"))
+		assert.True(t, os.IsNotExist(err), "IsolatedHome must remove a leftover .aws, stat err=%v", err)
+	})
 }

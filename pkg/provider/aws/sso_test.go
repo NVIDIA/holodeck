@@ -105,10 +105,7 @@ sso_registration_scopes = sso:account:access
 			// paths point here too, so a call site that bypassed
 			// internalaws.LoadConfig would read this fixture, never the
 			// real ~/.aws.
-			home := os.Getenv(testutil.IsolatedHomeEnv)
-			require.NotEmpty(t, home)
-			require.NoError(t, os.RemoveAll(filepath.Join(home, ".aws")))
-			t.Cleanup(func() { require.NoError(t, os.RemoveAll(filepath.Join(home, ".aws"))) })
+			home := testutil.IsolatedHome(t)
 			t.Setenv("HOME", home)
 			t.Setenv("AWS_CONFIG_FILE", filepath.Join(home, ".aws", "config"))
 			t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(home, ".aws", "credentials"))

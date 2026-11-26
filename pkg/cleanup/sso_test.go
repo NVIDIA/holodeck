@@ -57,10 +57,7 @@ func TestNewPrefersSSOOverSharedFileKeys(t *testing.T) {
 			// paths point here too, so a call site that bypassed
 			// internalaws.LoadConfig would read this fixture, never the
 			// real ~/.aws.
-			home := os.Getenv(testutil.IsolatedHomeEnv)
-			require.NotEmpty(t, home)
-			require.NoError(t, os.RemoveAll(filepath.Join(home, ".aws")))
-			t.Cleanup(func() { require.NoError(t, os.RemoveAll(filepath.Join(home, ".aws"))) })
+			home := testutil.IsolatedHome(t)
 			t.Setenv("HOME", home)
 			for _, k := range []string{
 				"AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE",
