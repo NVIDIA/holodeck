@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -104,8 +103,7 @@ func New(log *logger.FunLogger, region string,
 	if c.ec2 == nil || c.elbv2 == nil {
 		// Use Background here because New is a top-level initializer
 		// without caller-provided context.
-		cfg, err := config.LoadDefaultConfig(context.Background(),
-			config.WithRegion(region))
+		cfg, err := internalaws.LoadConfig(context.Background(), log, region)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load AWS config: %w", err)
 		}
