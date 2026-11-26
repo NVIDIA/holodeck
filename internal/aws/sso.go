@@ -16,6 +16,40 @@
 
 package aws
 
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/credentials/ssocreds"
+)
+
+// ssoCacheErrMarker appears in every error the SDK's SSO token provider
+// and token-cache loader return (ssocreds/sso_token_provider.go and
+// sso_cached_token.go). sso-session profiles fail through those paths with
+// plain errors, not *ssocreds.InvalidTokenError, so the type alone misses
+// them. TestSSOHintRealSDKChain fails if an SDK upgrade changes this text.
+const ssoCacheErrMarker = "cached SSO token"
+
 // SSOHint adds an "aws sso login" hint to errors caused by an expired or
-// missing AWS SSO session.
-func SSOHint(err error) error { return err }
+// missing AWS SSO session. The profile named in the hint is the one the SDK
+// used: AWS_PROFILE, else AWS_DEFAULT_PROFILE. Any other error, and nil, is
+// returned unchanged. The original error stays in the chain.
+func SSOHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ssoErr *ssocreds.InvalidTokenError
+	if !errors.As(err, &ssoErr) && !strings.Contains(err.Error(), ssoCacheErrMarker) {
+		return err
+	}
+	p := os.Getenv("AWS_PROFILE")
+	if p == "" {
+		p = os.Getenv("AWS_DEFAULT_PROFILE")
+	}
+	if p != "" {
+		return fmt.Errorf("AWS SSO session for profile %q is expired or missing; run \"aws sso login --profile %s\" and retry: %w", p, p, err)
+	}
+	return fmt.Errorf("AWS SSO session is expired or missing; run \"aws sso login\" and retry: %w", err)
+}

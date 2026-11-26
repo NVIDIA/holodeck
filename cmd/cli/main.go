@@ -33,6 +33,7 @@ import (
 	"github.com/NVIDIA/holodeck/cmd/cli/ssh"
 	"github.com/NVIDIA/holodeck/cmd/cli/status"
 	"github.com/NVIDIA/holodeck/cmd/cli/update"
+	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
 	cli "github.com/urfave/cli/v3"
@@ -220,7 +221,7 @@ For more information about a command, run:
 
 	err := c.Run(context.Background(), os.Args)
 	if err != nil {
-		log.Error(err)
+		log.Error(internalaws.SSOHint(err))
 		log.Exit(1)
 	}
 }
