@@ -32,6 +32,7 @@ import (
 
 	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/testutil"
 )
 
 // captureStdout returns what fn wrote to os.Stdout. FunLogger.Warning
@@ -82,6 +83,9 @@ sso_registration_scopes = sso:account:access
 // case sets one) so LoadConfig takes the default ~/.aws paths, under the
 // temp HOME.
 func TestLoadConfigCredentialPrecedence(t *testing.T) {
+	if !testutil.RunWithIsolatedHome(t) {
+		return
+	}
 	type want int
 	const (
 		wantSSO want = iota

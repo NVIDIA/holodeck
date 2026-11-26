@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internalaws "github.com/NVIDIA/holodeck/internal/aws"
+	"github.com/NVIDIA/holodeck/pkg/testutil"
 )
 
 const (
@@ -48,7 +49,7 @@ const (
 // returns the temp HOME.
 func isolateAWSEnv(t *testing.T) string {
 	t.Helper()
-	home := t.TempDir()
+	home := fixtureHome(t)
 	t.Setenv("HOME", home)
 	t.Setenv("AWS_CONFIG_FILE", filepath.Join(home, ".aws", "config"))
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(home, ".aws", "credentials"))
@@ -65,6 +66,23 @@ func isolateAWSEnv(t *testing.T) string {
 	// would hit a closed local port instead of AWS.
 	t.Setenv("AWS_ENDPOINT_URL", "http://127.0.0.1:9")
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".aws", "sso", "cache"), 0o700))
+	return home
+}
+
+// fixtureHome returns the HOME to build fixtures in. Inside a
+// testutil.RunWithIsolatedHome child it is the process HOME, which is also
+// where the SDK's package-init default paths point, so even a code path that
+// bypasses the call-time paths reads the fixture and never the real ~/.aws.
+// Elsewhere it is a fresh temp dir.
+func fixtureHome(t *testing.T) string {
+	t.Helper()
+	home := os.Getenv(testutil.IsolatedHomeEnv)
+	if home == "" {
+		return t.TempDir()
+	}
+	awsDir := filepath.Join(home, ".aws")
+	require.NoError(t, os.RemoveAll(awsDir))
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(awsDir)) })
 	return home
 }
 
@@ -202,6 +220,9 @@ const expiredSessionToken = `{"accessToken":"fake-access-token","expiresAt":"202
 // the local token cache before any request is signed, so nothing leaves the
 // machine; AWS_ENDPOINT_URL points at a closed local port as a backstop.
 func TestSSOHintRealSDKChain(t *testing.T) {
+	if !testutil.RunWithIsolatedHome(t) {
+		return
+	}
 	tests := []struct {
 		name        string
 		config      string

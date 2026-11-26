@@ -32,6 +32,7 @@ import (
 
 	"github.com/NVIDIA/holodeck/api/holodeck/v1alpha1"
 	"github.com/NVIDIA/holodeck/internal/logger"
+	"github.com/NVIDIA/holodeck/pkg/testutil"
 )
 
 const ssoTestStartURL = "https://holodeck-sso-test.awsapps.com/start"
@@ -45,10 +46,14 @@ const validSSOToken = `{"accessToken":"fake-access-token","expiresAt":"2999-01-0
 // SSO credentials provider. It never calls Retrieve, so it reads no token
 // and makes no network call; New must stay lazy (holodeck list depends on it).
 func TestNewResolvesSSOProfile(t *testing.T) {
+	if !testutil.RunWithIsolatedHome(t) {
+		return
+	}
 	tests := []struct {
-		name     string
-		config   string
-		cacheKey string
+		name        string
+		config      string
+		cacheKey    string
+		credentials string // non-empty: written to the DEFAULT ~/.aws/credentials
 	}{
 		{
 			name: "legacy sso_start_url profile",
@@ -74,10 +79,36 @@ sso_registration_scopes = sso:account:access
 `,
 			cacheKey: "s",
 		},
+		{
+			// Carlos's failure: a stale static key in the default shared
+			// credentials file shadowed the SSO login. New must go through
+			// internalaws.LoadConfig, which prefers SSO here.
+			name: "sso-session profile shadowed by static keys in the default credentials file",
+			config: `[profile holodeck-sso-test]
+sso_session = s
+sso_account_id = 123456789012
+sso_role_name = HolodeckTest
+
+[sso-session s]
+sso_start_url = ` + ssoTestStartURL + `
+sso_region = us-east-1
+sso_registration_scopes = sso:account:access
+`,
+			cacheKey: "s",
+			credentials: "[holodeck-sso-test]\naws_access_key_id = AKIAHOLODECKFAKE0001\n" +
+				"aws_secret_access_key = holodeck-fake-secret\n",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			home := t.TempDir()
+			// The isolated process HOME: the SDK's package-init default
+			// paths point here too, so a call site that bypassed
+			// internalaws.LoadConfig would read this fixture, never the
+			// real ~/.aws.
+			home := os.Getenv(testutil.IsolatedHomeEnv)
+			require.NotEmpty(t, home)
+			require.NoError(t, os.RemoveAll(filepath.Join(home, ".aws")))
+			t.Cleanup(func() { require.NoError(t, os.RemoveAll(filepath.Join(home, ".aws"))) })
 			t.Setenv("HOME", home)
 			t.Setenv("AWS_CONFIG_FILE", filepath.Join(home, ".aws", "config"))
 			t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(home, ".aws", "credentials"))
@@ -99,6 +130,12 @@ sso_registration_scopes = sso:account:access
 			sum := sha1.Sum([]byte(tc.cacheKey)) //nolint:gosec // matches the SDK naming scheme
 			require.NoError(t, os.WriteFile(
 				filepath.Join(cacheDir, hex.EncodeToString(sum[:])+".json"), []byte(validSSOToken), 0o600))
+			if tc.credentials != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(home, ".aws", "credentials"), []byte(tc.credentials), 0o600))
+				// Use the default credentials path under the temp HOME, as a
+				// user without AWS_SHARED_CREDENTIALS_FILE would.
+				require.NoError(t, os.Unsetenv("AWS_SHARED_CREDENTIALS_FILE"))
+			}
 
 			env := v1alpha1.Environment{
 				ObjectMeta: metav1.ObjectMeta{Name: "sso-test"},
