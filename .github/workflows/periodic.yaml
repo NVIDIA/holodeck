@@ -12,8 +12,9 @@ jobs:
   cleanup:
     runs-on: linux-amd64-cpu4
     strategy:
+      fail-fast: false
       matrix:
-        aws-region: [us-west-1, us-east-1]
+        aws-region: [us-west-1, us-west-2, us-east-1]
 
     steps:
       - name: Checkout repository
@@ -28,14 +29,14 @@ jobs:
 
       - name: Identify resources for deletion
         id: identify-resources
+        shell: bash
+        env:
+          AWS_REGION: ${{ matrix.aws-region }}
         run: |
-          # Find VPCs with tags Project=holodeck and Environment=cicd
-          vpcs=$(aws ec2 describe-vpcs \
-            --filters "Name=tag:Project,Values=holodeck" "Name=tag:Environment,Values=cicd" \
-            --query "Vpcs[].VpcId" \
-            --output text | tr -d '\r' | tr '\n' ' ')
-          echo "Found VPCs: $vpcs"
-          echo "AWS_VPC_IDS=$vpcs" >> $GITHUB_OUTPUT
+          # 6h floor: the cron is 12-hourly, so a true leak is still removed within about 18h.
+          vpcs=$(bash scripts/select-stale-vpcs.sh 6)
+          echo "Selected VPCs: ${vpcs:-none}"
+          echo "AWS_VPC_IDS=$vpcs" >> "$GITHUB_OUTPUT"
 
       - name: Clean up VPCs
         if: steps.identify-resources.outputs.AWS_VPC_IDS != ''
@@ -49,5 +50,10 @@ jobs:
           force_cleanup: 'true'
 
       - name: Post cleanup
+        shell: bash
+        env:
+          VPC_IDS: ${{ steps.identify-resources.outputs.AWS_VPC_IDS }}
+          REGION: ${{ matrix.aws-region }}
         run: |
-          echo "Cleanup completed for region ${{ matrix.aws-region }}"
+          read -r -a ids <<< "$VPC_IDS"
+          echo "Selected ${#ids[@]} VPC(s) for cleanup in region $REGION"
