@@ -18,6 +18,7 @@ package aws
 
 import (
 	"context"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -25,6 +26,10 @@ import (
 
 	"github.com/NVIDIA/holodeck/internal/logger"
 )
+
+// preferSSOWarnOnce limits the prefer-SSO warning to one per process:
+// holodeck list loads a config for every cached AWS instance.
+var preferSSOWarnOnce sync.Once
 
 const preferSSOWarning = "AWS profile %q has SSO configured and static keys in the shared " +
 	"credentials file; using SSO, as the aws CLI does. Remove the static keys from the " +

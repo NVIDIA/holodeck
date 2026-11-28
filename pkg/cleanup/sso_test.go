@@ -34,21 +34,32 @@ import (
 // TestNewPrefersSSOOverSharedFileKeys guards the cleanup wiring: with an SSO
 // profile in the config file and static keys for it in the default shared
 // credentials file, New must load through internalaws.LoadConfig and hand
-// the EC2 client the SSO provider. Retrieve is never called.
+// the EC2 client the SSO provider, unless the credentials file also assumes
+// a role, which the SSO reload would drop. Retrieve is never called.
 func TestNewPrefersSSOOverSharedFileKeys(t *testing.T) {
 	if !testutil.RunWithIsolatedHome(t) {
 		return
 	}
+	const keys = "aws_access_key_id = AKIAHOLODECKFAKE0001\naws_secret_access_key = holodeck-fake-secret\n"
 	tests := []struct {
-		name    string
-		wantSSO bool
-		creds   string
+		name        string
+		creds       string
+		wantSSO     bool
+		wantSources []awssdk.CredentialSource
 	}{
 		{
 			name:    "static keys in the default credentials file do not shadow SSO",
+			creds:   "[holodeck-sso-test]\n" + keys,
 			wantSSO: true,
-			creds: "[holodeck-sso-test]\naws_access_key_id = AKIAHOLODECKFAKE0001\n" +
-				"aws_secret_access_key = holodeck-fake-secret\n",
+			wantSources: []awssdk.CredentialSource{awssdk.CredentialSourceProfileSSOLegacy,
+				awssdk.CredentialSourceSSOLegacy, awssdk.CredentialSourceProfileSSO},
+		},
+		{
+			name: "a role_arn next to the keys keeps the assumed role",
+			creds: "[holodeck-sso-test]\n" + keys +
+				"role_arn = arn:aws:iam::123456789012:role/Target\n",
+			wantSources: []awssdk.CredentialSource{awssdk.CredentialSourceProfile,
+				awssdk.CredentialSourceSTSAssumeRole},
 		},
 	}
 	for _, tc := range tests {
@@ -96,6 +107,7 @@ sso_registration_scopes = sso:account:access
 			require.True(t, ok, "credentials must be a *aws.CredentialsCache, got %T", client.Options().Credentials)
 			assert.Equal(t, tc.wantSSO, creds.IsCredentialsProvider((*ssocreds.Provider)(nil)),
 				"sources=%v", creds.ProviderSources())
+			assert.Equal(t, tc.wantSources, creds.ProviderSources())
 		})
 	}
 }

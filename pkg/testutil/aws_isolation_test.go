@@ -18,7 +18,9 @@ package testutil_test
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -47,7 +49,9 @@ func fakeIsolation(t *testing.T) string {
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(dir, "credentials"))
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AWS_ENDPOINT_URL", "http://127.0.0.1:9")
-	for _, k := range testutil.AWSCredentialEnv() {
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:9")
+	for _, k := range append(testutil.AWSCredentialEnv(), "NO_PROXY", "no_proxy") {
 		t.Setenv(k, "")
 		require.NoError(t, os.Unsetenv(k))
 	}
@@ -100,6 +104,8 @@ func TestAWSIsolationProblems(t *testing.T) {
 		t.Setenv("AWS_CONFIG_FILE", "/etc/hosts")
 		t.Setenv("AWS_EC2_METADATA_DISABLED", "false")
 		t.Setenv("AWS_ENDPOINT_URL", "")
+		t.Setenv("HTTPS_PROXY", "")
+		t.Setenv("NO_PROXY", "localhost")
 
 		want := []string{
 			testutil.IsolatedHomeEnv + " is not set: the process was not started by testutil.RunAWSIsolated",
@@ -108,6 +114,8 @@ func TestAWSIsolationProblems(t *testing.T) {
 			fmt.Sprintf("AWS_SHARED_CREDENTIALS_FILE=%q is not an empty file inside HOME", creds),
 			`AWS_EC2_METADATA_DISABLED is not "true"`,
 			`AWS_ENDPOINT_URL is not "http://127.0.0.1:9"`,
+			`HTTPS_PROXY is not "http://127.0.0.1:9"`,
+			"NO_PROXY is set",
 		}
 		assert.Equal(t, append(want, defaultPathProblems()...), testutil.AWSIsolationProblems())
 	})
@@ -116,7 +124,79 @@ func TestAWSIsolationProblems(t *testing.T) {
 		fakeIsolation(t)
 		t.Setenv("HOME", "/")
 		t.Setenv(testutil.IsolatedHomeEnv, "/")
-		problems := testutil.AWSIsolationProblems()
-		assert.Contains(t, problems, fmt.Sprintf("HOME=%q is not inside os.TempDir() %q", "/", os.TempDir()))
+		assert.Equal(t, []string{fmt.Sprintf("HOME=%q is not inside os.TempDir() %q", "/", os.TempDir())},
+			testutil.AWSIsolationProblems())
 	})
+}
+
+// TestIsolatedProxy proves the proxy backstop: every AWS host, including
+// the SSO portal that AWS_ENDPOINT_URL does not cover, goes to the closed
+// local port, while loopback (httptest servers, local fixtures) bypasses
+// the proxy, as net/http's ProxyFromEnvironment does for localhost and
+// loopback addresses.
+func TestIsolatedProxy(t *testing.T) {
+	tests := []struct {
+		url  string
+		want string // "" = direct, no proxy
+	}{
+		{"https://portal.sso.us-east-1.amazonaws.com/federation/credentials", "http://127.0.0.1:9"},
+		{"https://oidc.us-east-1.amazonaws.com/token", "http://127.0.0.1:9"},
+		{"https://ec2.us-west-2.amazonaws.com/", "http://127.0.0.1:9"},
+		{"http://169.254.169.254/latest/api/token", "http://127.0.0.1:9"},
+		{"http://127.0.0.1:8080/", ""},
+		{"http://localhost:8080/", ""},
+		{"http://[::1]:8080/", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.url, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, tc.url, nil)
+			require.NoError(t, err)
+			got, err := http.ProxyFromEnvironment(req)
+			require.NoError(t, err)
+			if tc.want == "" {
+				assert.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got, "AWS traffic must go through the closed proxy")
+			assert.Equal(t, tc.want, got.String())
+		})
+	}
+}
+
+// TestRunAWSIsolatedRefusesStaleMarker: a leftover exported
+// HOLODECK_TEST_ISOLATED_HOME must not let a test binary run its tests
+// un-isolated. The child gets a marker that does not match its HOME; it
+// must exit 1 before running any test.
+func TestRunAWSIsolatedRefusesStaleMarker(t *testing.T) {
+	stale := t.TempDir()
+	//nolint:gosec // re-executes this same test binary with a fixed -test.run
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAWSIsolation$", "-test.count=1", "-test.v")
+	cmd.Env = append(os.Environ(), testutil.IsolatedHomeEnv+"="+stale)
+	out, err := cmd.CombinedOutput()
+
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr, "child output:\n%s", out)
+	assert.Equal(t, 1, exitErr.ExitCode())
+	assert.Contains(t, string(out),
+		"testutil.RunAWSIsolated: refusing to run tests, the process is not isolated:")
+	assert.Contains(t, string(out),
+		fmt.Sprintf("HOME=%q is not the isolated HOME %q", os.Getenv("HOME"), stale))
+	assert.NotContains(t, string(out), "=== RUN", "no test may run")
+}
+
+// TestIsolatedHome: inside the TestMain child, IsolatedHome returns the
+// isolated HOME and clears a leftover .aws directory.
+func TestIsolatedHome(t *testing.T) {
+	home := os.Getenv(testutil.IsolatedHomeEnv)
+	require.NotEmpty(t, home)
+	first := testutil.IsolatedHome(t)
+	stale := filepath.Join(first, ".aws", "config")
+	require.NoError(t, os.MkdirAll(filepath.Dir(stale), 0o700))
+	require.NoError(t, os.WriteFile(stale, []byte("[default]\n"), 0o600))
+
+	second := testutil.IsolatedHome(t)
+	assert.Equal(t, home, first)
+	assert.Equal(t, home, second)
+	_, err := os.Stat(filepath.Join(second, ".aws"))
+	assert.True(t, os.IsNotExist(err), "IsolatedHome must remove a leftover .aws, stat err=%v", err)
 }

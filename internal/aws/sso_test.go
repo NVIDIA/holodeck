@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/ssocreds"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -62,8 +63,9 @@ func isolateAWSEnv(t *testing.T) string {
 		t.Setenv(k, "")
 	}
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
-	// Belt and braces: if the SDK ever tried to reach a service here, it
-	// would hit a closed local port instead of AWS.
+	// Points service clients (EC2, SSM, ...) at a closed local port. It does
+	// NOT cover the SSO and SSO-OIDC clients the credential chain builds;
+	// the HTTPS_PROXY that testutil.RunAWSIsolated sets is what stops those.
 	t.Setenv("AWS_ENDPOINT_URL", "http://127.0.0.1:9")
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".aws", "sso", "cache"), 0o700))
 	return home
@@ -103,6 +105,11 @@ const noProfileHint = "AWS SSO session is expired or missing; run \"aws sso logi
 
 func TestSSOHint(t *testing.T) {
 	ssoErr := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", &ssocreds.InvalidTokenError{}))
+	// A revoked or server-invalidated session: the token is locally valid,
+	// and GetRoleCredentials answers 401 UnauthorizedException, which the
+	// SDK returns raw (ssocreds/sso_credentials_provider.go:120-126).
+	unauth := &ssotypes.UnauthorizedException{Message: aws.String("Session token not found or invalid")}
+	unauthErr := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", unauth))
 	sessionErr := fmt.Errorf("get identity: %w", fmt.Errorf(
 		"refresh cached SSO token failed, %w",
 		errors.New("cached SSO token is expired, or not present, and cannot be refreshed")))
@@ -150,6 +157,13 @@ func TestSSOHint(t *testing.T) {
 			in:          ssoErr,
 			wantMsg:     profileHint(testProfile) + "outer: inner: the SSO session has expired or is invalid",
 			wantTokenAs: true,
+		},
+		{
+			name:    "revoked session (sso UnauthorizedException) names the profile",
+			profile: testProfile,
+			in:      unauthErr,
+			wantMsg: profileHint(testProfile) +
+				"outer: inner: UnauthorizedException: Session token not found or invalid",
 		},
 		{
 			name:    "untyped sso-session token error names the profile",
@@ -214,7 +228,8 @@ const expiredSessionToken = `{"accessToken":"fake-access-token","expiresAt":"202
 // TestSSOHintRealSDKChain drives a real SSM call through the SDK's default
 // credential chain under fake SSO profiles. Credential resolution fails on
 // the local token cache before any request is signed, so nothing leaves the
-// machine; AWS_ENDPOINT_URL points at a closed local port as a backstop.
+// machine. The package TestMain (testutil.RunAWSIsolated) also points
+// HTTPS_PROXY at a closed local port, which covers the SSO clients too.
 func TestSSOHintRealSDKChain(t *testing.T) {
 	if !testutil.RunWithIsolatedHome(t) {
 		return
