@@ -23,6 +23,8 @@ To use the AWS provider, you need:
         - `AWS_ACCESS_KEY_ID`
         - `AWS_SECRET_ACCESS_KEY`
         - `AWS_SESSION_TOKEN` (if using temporary credentials)
+  - An AWS SSO (IAM Identity Center) profile selected with `AWS_PROFILE`,
+    see [AWS SSO](#aws-sso-iam-identity-center)
 
 1. Appropriate IAM permissions for:
   - EC2 instance management
@@ -36,6 +38,33 @@ To use the AWS provider, you need:
     offers the requested instance types. Without them Holodeck logs a
     warning and lets AWS choose the zone, and rejects a pinned
     `availabilityZone`
+
+#### AWS SSO (IAM Identity Center)
+
+Holodeck resolves credentials like the AWS SDK default chain, with one
+change that matches the aws CLI: when the active profile has an SSO
+configuration and also static keys in the shared credentials file, Holodeck
+uses SSO, so stale keys cannot shadow your SSO login. It prints one warning
+on stderr when that happens; remove the keys to silence it. Static keys in
+the environment, an explicit `AWS_SHARED_CREDENTIALS_FILE`, and a profile
+that assumes a role (`role_arn`) keep the SDK behavior.
+
+A profile created with `aws configure sso` works. Log in, select the
+profile, then run Holodeck:
+
+```bash
+aws sso login --profile my-sso-profile
+export AWS_PROFILE=my-sso-profile
+holodeck create -f environment.yaml
+```
+
+Holodeck does not record the profile. Run `holodeck delete`, `status` and
+`update` with the same `AWS_PROFILE` you used for `create`. The SSM
+transport (`aws ssm start-session`) uses the same `AWS_PROFILE`.
+
+When the SSO session has expired or was never started, the command fails
+at its first AWS call and prints the `aws sso login --profile <name>`
+command to run before you retry.
 
 ### SSH Provider
 

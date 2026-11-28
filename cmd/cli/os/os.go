@@ -25,9 +25,9 @@ import (
 	"text/tabwriter"
 
 	"github.com/NVIDIA/holodeck/internal/ami"
+	internalaws "github.com/NVIDIA/holodeck/internal/aws"
 	"github.com/NVIDIA/holodeck/internal/logger"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	cli "github.com/urfave/cli/v3"
@@ -203,10 +203,7 @@ func (c *command) runAMI(ctx context.Context, cmd *cli.Command, region, arch str
 	osID := cmd.Args().First()
 
 	// Load AWS config
-	cfg, err := config.LoadDefaultConfig(
-		ctx,
-		config.WithRegion(region),
-	)
+	cfg, err := internalaws.LoadConfig(ctx, c.log, region)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}

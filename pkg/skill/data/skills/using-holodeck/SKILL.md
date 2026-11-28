@@ -163,6 +163,14 @@ Read commands (`list`, `status`, `describe`) accept
 - **AWS credentials** — the SDK reads `AWS_ACCESS_KEY_ID` /
   `AWS_SECRET_ACCESS_KEY` from the environment (or any other
   SDK-supported source: shared credentials file, IAM role, etc.).
+  For AWS SSO, run `aws sso login --profile X`, then
+  `export AWS_PROFILE=X`, then `holodeck create ...`. Holodeck does not
+  record the profile, so `delete`, `status` and `update` must run with
+  the same `AWS_PROFILE`; the SSM transport uses it too. An expired SSO
+  session fails with a message naming the `aws sso login` command.
+  Like the aws CLI, SSO wins over static keys for the same profile in
+  the shared credentials file (one warning on stderr), unless the
+  profile assumes a role or `AWS_SHARED_CREDENTIALS_FILE` is set.
   These are **separate** from `auth.keyName` / `auth.privateKey` in
   env.yaml: those are **literal** values — `auth.keyName` is the EC2
   SSH key-pair name registered in the target region, and

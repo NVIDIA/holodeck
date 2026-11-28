@@ -28,7 +28,6 @@ import (
 	"github.com/NVIDIA/holodeck/pkg/jyaml"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -211,10 +210,7 @@ func New(log *logger.FunLogger, env v1alpha1.Environment, cacheFile string,
 
 	// Create AWS clients if not injected (for testing)
 	if p.ec2 == nil || p.ssm == nil {
-		cfg, err := config.LoadDefaultConfig(
-			context.TODO(),
-			config.WithRegion(region),
-		)
+		cfg, err := internalaws.LoadConfig(context.TODO(), log, region)
 		if err != nil {
 			return nil, err
 		}
