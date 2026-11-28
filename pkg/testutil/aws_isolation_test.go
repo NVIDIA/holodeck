@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -49,10 +50,15 @@ func fakeIsolation(t *testing.T) string {
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(dir, "credentials"))
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AWS_ENDPOINT_URL", "http://127.0.0.1:9")
-	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:9")
-	t.Setenv("HTTP_PROXY", "http://127.0.0.1:9")
-	t.Setenv("NO_PROXY", "api.ipify.org,ifconfig.me,icanhazip.com,ident.me")
-	for _, k := range append(testutil.AWSCredentialEnv(), "no_proxy") {
+	// Both spellings: Go reads either, but Python and the aws CLI read the
+	// lowercase ones.
+	for _, k := range []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} {
+		t.Setenv(k, "http://127.0.0.1:9")
+	}
+	for _, k := range []string{"NO_PROXY", "no_proxy"} {
+		t.Setenv(k, "api.ipify.org,ifconfig.me,icanhazip.com,ident.me")
+	}
+	for _, k := range testutil.AWSCredentialEnv() {
 		t.Setenv(k, "")
 		require.NoError(t, os.Unsetenv(k))
 	}
@@ -121,6 +127,17 @@ func TestAWSIsolationProblems(t *testing.T) {
 		assert.Equal(t, append(want, defaultPathProblems()...), testutil.AWSIsolationProblems())
 	})
 
+	t.Run("a parent shell's lowercase proxy settings are reported", func(t *testing.T) {
+		fakeIsolation(t)
+		t.Setenv("https_proxy", "http://proxy.corp.example:3128")
+		t.Setenv("no_proxy", "")
+		require.NoError(t, os.Unsetenv("no_proxy"))
+		assert.Equal(t, append([]string{
+			`https_proxy is not "http://127.0.0.1:9"`,
+			`no_proxy is not "api.ipify.org,ifconfig.me,icanhazip.com,ident.me"`,
+		}, defaultPathProblems()...), testutil.AWSIsolationProblems())
+	})
+
 	t.Run("HOME outside os.TempDir is reported", func(t *testing.T) {
 		fakeIsolation(t)
 		t.Setenv("HOME", "/")
@@ -171,8 +188,10 @@ func TestIsolatedProxy(t *testing.T) {
 // AWS host.
 func TestIPLookupHostsAreNotAWS(t *testing.T) {
 	for _, h := range testutil.IPLookupHosts() {
-		assert.NotContains(t, h, "amazonaws", h)
-		assert.NotContains(t, h, "aws", h)
+		for _, suffix := range []string{"amazonaws.com", "aws.amazon.com", "amazonaws.com.cn", "aws"} {
+			isAWS := h == suffix || strings.HasSuffix(h, "."+suffix)
+			assert.False(t, isAWS, "%s is an AWS host (suffix %s)", h, suffix)
+		}
 	}
 }
 
