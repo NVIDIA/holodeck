@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,9 +34,31 @@ import (
 // so the guard can check that no error names a file under it.
 const ParentHomeEnv = "HOLODECK_TEST_PARENT_HOME"
 
-// isolatedEndpoint is a closed local port: if anything still tried to send an
-// AWS request, it would be refused locally instead of reaching AWS.
-const isolatedEndpoint = "http://127.0.0.1:9"
+// closedPort is a closed local port. Two settings point there:
+//   - AWS_ENDPOINT_URL, which covers the SDK's service clients (EC2, SSM,
+//     ELBv2, STS). It does NOT cover the SSO and SSO-OIDC clients that the
+//     credential chain builds, because the SDK resolves credentials before
+//     it reads AWS_ENDPOINT_URL.
+//   - HTTPS_PROXY / HTTP_PROXY, which cover every client that uses
+//     net/http's ProxyFromEnvironment, as the SDK's default HTTP client does,
+//     including the SSO portal. Loopback hosts bypass the proxy, so local
+//     test servers keep working.
+const closedPort = "http://127.0.0.1:9"
+
+// proxyEnv lists the proxy variables RunAWSIsolated sets to closedPort.
+func proxyEnv() []string { return []string{"HTTPS_PROXY", "HTTP_PROXY"} }
+
+// IPLookupHosts lists the public-IP lookup hosts of
+// pkg/utils.DefaultIPServices. RunAWSIsolated sets NO_PROXY to exactly these,
+// so tests that call utils.GetIPAddress keep working; none is an AWS host,
+// and NO_PROXY matches by host suffix, so no AWS host can match. A test in
+// pkg/utils keeps the two lists equal (testutil cannot import pkg/utils,
+// whose own tests import testutil).
+func IPLookupHosts() []string {
+	return []string{"api.ipify.org", "ifconfig.me", "icanhazip.com", "ident.me"}
+}
+
+func noProxyValue() string { return strings.Join(IPLookupHosts(), ",") }
 
 // AWSCredentialEnv lists the environment variables RunAWSIsolated removes:
 // every variable the AWS SDK reads to pick a profile or find credentials.
@@ -57,17 +80,25 @@ func AWSCredentialEnv() []string {
 //
 // The child starts with HOME set to a new temp dir, AWS_CONFIG_FILE and
 // AWS_SHARED_CREDENTIALS_FILE set to empty files in it, every variable from
-// AWSCredentialEnv removed, IMDS disabled, and AWS_ENDPOINT_URL set to a
-// closed local port. Because the child is a new process, the AWS SDK's
+// AWSCredentialEnv removed, IMDS disabled, and AWS_ENDPOINT_URL,
+// HTTPS_PROXY and HTTP_PROXY set to a closed local port, and NO_PROXY set to
+// exactly IPLookupHosts (no_proxy removed); see closedPort. Because the child is a new process, the AWS SDK's
 // package-init default paths (config.DefaultSharedConfigFiles and
 // DefaultSharedCredentialsFiles, computed from HOME before TestMain runs) also
 // point into the temp HOME. Setting the variables in this process would be
 // too late for them.
 //
-// In the child it just runs the tests. It returns the exit code to pass to
-// os.Exit.
+// In the child it runs the tests, but only if the isolation checks pass: a
+// stale HOLODECK_TEST_ISOLATED_HOME exported in a shell must not run tests
+// un-isolated. It returns the exit code to pass to os.Exit.
 func RunAWSIsolated(m *testing.M) int {
 	if os.Getenv(IsolatedHomeEnv) != "" {
+		if problems := AWSIsolationProblems(); len(problems) > 0 {
+			fmt.Fprintf(os.Stderr,
+				"testutil.RunAWSIsolated: refusing to run tests, the process is not isolated:\n- %s\n",
+				strings.Join(problems, "\n- "))
+			return 1
+		}
 		return m.Run()
 	}
 
@@ -100,9 +131,13 @@ func RunAWSIsolated(m *testing.M) int {
 		"AWS_CONFIG_FILE":             configFile,
 		"AWS_SHARED_CREDENTIALS_FILE": credsFile,
 		"AWS_EC2_METADATA_DISABLED":   "true",
-		"AWS_ENDPOINT_URL":            isolatedEndpoint,
+		"AWS_ENDPOINT_URL":            closedPort,
 	}
-	drop := map[string]bool{}
+	for _, k := range proxyEnv() {
+		set[k] = closedPort
+	}
+	set["NO_PROXY"] = noProxyValue()
+	drop := map[string]bool{"no_proxy": true}
 	for _, k := range AWSCredentialEnv() {
 		drop[k] = true
 	}
@@ -163,8 +198,16 @@ func AWSIsolationProblems() []string {
 	if os.Getenv("AWS_EC2_METADATA_DISABLED") != "true" {
 		problems = append(problems, `AWS_EC2_METADATA_DISABLED is not "true"`)
 	}
-	if os.Getenv("AWS_ENDPOINT_URL") != isolatedEndpoint {
-		problems = append(problems, fmt.Sprintf("AWS_ENDPOINT_URL is not %q", isolatedEndpoint))
+	for _, k := range append([]string{"AWS_ENDPOINT_URL"}, proxyEnv()...) {
+		if os.Getenv(k) != closedPort {
+			problems = append(problems, fmt.Sprintf("%s is not %q", k, closedPort))
+		}
+	}
+	if os.Getenv("NO_PROXY") != noProxyValue() {
+		problems = append(problems, fmt.Sprintf("NO_PROXY is not %q", noProxyValue()))
+	}
+	if _, ok := os.LookupEnv("no_proxy"); ok {
+		problems = append(problems, "no_proxy is set")
 	}
 	if p := config.DefaultSharedConfigFiles[0]; !within(home, p) {
 		problems = append(problems, fmt.Sprintf(
@@ -187,6 +230,13 @@ func RequireAWSIsolation(t *testing.T) {
 	if problems := AWSIsolationProblems(); len(problems) > 0 {
 		t.Fatalf("AWS isolation is not active (add TestMain calling testutil.RunAWSIsolated):\n- %s",
 			strings.Join(problems, "\n- "))
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://portal.sso.us-east-1.amazonaws.com/", nil)
+	if err != nil {
+		t.Fatalf("build probe request: %v", err)
+	}
+	if u, err := http.ProxyFromEnvironment(req); err != nil || u == nil || u.String() != closedPort {
+		t.Fatalf("AWS traffic is not routed to the closed proxy %s: proxy=%v err=%v", closedPort, u, err)
 	}
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))

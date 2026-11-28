@@ -46,9 +46,6 @@ const validSSOToken = `{"accessToken":"fake-access-token","expiresAt":"2999-01-0
 // SSO credentials provider. It never calls Retrieve, so it reads no token
 // and makes no network call; New must stay lazy (holodeck list depends on it).
 func TestNewResolvesSSOProfile(t *testing.T) {
-	if !testutil.RunWithIsolatedHome(t) {
-		return
-	}
 	tests := []struct {
 		name        string
 		config      string

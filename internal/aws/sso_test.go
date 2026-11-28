@@ -71,16 +71,12 @@ func isolateAWSEnv(t *testing.T) string {
 	return home
 }
 
-// fixtureHome returns the HOME to build fixtures in. Inside a
-// testutil.RunWithIsolatedHome child it is the process HOME, which is also
-// where the SDK's package-init default paths point, so even a code path that
+// fixtureHome returns the HOME to build fixtures in: the isolated process
+// HOME of the package TestMain (testutil.RunAWSIsolated). The SDK's
+// package-init default paths point there too, so even a code path that
 // bypasses the call-time paths reads the fixture and never the real ~/.aws.
-// Elsewhere it is a fresh temp dir.
 func fixtureHome(t *testing.T) string {
 	t.Helper()
-	if os.Getenv(testutil.IsolatedHomeEnv) == "" {
-		return t.TempDir()
-	}
 	return testutil.IsolatedHome(t)
 }
 
@@ -231,9 +227,6 @@ const expiredSessionToken = `{"accessToken":"fake-access-token","expiresAt":"202
 // machine. The package TestMain (testutil.RunAWSIsolated) also points
 // HTTPS_PROXY at a closed local port, which covers the SSO clients too.
 func TestSSOHintRealSDKChain(t *testing.T) {
-	if !testutil.RunWithIsolatedHome(t) {
-		return
-	}
 	tests := []struct {
 		name        string
 		config      string

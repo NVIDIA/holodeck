@@ -262,8 +262,10 @@ sso_role_name = HolodeckTest
 			name:        "A7 a container credentials URI with SSO and credentials-file keys flips, as the aws CLI does",
 			config:      defaultSSOSessionConfig,
 			credentials: "[default]\n" + staticKeys,
-			env:         map[string]string{"AWS_CONTAINER_CREDENTIALS_FULL_URI": "http://127.0.0.1:9/creds"},
-			wantSSO:     true, wantSources: ssoSession, warnProfile: "default",
+			env: map[string]string{ //nolint:gosec // G101: a closed local URL, not a credential
+				"AWS_CONTAINER_CREDENTIALS_FULL_URI": "http://127.0.0.1:9/creds",
+			},
+			wantSSO: true, wantSources: ssoSession, warnProfile: "default",
 		},
 		{
 			name:        "A9 a missing profile fails like the SDK, without a warning",

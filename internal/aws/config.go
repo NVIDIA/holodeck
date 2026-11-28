@@ -18,6 +18,9 @@ package aws
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -42,9 +45,17 @@ const preferSSOWarning = "AWS profile %q has SSO configured and static keys in t
 // stale) keys shadow the SSO login.
 //
 // The SSO preference applies only when nothing explicit overrides it: no
-// static keys in the environment, and no AWS_SHARED_CREDENTIALS_FILE. If the
-// profile cannot be read, or the reload does not actually resolve to SSO,
-// the default chain is used unchanged and nothing is logged.
+// static keys in the environment, no AWS_SHARED_CREDENTIALS_FILE, and no
+// role_arn on the profile (the reload reads no credentials file, so it would
+// drop a role that lives there). If the profile cannot be read, or the
+// reload does not actually resolve to SSO, the default chain is used
+// unchanged and nothing is logged. This follows the aws CLI order, so a
+// profile that also has credential_process, or a container credentials URI
+// in the environment, still prefers SSO.
+//
+// The warning is written once per process to the logger's Out writer
+// (os.Stderr by default), never to stdout, which carries machine-readable
+// output such as holodeck list -o json.
 //
 // LoadConfig never retrieves credentials; they stay lazy.
 func LoadConfig(ctx context.Context, log *logger.FunLogger, region string) (aws.Config, error) {
@@ -75,9 +86,7 @@ func LoadConfig(ctx context.Context, log *logger.FunLogger, region string) (aws.
 				// An empty, non-nil list reads no credentials file at all.
 				config.WithSharedCredentialsFiles([]string{}))
 			if err == nil && aws.IsCredentialsProvider(cfg.Credentials, (*ssocreds.Provider)(nil)) {
-				if log != nil {
-					log.Warning(preferSSOWarning, profile)
-				}
+				preferSSOWarnOnce.Do(func() { warnPreferSSO(log, profile) })
 				return cfg, nil
 			}
 		}
@@ -89,8 +98,9 @@ func LoadConfig(ctx context.Context, log *logger.FunLogger, region string) (aws.
 }
 
 // ssoShadowedByStaticKeys reports whether the active profile has both static
-// keys and an SSO configuration, with no static keys in the environment.
-// It returns the profile name. Any error reading the profile returns false.
+// keys and an SSO configuration and assumes no role, with no static keys in
+// the environment. It returns the profile name. Any error reading the
+// profile returns false.
 func ssoShadowedByStaticKeys(ctx context.Context, env config.EnvConfig, configFile, credsFile string) (string, bool) {
 	if env.Credentials.HasKeys() {
 		return "", false
@@ -106,10 +116,21 @@ func ssoShadowedByStaticKeys(ctx context.Context, env config.EnvConfig, configFi
 	if err != nil {
 		return "", false
 	}
-	if !sc.Credentials.HasKeys() || !hasSSOConfiguration(sc) {
+	if !sc.Credentials.HasKeys() || !hasSSOConfiguration(sc) || sc.RoleARN != "" {
 		return "", false
 	}
 	return profile, true
+}
+
+// warnPreferSSO writes the prefer-SSO warning to the logger's Out writer,
+// or os.Stderr without a logger. Unlike FunLogger.Info it ignores quiet
+// mode: the user's credentials changed.
+func warnPreferSSO(log *logger.FunLogger, profile string) {
+	var w io.Writer = os.Stderr
+	if log != nil && log.Out != nil {
+		w = log.Out
+	}
+	fmt.Fprintf(w, "warning: "+preferSSOWarning+"\n", profile) //nolint:errcheck // best-effort warning
 }
 
 // hasSSOConfiguration mirrors the SDK's unexported

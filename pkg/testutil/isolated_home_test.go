@@ -21,51 +21,25 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/NVIDIA/holodeck/pkg/testutil"
 )
 
-// TestRunWithIsolatedHome checks the property the helper exists for: in the
-// child, the AWS SDK's package-init default paths (computed from HOME before
-// any test code runs) point into the isolated HOME, never the real one. It
-// only reads the path variables; it opens no file.
-func TestRunWithIsolatedHome(t *testing.T) {
-	if !testutil.RunWithIsolatedHome(t) {
-		return
-	}
+// TestIsolatedHome: inside the TestMain child, IsolatedHome returns the
+// isolated HOME and clears a leftover .aws directory.
+func TestIsolatedHome(t *testing.T) {
 	home := os.Getenv(testutil.IsolatedHomeEnv)
-	require.NotEmpty(t, home, "child must see %s", testutil.IsolatedHomeEnv)
+	require.NotEmpty(t, home)
+	first := testutil.IsolatedHome(t)
+	stale := filepath.Join(first, ".aws", "config")
+	require.NoError(t, os.MkdirAll(filepath.Dir(stale), 0o700))
+	require.NoError(t, os.WriteFile(stale, []byte("[default]\n"), 0o600))
 
-	tests := []struct {
-		name string
-		got  string
-		want string
-	}{
-		{"HOME is the isolated dir", os.Getenv("HOME"), home},
-		{"SDK default config file is under the isolated HOME",
-			config.DefaultSharedConfigFiles[0], filepath.Join(home, ".aws", "config")},
-		{"SDK default credentials file is under the isolated HOME",
-			config.DefaultSharedCredentialsFiles[0], filepath.Join(home, ".aws", "credentials")},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, tc.got)
-		})
-	}
-
-	t.Run("IsolatedHome returns the isolated HOME with .aws removed", func(t *testing.T) {
-		first := testutil.IsolatedHome(t)
-		stale := filepath.Join(first, ".aws", "config")
-		require.NoError(t, os.MkdirAll(filepath.Dir(stale), 0o700))
-		require.NoError(t, os.WriteFile(stale, []byte("[default]\n"), 0o600))
-
-		second := testutil.IsolatedHome(t)
-		assert.Equal(t, home, first)
-		assert.Equal(t, home, second)
-		_, err := os.Stat(filepath.Join(second, ".aws"))
-		assert.True(t, os.IsNotExist(err), "IsolatedHome must remove a leftover .aws, stat err=%v", err)
-	})
+	second := testutil.IsolatedHome(t)
+	assert.Equal(t, home, first)
+	assert.Equal(t, home, second)
+	_, err := os.Stat(filepath.Join(second, ".aws"))
+	assert.True(t, os.IsNotExist(err), "IsolatedHome must remove a leftover .aws, stat err=%v", err)
 }

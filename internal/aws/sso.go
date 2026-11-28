@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/credentials/ssocreds"
+	ssotypes "github.com/aws/aws-sdk-go-v2/service/sso/types"
 )
 
 // ssoCacheErrMarker appears in every error the SDK's SSO token provider
@@ -32,16 +33,21 @@ import (
 // them. TestSSOHintRealSDKChain fails if an SDK upgrade changes this text.
 const ssoCacheErrMarker = "cached SSO token"
 
-// SSOHint adds an "aws sso login" hint to errors caused by an expired or
-// missing AWS SSO session. The profile named in the hint is the one the SDK
-// used: AWS_PROFILE, else AWS_DEFAULT_PROFILE. Any other error, and nil, is
+// SSOHint adds an "aws sso login" hint to errors caused by an expired,
+// missing or revoked AWS SSO session: the typed InvalidTokenError (legacy
+// profiles), the SSO service's UnauthorizedException (a token the portal no
+// longer accepts), or the untyped token-cache errors of sso-session profiles.
+// The profile named in the hint is the one the SDK used: AWS_PROFILE, else
+// AWS_DEFAULT_PROFILE. Any other error, and nil, is
 // returned unchanged. The original error stays in the chain.
 func SSOHint(err error) error {
 	if err == nil {
 		return nil
 	}
 	var ssoErr *ssocreds.InvalidTokenError
-	if !errors.As(err, &ssoErr) && !strings.Contains(err.Error(), ssoCacheErrMarker) {
+	var unauthErr *ssotypes.UnauthorizedException
+	if !errors.As(err, &ssoErr) && !errors.As(err, &unauthErr) &&
+		!strings.Contains(err.Error(), ssoCacheErrMarker) {
 		return err
 	}
 	p := os.Getenv("AWS_PROFILE")

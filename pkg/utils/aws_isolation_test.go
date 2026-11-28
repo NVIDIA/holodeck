@@ -17,6 +17,7 @@
 package utils
 
 import (
+	"net/url"
 	"os"
 	"testing"
 
@@ -30,3 +31,25 @@ func TestMain(m *testing.M) { os.Exit(testutil.RunAWSIsolated(m)) }
 
 // TestAWSIsolation fails unless the AWS isolation from TestMain is in effect.
 func TestAWSIsolation(t *testing.T) { testutil.RequireAWSIsolation(t) }
+
+// TestIPLookupHostsMatchDefaultIPServices keeps testutil's NO_PROXY
+// exemption equal to the hosts GetIPAddress actually calls.
+func TestIPLookupHostsMatchDefaultIPServices(t *testing.T) {
+	var hosts []string
+	for _, s := range DefaultIPServices() {
+		u, err := url.Parse(s.URL)
+		if err != nil {
+			t.Fatalf("parse %q: %v", s.URL, err)
+		}
+		hosts = append(hosts, u.Hostname())
+	}
+	got, want := testutil.IPLookupHosts(), hosts
+	if len(got) != len(want) {
+		t.Fatalf("testutil.IPLookupHosts() = %v, DefaultIPServices hosts = %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("testutil.IPLookupHosts() = %v, DefaultIPServices hosts = %v", got, want)
+		}
+	}
+}

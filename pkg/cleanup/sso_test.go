@@ -37,9 +37,6 @@ import (
 // the EC2 client the SSO provider, unless the credentials file also assumes
 // a role, which the SSO reload would drop. Retrieve is never called.
 func TestNewPrefersSSOOverSharedFileKeys(t *testing.T) {
-	if !testutil.RunWithIsolatedHome(t) {
-		return
-	}
 	const keys = "aws_access_key_id = AKIAHOLODECKFAKE0001\naws_secret_access_key = holodeck-fake-secret\n"
 	tests := []struct {
 		name        string

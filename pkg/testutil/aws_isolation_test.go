@@ -51,7 +51,8 @@ func fakeIsolation(t *testing.T) string {
 	t.Setenv("AWS_ENDPOINT_URL", "http://127.0.0.1:9")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:9")
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:9")
-	for _, k := range append(testutil.AWSCredentialEnv(), "NO_PROXY", "no_proxy") {
+	t.Setenv("NO_PROXY", "api.ipify.org,ifconfig.me,icanhazip.com,ident.me")
+	for _, k := range append(testutil.AWSCredentialEnv(), "no_proxy") {
 		t.Setenv(k, "")
 		require.NoError(t, os.Unsetenv(k))
 	}
@@ -115,7 +116,7 @@ func TestAWSIsolationProblems(t *testing.T) {
 			`AWS_EC2_METADATA_DISABLED is not "true"`,
 			`AWS_ENDPOINT_URL is not "http://127.0.0.1:9"`,
 			`HTTPS_PROXY is not "http://127.0.0.1:9"`,
-			"NO_PROXY is set",
+			`NO_PROXY is not "api.ipify.org,ifconfig.me,icanhazip.com,ident.me"`,
 		}
 		assert.Equal(t, append(want, defaultPathProblems()...), testutil.AWSIsolationProblems())
 	})
@@ -143,6 +144,9 @@ func TestIsolatedProxy(t *testing.T) {
 		{"https://oidc.us-east-1.amazonaws.com/token", "http://127.0.0.1:9"},
 		{"https://ec2.us-west-2.amazonaws.com/", "http://127.0.0.1:9"},
 		{"http://169.254.169.254/latest/api/token", "http://127.0.0.1:9"},
+		// The public-IP lookups some tests make stay direct.
+		{"https://api.ipify.org?format=text", ""},
+		{"https://ident.me", ""},
 		{"http://127.0.0.1:8080/", ""},
 		{"http://localhost:8080/", ""},
 		{"http://[::1]:8080/", ""},
@@ -160,6 +164,15 @@ func TestIsolatedProxy(t *testing.T) {
 			require.NotNil(t, got, "AWS traffic must go through the closed proxy")
 			assert.Equal(t, tc.want, got.String())
 		})
+	}
+}
+
+// TestIPLookupHostsAreNotAWS: the NO_PROXY exemption may never cover an
+// AWS host.
+func TestIPLookupHostsAreNotAWS(t *testing.T) {
+	for _, h := range testutil.IPLookupHosts() {
+		assert.NotContains(t, h, "amazonaws", h)
+		assert.NotContains(t, h, "aws", h)
 	}
 }
 
@@ -182,21 +195,4 @@ func TestRunAWSIsolatedRefusesStaleMarker(t *testing.T) {
 	assert.Contains(t, string(out),
 		fmt.Sprintf("HOME=%q is not the isolated HOME %q", os.Getenv("HOME"), stale))
 	assert.NotContains(t, string(out), "=== RUN", "no test may run")
-}
-
-// TestIsolatedHome: inside the TestMain child, IsolatedHome returns the
-// isolated HOME and clears a leftover .aws directory.
-func TestIsolatedHome(t *testing.T) {
-	home := os.Getenv(testutil.IsolatedHomeEnv)
-	require.NotEmpty(t, home)
-	first := testutil.IsolatedHome(t)
-	stale := filepath.Join(first, ".aws", "config")
-	require.NoError(t, os.MkdirAll(filepath.Dir(stale), 0o700))
-	require.NoError(t, os.WriteFile(stale, []byte("[default]\n"), 0o600))
-
-	second := testutil.IsolatedHome(t)
-	assert.Equal(t, home, first)
-	assert.Equal(t, home, second)
-	_, err := os.Stat(filepath.Join(second, ".aws"))
-	assert.True(t, os.IsNotExist(err), "IsolatedHome must remove a leftover .aws, stat err=%v", err)
 }
