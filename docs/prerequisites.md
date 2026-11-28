@@ -41,9 +41,16 @@ To use the AWS provider, you need:
 
 #### AWS SSO (IAM Identity Center)
 
-Holodeck uses the AWS SDK default credential chain, so a profile created
-with `aws configure sso` works. Log in, select the profile, then run
-Holodeck:
+Holodeck resolves credentials like the AWS SDK default chain, with one
+change that matches the aws CLI: when the active profile has an SSO
+configuration and also static keys in the shared credentials file, Holodeck
+uses SSO, so stale keys cannot shadow your SSO login. It prints one warning
+on stderr when that happens; remove the keys to silence it. Static keys in
+the environment, an explicit `AWS_SHARED_CREDENTIALS_FILE`, and a profile
+that assumes a role (`role_arn`) keep the SDK behavior.
+
+A profile created with `aws configure sso` works. Log in, select the
+profile, then run Holodeck:
 
 ```bash
 aws sso login --profile my-sso-profile
