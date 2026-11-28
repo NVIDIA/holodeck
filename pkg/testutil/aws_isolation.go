@@ -45,8 +45,14 @@ const ParentHomeEnv = "HOLODECK_TEST_PARENT_HOME"
 //     test servers keep working.
 const closedPort = "http://127.0.0.1:9"
 
-// proxyEnv lists the proxy variables RunAWSIsolated sets to closedPort.
-func proxyEnv() []string { return []string{"HTTPS_PROXY", "HTTP_PROXY"} }
+// proxyEnv lists the proxy variables RunAWSIsolated sets to closedPort, in
+// both spellings: Go reads either, while Python and the aws CLI read the
+// lowercase ones, so a subprocess cannot fall back to a parent shell's proxy.
+func proxyEnv() []string { return []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} }
+
+// noProxyEnv lists the no-proxy variables RunAWSIsolated sets to exactly
+// IPLookupHosts, in both spellings.
+func noProxyEnv() []string { return []string{"NO_PROXY", "no_proxy"} }
 
 // IPLookupHosts lists the public-IP lookup hosts of
 // pkg/utils.DefaultIPServices. RunAWSIsolated sets NO_PROXY to exactly these,
@@ -81,9 +87,9 @@ func AWSCredentialEnv() []string {
 // The child starts with HOME set to a new temp dir, AWS_CONFIG_FILE and
 // AWS_SHARED_CREDENTIALS_FILE set to empty files in it, every variable from
 // AWSCredentialEnv removed, IMDS disabled, and AWS_ENDPOINT_URL,
-// HTTPS_PROXY and HTTP_PROXY set to a closed local port, and NO_PROXY set to
-// exactly IPLookupHosts (no_proxy removed); see closedPort. Because the child is a new process, the AWS SDK's
-// package-init default paths (config.DefaultSharedConfigFiles and
+// HTTPS_PROXY and HTTP_PROXY (both spellings) set to a closed local port, and
+// NO_PROXY / no_proxy set to exactly IPLookupHosts; see closedPort. Because
+// the child is a new process, the AWS SDK's package-init default paths (config.DefaultSharedConfigFiles and
 // DefaultSharedCredentialsFiles, computed from HOME before TestMain runs) also
 // point into the temp HOME. Setting the variables in this process would be
 // too late for them.
@@ -136,8 +142,10 @@ func RunAWSIsolated(m *testing.M) int {
 	for _, k := range proxyEnv() {
 		set[k] = closedPort
 	}
-	set["NO_PROXY"] = noProxyValue()
-	drop := map[string]bool{"no_proxy": true}
+	for _, k := range noProxyEnv() {
+		set[k] = noProxyValue()
+	}
+	drop := map[string]bool{}
 	for _, k := range AWSCredentialEnv() {
 		drop[k] = true
 	}
@@ -203,11 +211,10 @@ func AWSIsolationProblems() []string {
 			problems = append(problems, fmt.Sprintf("%s is not %q", k, closedPort))
 		}
 	}
-	if os.Getenv("NO_PROXY") != noProxyValue() {
-		problems = append(problems, fmt.Sprintf("NO_PROXY is not %q", noProxyValue()))
-	}
-	if _, ok := os.LookupEnv("no_proxy"); ok {
-		problems = append(problems, "no_proxy is set")
+	for _, k := range noProxyEnv() {
+		if os.Getenv(k) != noProxyValue() {
+			problems = append(problems, fmt.Sprintf("%s is not %q", k, noProxyValue()))
+		}
 	}
 	if p := config.DefaultSharedConfigFiles[0]; !within(home, p) {
 		problems = append(problems, fmt.Sprintf(
